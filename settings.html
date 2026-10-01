@@ -1,0 +1,1342 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>app074 · 系统设置</title>
+<style>
+:root{
+  --bg:#fafafa;--sidebar-bg:#fafbfc;--panel:#ffffff;--panel-2:#f7f8fa;--code:#f9fafb;
+  --border:#e5e7eb;--border-strong:#d1d5db;--border-active:#10b981;
+  --text:#1f2937;--text-2:#4b5563;--muted:#6b7280;--hint:#9ca3af;--text-faint:#d1d5db;
+  --accent:#10b981;--accent-2:#059669;--accent-soft:#ecfdf5;--accent-softer:#f0fdf4;
+  --primary:#111827;--warn:#f59e0b;--danger:#ef4444;--success:#10b981;
+  --info-bg:#eff6ff;--info-text:#1e40af;--info-border:#dbeafe;
+  --shadow-sm:0 1px 2px rgba(0,0,0,.04);
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  font-size:13px;line-height:1.6;}
+
+/* ============ 两栏布局（左侧 8 大块导航 + 右侧主区） ============ */
+body{padding-left:224px;}
+.sidebar{position:fixed;left:0;top:0;bottom:0;width:224px;background:var(--sidebar-bg);border-right:1px solid var(--border);overflow-y:auto;padding:14px 8px;z-index:5;}
+.right{margin-left:0;padding:22px 28px 80px;max-width:920px;}
+
+/* ============ 左栏导航 ============ */
+.sidebar .brand{display:flex;align-items:center;gap:8px;padding:6px 10px 12px;border-bottom:1px solid var(--border);margin-bottom:10px;}
+.sidebar .brand .logo{width:28px;height:28px;background:linear-gradient(135deg,#10b981,#059669);border-radius:7px;display:flex;align-items:center;justify-content:center;color:white;font-weight:700;font-size:12px;}
+.sidebar .brand .name{font-weight:600;font-size:14px;}
+.sidebar .brand .ver{font-size:10px;color:var(--muted);}
+.nav-section{margin-bottom:14px;}
+.nav-section .grp{padding:6px 12px 4px;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;}
+
+.nav-item{display:flex;align-items:center;gap:8px;padding:7px 10px;font-size:13px;color:var(--text);cursor:pointer;border-radius:6px;margin:1px 0;text-decoration:none;line-height:1.2;}
+.nav-item:hover{background:var(--panel-2);}
+.nav-item.active{background:var(--accent-soft);color:var(--accent-2);font-weight:500;}
+.nav-item .ico{width:18px;text-align:center;color:var(--muted);font-size:13px;flex-shrink:0;}
+.nav-item.active .ico{color:var(--accent-2);}
+.nav-item .meta{flex:1;min-width:0;}
+.nav-item .name{font-size:13px;}
+.nav-item .sub{font-size:10px;color:var(--muted);margin-top:1px;}
+.nav-item.active .sub{color:var(--accent-2);opacity:.7;}
+.nav-item .dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;background:var(--text-faint);}
+.nav-item .dot.ok{background:var(--accent);}
+.nav-item .dot.warn{background:var(--warn);}
+.nav-item .dot.bad{background:var(--danger);}
+.nav-item .dot.checking{background:var(--info-text);}
+
+/* ============ 右栏 ============ */
+.page-hd{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:18px;}
+.page-hd .title-block h1{margin:0;font-size:18px;font-weight:600;color:var(--text);}
+.page-hd .title-block .sub{font-size:12px;color:var(--muted);margin-top:4px;}
+
+/* ============ 设置 section header ============ */
+.section-head{display:flex;align-items:flex-start;gap:12px;margin-bottom:14px;}
+.section-head .ico{width:36px;height:36px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;border-radius:8px;background:var(--accent-soft);color:var(--accent-2);}
+.section-head .meta{flex:1;min-width:0;}
+.section-head .title{font-size:15px;font-weight:600;color:var(--text);}
+.section-head .sub{font-size:11px;color:var(--muted);margin-top:2px;line-height:1.5;}
+.section-head .status{margin-left:auto;}
+
+.section{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:20px 22px;margin-bottom:16px;box-shadow:var(--shadow-sm);}
+.section.hidden{display:none;}
+
+/* ============ 状态徽章 ============ */
+.status{display:inline-flex;align-items:center;gap:5px;font-size:11px;padding:3px 10px;border-radius:10px;font-weight:500;}
+.status::before{content:"";width:6px;height:6px;border-radius:50%;}
+.status.ok{background:var(--accent-soft);color:var(--accent-2);}
+.status.ok::before{background:var(--accent);}
+.status.bad{background:#fef2f2;color:var(--danger);}
+.status.bad::before{background:var(--danger);}
+.status.checking{background:var(--info-bg);color:var(--info-text);}
+.status.checking::before{background:var(--info-text);}
+.profile-status{display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--text-faint);margin-left:6px;vertical-align:middle;}
+.profile-status.profile-status-empty{background:var(--danger);}
+.profile-status.profile-status-untested{background:var(--warn);}
+.profile-status.profile-status-ok{background:var(--accent);}
+
+/* ============ 表单字段 ============ */
+.field{margin:16px 0 0;}
+.field-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;}
+.field-hd .label{font-size:12px;color:var(--text-2);font-weight:500;}
+.field-hd .label .req{color:var(--danger);margin-left:2px;}
+.field-hd .label .opt{color:var(--hint);font-weight:400;margin-left:6px;font-size:11px;}
+.field-hd .hint{font-size:11px;color:var(--hint);}
+.field-help{font-size:11px;color:var(--hint);margin-top:6px;line-height:1.55;}
+textarea,input[type=text],input[type=password]{width:100%;background:var(--code);color:var(--text);
+  border:1px solid var(--border);border-radius:8px;padding:9px 12px;font-size:13px;
+  font-family:inherit;transition:.15s;}
+textarea:focus,input:focus{outline:none;border-color:var(--accent);background:white;box-shadow:0 0 0 3px rgba(16,185,129,.1);}
+.input-with-actions{position:relative;display:flex;align-items:center;}
+.input-with-actions input{padding-right:64px;}
+.input-action{position:absolute;background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:13px;padding:4px 8px;border-radius:5px;transition:.1s;}
+.input-action:hover{background:var(--panel-2);color:var(--text);}
+.input-action[data-toggle]{right:32px;}
+.input-action[data-copy]{right:4px;}
+
+/* ============ chips ============ */
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;}
+.chip{display:inline-flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;padding:7px 12px;border:1px solid var(--border);background:white;border-radius:8px;cursor:pointer;font-size:12px;color:var(--text-2);transition:.12s;user-select:none;line-height:1.25;min-height:36px;}
+.chip:hover{border-color:var(--border-strong);color:var(--text);}
+.chip.selected{border-color:var(--accent);background:var(--accent-soft);color:var(--accent-2);font-weight:500;}
+.chip.selected .chip-hint{color:var(--accent-2);opacity:.75;}
+.chip.add{border-style:dashed;color:var(--muted);}
+.chip-main{font-weight:500;}
+.chip-hint{font-size:10px;color:var(--hint);font-weight:400;letter-spacing:.2px;line-height:1.2;}
+.chip.selected .chip-hint{color:var(--accent-2);}
+
+/* ============ 按钮 ============ */
+.btn{display:inline-flex;align-items:center;gap:5px;padding:7px 14px;border-radius:7px;border:1px solid var(--border);background:white;cursor:pointer;font-size:12px;color:var(--text-2);transition:.12s;font-family:inherit;}
+.btn:hover{border-color:var(--border-strong);background:var(--panel-2);}
+.btn.primary{background:var(--accent);color:white;border-color:var(--accent);font-weight:500;}
+.btn.primary:hover{background:var(--accent-2);border-color:var(--accent-2);box-shadow:0 2px 6px rgba(16,185,129,.3);}
+.btn.ghost{background:transparent;border-color:transparent;}
+.btn.ghost:hover{background:var(--panel-2);}
+.btn.secondary{background:var(--accent-soft);color:var(--accent-2);border-color:transparent;}
+.btn.secondary:hover{background:var(--accent-softer);border-color:var(--accent);}
+.btn-row{display:flex;justify-content:flex-end;gap:8px;margin-top:18px;padding-top:14px;border-top:1px solid var(--border);}
+.btn-row.left{justify-content:flex-start;}
+.btn.danger{color:var(--danger);}
+.btn.danger:hover{background:#fef2f2;border-color:var(--danger);}
+
+/* ============ LLM profile LIST ============ */
+.profile-list-head{display:flex;align-items:center;justify-content:space-between;margin:6px 0 14px;}
+.profile-list-head-title{font-size:12px;color:var(--text-2);font-weight:500;}
+.profile-list-head-count{color:var(--accent-2);font-weight:600;font-size:14px;margin:0 3px;}
+.profile-list{display:flex;flex-direction:column;gap:8px;}
+.profile-row{display:flex;align-items:center;gap:14px;padding:14px 16px;background:var(--panel);border:1px solid var(--border);border-radius:10px;cursor:pointer;transition:.12s;}
+.profile-row:hover{border-color:var(--border-strong);background:var(--panel-2);}
+.profile-row.active{border-color:var(--accent);background:var(--accent-softer);box-shadow:0 0 0 1px var(--accent);}
+.profile-row-radio{width:16px;height:16px;border:2px solid var(--border-strong);border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:white;}
+.profile-row.active .profile-row-radio{border-color:var(--accent);}
+.profile-row-radio-inner{width:8px;height:8px;border-radius:50%;background:transparent;}
+.profile-row.active .profile-row-radio-inner{background:var(--accent);}
+.profile-row-body{flex:1;min-width:0;}
+.profile-row-titlerow{display:flex;align-items:center;gap:8px;}
+.profile-row-name{font-weight:600;font-size:13px;}
+.profile-row-activelabel{font-size:10px;background:var(--accent-soft);color:var(--accent-2);padding:1px 7px;border-radius:8px;font-weight:500;}
+.profile-row-meta{font-size:11px;color:var(--muted);margin-top:3px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+.profile-row-provider{font-weight:500;color:var(--text-2);}
+.profile-row-sep{color:var(--text-faint);}
+.profile-row-actions{display:flex;gap:4px;flex-shrink:0;}
+.profile-action-btn{display:inline-flex;align-items:center;gap:4px;background:transparent;border:1px solid transparent;color:var(--muted);font-size:11px;padding:4px 8px;border-radius:5px;cursor:pointer;font-family:inherit;}
+.profile-action-btn:hover{background:var(--panel-2);color:var(--text);}
+.profile-empty{text-align:center;padding:40px 20px;border:1px dashed var(--border);border-radius:10px;background:var(--panel-2);}
+.profile-empty-icon{font-size:32px;color:var(--hint);margin-bottom:10px;}
+.profile-empty-title{font-size:14px;font-weight:500;color:var(--text-2);margin-bottom:4px;}
+.profile-empty-sub{font-size:11px;color:var(--muted);margin-bottom:14px;}
+
+/* ============ 配置文件 EDIT 头部 ============ */
+.profile-editor-head{display:flex;align-items:center;gap:8px;margin-bottom:18px;padding-bottom:14px;border-bottom:1px solid var(--border);}
+.profile-editor-head .btn{padding:5px 10px;font-size:12px;}
+.profile-editor-head .flex-1{flex:1;}
+
+/* ============ info bar ============ */
+.info-bar{background:var(--info-bg);border:1px solid var(--info-border);border-radius:8px;padding:10px 14px;font-size:11px;color:var(--info-text);line-height:1.6;margin:14px 0;}
+
+/* ============ 测试结果 ============ */
+.test-result{padding:12px 14px;border-radius:8px;font-size:12px;line-height:1.6;margin-top:10px;}
+.test-result.success{background:var(--accent-soft);color:var(--accent-2);border:1px solid var(--accent);}
+.test-result.error{background:#fef2f2;color:var(--danger);border:1px solid var(--danger);}
+.test-result.testing{background:var(--info-bg);color:var(--info-text);border:1px solid var(--info-border);}
+
+/* ============ toast ============ */
+.toast{position:fixed;top:24px;right:24px;padding:10px 16px;border-radius:8px;font-size:13px;z-index:200;box-shadow:0 4px 12px rgba(0,0,0,.1);display:none;max-width:400px;line-height:1.5;}
+.toast.show{display:block;animation:slideIn .2s ease;}
+.toast.ok{background:var(--accent);color:white;}
+.toast.bad{background:var(--danger);color:white;}
+@keyframes slideIn{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:translateX(0)}}
+
+a{color:var(--accent-2);}
+a:hover{color:var(--accent);}
+code{background:var(--bg);padding:1px 5px;border-radius:3px;font-family:Menlo,Consolas,monospace;font-size:11px;}
+</style>
+</head>
+<body>
+
+<!-- ============ 左侧 8 大块导航（与 STORY 1.24.0 Settings-XLgSTp15.js:5232 ii 完全一致） ============ -->
+<aside class="sidebar">
+  <div class="brand">
+    <div class="logo">07</div>
+    <div>
+      <div class="name">app074</div>
+      <div class="ver">v1.0.0 · 文案改写</div>
+    </div>
+  </div>
+
+  <a class="new-btn" href="/index.html" style="display:block;width:100%;padding:8px 12px;background:var(--accent);color:white;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:500;margin-bottom:14px;text-align:center;text-decoration:none;">+ 新建任务</a>
+
+  <div class="nav-section">
+    <a class="nav-item" href="/index.html"><span class="ico">📋</span><div class="meta"><div class="name">任务队列</div></div></a>
+    <a class="nav-item"><span class="ico">🕐</span><div class="meta"><div class="name">历史任务</div></div></a>
+    <a class="nav-item"><span class="ico">🎨</span><div class="meta"><div class="name">画面实验室</div></div></a>
+    <a class="nav-item"><span class="ico">🎙️</span><div class="meta"><div class="name">配音实验室</div></div></a>
+    <a class="nav-item"><span class="ico">📦</span><div class="meta"><div class="name">素材库</div></div></a>
+  </div>
+
+  <div class="nav-section">
+    <div class="grp">设置</div>
+    <a class="nav-item active" data-section="llm" href="#llm">
+      <span class="ico">🧠</span>
+      <div class="meta"><div class="name">LLM</div><div class="sub">文案与分镜</div></div>
+      <span class="dot" id="dot-llm"></span>
+    </a>
+    <a class="nav-item" data-section="image" href="#image">
+      <span class="ico">🎨</span>
+      <div class="meta"><div class="name">AI 绘图</div><div class="sub">分镜图片</div></div>
+      <span class="dot" id="dot-image"></span>
+    </a>
+    <a class="nav-item" data-section="tts" href="#tts">
+      <span class="ico">🔊</span>
+      <div class="meta"><div class="name">TTS 配音</div><div class="sub">每镜语音</div></div>
+      <span class="dot" id="dot-tts"></span>
+    </a>
+    <a class="nav-item" data-section="asr" href="#asr">
+      <span class="ico">🎤</span>
+      <div class="meta"><div class="name">语音识别</div><div class="sub">歌词 · 字幕对齐</div></div>
+      <span class="dot" id="dot-asr"></span>
+    </a>
+    <a class="nav-item" data-section="draft" href="#draft">
+      <span class="ico">🎬</span>
+      <div class="meta"><div class="name">剪映</div><div class="sub">草稿目录 · BGM</div></div>
+      <span class="dot" id="dot-draft"></span>
+    </a>
+    <a class="nav-item" data-section="license" href="#license">
+      <span class="ico">🔑</span>
+      <div class="meta"><div class="name">激活与订阅</div><div class="sub">试用 · 激活码</div></div>
+      <span class="dot" id="dot-license"></span>
+    </a>
+    <a class="nav-item" data-section="ai-creation" href="#ai-creation">
+      <span class="ico">📚</span>
+      <div class="meta"><div class="name">AI 创作</div><div class="sub">IMA 知识库</div></div>
+      <span class="dot" id="dot-ai-creation"></span>
+    </a>
+    <a class="nav-item" data-section="about" href="#about">
+      <span class="ico">ℹ️</span>
+      <div class="meta"><div class="name">关于 · 诊断</div><div class="sub">日志 · 重置</div></div>
+      <span class="dot" id="dot-about"></span>
+    </a>
+  </div>
+</aside>
+
+<!-- ============ 右栏：8 大块设置区（与左侧导航一一对应） ============ -->
+<div class="right">
+
+  <!-- ===== LLM ===== -->
+  <div class="section" id="section-llm">
+    <div class="section-head">
+      <div class="ico">🧠</div>
+      <div class="meta">
+        <div class="title">LLM</div>
+        <div class="sub">保存多个配置，创建任务时一键切换。API Key 安全存储在系统钥匙串。</div>
+      </div>
+      <span class="status checking" id="st-llm">检测中…</span>
+    </div>
+
+    <!-- LIST 视图（默认） -->
+    <div id="llm-list-view">
+      <div class="profile-list-head">
+        <div class="profile-list-head-title">已保存 <span class="profile-list-head-count" id="llm-count">0</span> 个配置</div>
+        <button class="btn secondary" id="btn-llm-new">＋ 新建配置</button>
+      </div>
+      <div id="llm-list"></div>
+      <div class="info-bar">创建任务时可在「使用模型」下拉里秒切 · 不同配置可以用不同的代理、Base URL · API Key 安全存储在系统钥匙串</div>
+    </div>
+
+    <!-- EDIT 视图（点编辑/新建时显示） -->
+    <div id="llm-edit-view" style="display:none">
+      <div class="profile-editor-head">
+        <button class="btn ghost" id="btn-llm-back">← 返回</button>
+        <div class="flex-1"></div>
+        <button class="btn secondary" id="btn-llm-setactive">✓ 设为当前</button>
+        <button class="btn ghost danger" id="btn-llm-delete">🗑 删除此配置</button>
+      </div>
+
+      <div class="field">
+        <div class="field-hd"><span class="label">配置名称</span><span class="hint">给这个配置起个好记的名字</span></div>
+        <input type="text" id="llm-edit-name" placeholder="如：Qwen 日常用 / Claude 长文案">
+      </div>
+
+      <div class="field">
+        <div class="field-hd"><span class="label">服务商<span class="req">*</span></span></div>
+        <div class="chips" id="llm-edit-providers">
+          <div class="chip" data-v="deepseek"><span class="chip-main">DeepSeek</span></div>
+          <div class="chip" data-v="bailian"><span class="chip-main">阿里百炼</span><span class="chip-hint">通义千问</span></div>
+          <div class="chip" data-v="moonshot"><span class="chip-main">Moonshot</span><span class="chip-hint">Kimi</span></div>
+          <div class="chip" data-v="zhipu"><span class="chip-main">智谱 AI</span><span class="chip-hint">GLM</span></div>
+          <div class="chip" data-v="minimax"><span class="chip-main">MiniMax</span></div>
+          <div class="chip" data-v="custom"><span class="chip-main">自定义 / 其他</span><span class="chip-hint">OpenAI / Claude</span></div>
+        </div>
+        <div class="field-help" id="llm-edit-provider-help"></div>
+      </div>
+
+      <div class="field" id="llm-protocol-field" style="display:none">
+        <div class="field-hd"><span class="label">协议<span class="req">*</span></span><span class="hint">必选</span></div>
+        <div class="chips" id="llm-edit-protocol">
+          <div class="chip" data-v="openai"><span class="chip-main">OpenAI 兼容</span><span class="chip-hint">/chat/completions</span></div>
+          <div class="chip" data-v="anthropic"><span class="chip-main">Anthropic 原生</span><span class="chip-hint">/messages</span></div>
+        </div>
+        <div class="field-help">走 OpenAI 兼容 /chat/completions 还是 Claude 原生 /messages。中转站如 code.newcli.com/claude 走 Claude 原生</div>
+      </div>
+
+      <div class="field">
+        <div class="field-hd"><span class="label">API Key<span class="req">*</span></span><span class="hint">必填</span></div>
+        <div class="input-with-actions">
+          <input type="password" id="llm-edit-apikey" placeholder="粘贴你的 API Key">
+          <button class="input-action" type="button" data-toggle="llm-edit-apikey" title="显示 / 隐藏">👁</button>
+          <button class="input-action" type="button" data-copy="llm-edit-apikey" title="复制">⧉</button>
+        </div>
+        <div class="field-help">仅用于本地调用，安全存储在系统钥匙串</div>
+      </div>
+
+      <div class="field" id="llm-model-field">
+        <div class="field-hd"><span class="label">默认模型</span></div>
+        <div class="chips" id="llm-edit-models"></div>
+        <input type="text" id="llm-edit-model" placeholder="如 deepseek-v4-pro" style="margin-top:6px">
+        <div class="field-help">创建任务时会以此为默认。列表里没有想用的？点「＋ 自定义」填 model id 并保存，会常驻在这里下次直接选</div>
+      </div>
+
+      <div class="field" id="llm-fallback-field">
+        <div class="field-hd"><span class="label">备选模型</span><span class="hint">可选</span></div>
+        <textarea id="llm-edit-fallback" rows="3" placeholder="每行一个 model id。例：&#10;claude-sonnet-4-6&#10;gpt-5.4"></textarea>
+        <div class="field-help">同一 Key/地址下可用的其他模型，文案工作台会话可在这些模型间切换；流水线仍用默认模型</div>
+      </div>
+
+      <div class="field" id="llm-baseurl-field">
+        <div class="field-hd"><span class="label">Base URL<span class="req" id="llm-baseurl-req" style="display:none">*</span></span><span class="hint" id="llm-baseurl-hint">可选</span></div>
+        <input type="text" id="llm-edit-baseurl" placeholder="留空使用服务商默认地址">
+        <div class="field-help">自定义 API 端点；留空使用服务商默认地址</div>
+      </div>
+
+      <div class="field">
+        <div class="field-hd"><span class="label">代理 URL</span><span class="hint">可选</span></div>
+        <input type="text" id="llm-edit-proxy" placeholder="http://127.0.0.1:7890">
+        <div class="field-help">仅此配置生效；绘图/TTS 不受影响。留空则直连。国外模型常用。</div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn" id="btn-llm-test-conn">⚡ 测试连接</button>
+        <button class="btn" id="btn-llm-test-tools">⚡ 测试工具调用</button>
+      </div>
+      <div id="llm-test-result"></div>
+    </div>
+  </div>
+
+  <!-- ===== AI 绘图 ===== -->
+  <div class="section hidden" id="section-image">
+    <div class="section-head">
+      <div class="ico">🎨</div>
+      <div class="meta">
+        <div class="title">AI 绘图</div>
+        <div class="sub">分镜图片 · 封面海报生成</div>
+      </div>
+      <span class="status checking" id="st-image">检测中…</span>
+    </div>
+
+    <div class="field">
+      <div class="field-hd"><span class="label">主 Provider<span class="req">*</span></span></div>
+      <div class="chips" id="img-providers">
+        <div class="chip" data-v="gpt_image"><span class="chip-main">gpt_image</span><span class="chip-hint">gpt-image-1</span></div>
+        <div class="chip" data-v="modelscope"><span class="chip-main">modelscope</span><span class="chip-hint">魔搭</span></div>
+        <div class="chip" data-v="jimeng"><span class="chip-main">即梦 jimeng</span><span class="chip-hint">火山引擎</span></div>
+        <div class="chip" data-v="runninghub"><span class="chip-main">RunningHub</span><span class="chip-hint">异步工作流</span></div>
+        <div class="chip" data-v="custom_image"><span class="chip-main">custom_image</span><span class="chip-hint">自定义 OpenAI 兼容</span></div>
+      </div>
+    </div>
+
+    <div id="img-blocks">
+      <div class="img-block" data-block="gpt_image,modelscope,custom_image">
+        <div class="grid-2" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="field">
+            <div class="field-hd"><span class="label">Base URL</span><span class="hint">可选</span></div>
+            <input type="text" id="img-baseurl" placeholder="留空按 provider 填默认值">
+          </div>
+          <div class="field">
+            <div class="field-hd"><span class="label">API Key<span class="opt">留空不修改</span></span></div>
+            <input type="password" id="img-apikey" placeholder="sk-xxxxxxxxxxxx">
+          </div>
+        </div>
+      </div>
+
+      <div class="img-block" data-block="jimeng" style="display:none">
+        <div class="grid-2" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="field">
+            <div class="field-hd"><span class="label">Access Key ID<span class="req">*</span></span></div>
+            <input type="text" id="jm-ak" placeholder="AKxxxxxxxxxxxxxxxx">
+          </div>
+          <div class="field">
+            <div class="field-hd"><span class="label">Secret Access Key<span class="opt">留空不修改</span></span></div>
+            <input type="password" id="jm-sk" placeholder="Secret key 字符串">
+          </div>
+        </div>
+        <div class="info-bar">控制台：<a href="https://console.volcengine.com/" target="_blank">console.volcengine.com</a> → 访问控制 → 创建 AK / SK → 开通即梦 CV 服务</div>
+      </div>
+
+      <div class="img-block" data-block="runninghub" style="display:none">
+        <div class="grid-2" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="field">
+            <div class="field-hd"><span class="label">API Key<span class="opt">留空不修改</span></span></div>
+            <input type="password" id="rh-apikey">
+          </div>
+          <div class="field">
+            <div class="field-hd"><span class="label">Workflow ID<span class="req">*</span></span></div>
+            <input type="text" id="rh-workflow" placeholder="rh-image-g2 或自定义">
+          </div>
+        </div>
+        <div class="field">
+          <div class="field-hd"><span class="label">Base URL</span></div>
+          <input type="text" id="rh-baseurl" placeholder="https://www.runninghub.cn">
+        </div>
+      </div>
+    </div>
+
+    <div class="grid-3" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+      <div class="field">
+        <div class="field-hd"><span class="label">模型</span></div>
+        <input type="text" id="img-model" placeholder="gpt-image-1 / jimeng-4.5">
+      </div>
+      <div class="field">
+        <div class="field-hd"><span class="label">比例</span></div>
+        <input type="text" id="img-ratio" placeholder="9:16">
+      </div>
+      <div class="field">
+        <div class="field-hd"><span class="label">分辨率</span></div>
+        <input type="text" id="img-resolution" placeholder="1k / 2k">
+      </div>
+    </div>
+
+    <div class="field">
+      <div class="field-hd"><span class="label">图片尺寸</span></div>
+      <input type="text" id="img-size" placeholder="1024x1792（9:16 竖图）">
+    </div>
+
+    <div class="btn-row">
+      <button class="btn" id="btn-img-test">⚡ 测试出图</button>
+      <button class="btn primary" id="btn-img-save">💾 保存</button>
+    </div>
+    <div id="img-test-result"></div>
+  </div>
+
+  <!-- ===== TTS 配音 ===== -->
+  <div class="section hidden" id="section-tts">
+    <div class="section-head">
+      <div class="ico">🔊</div>
+      <div class="meta">
+        <div class="title">TTS 配音</div>
+        <div class="sub">给视频每镜配音</div>
+      </div>
+      <span class="status checking" id="st-tts">检测中…</span>
+    </div>
+
+    <div class="field">
+      <div class="field-hd"><span class="label">Provider<span class="req">*</span></span></div>
+      <div class="chips" id="tts-providers">
+        <div class="chip" data-v="volcengine"><span class="chip-main">火山引擎 TTS</span><span class="chip-hint">豆包 / MiniMax 音色</span></div>
+        <div class="chip" data-v="minimax"><span class="chip-main">MiniMax TTS</span><span class="chip-hint">speech-2.8-hd</span></div>
+        <div class="chip" data-v="custom"><span class="chip-main">自定义</span><span class="chip-hint">OpenAI 兼容</span></div>
+      </div>
+    </div>
+
+    <div id="tts-volc-block">
+      <div class="grid-2" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="field">
+          <div class="field-hd"><span class="label">App ID</span></div>
+          <input type="text" id="tts-volc-appid" placeholder="数字 ID">
+        </div>
+        <div class="field">
+          <div class="field-hd"><span class="label">Access Key<span class="opt">留空不修改</span></span></div>
+          <input type="password" id="tts-volc-access" placeholder="AccessKey 字符串">
+        </div>
+      </div>
+      <div class="field">
+        <div class="field-hd"><span class="label">默认发音人</span><span class="hint">控制台 console.volcengine.com/speech</span></div>
+        <div class="chips" id="tts-speakers">
+          <div class="chip" data-v="zh_male_dongfanghaoran_moon_bigtts"><span class="chip-main">东方浩然</span></div>
+          <div class="chip" data-v="zh_male_ruyao_mars_bigtts"><span class="chip-main">如瑶男声</span></div>
+          <div class="chip" data-v="zh_female_shuangkuai_mars_bigtts"><span class="chip-main">爽快女声</span></div>
+          <div class="chip" data-v="zh_female_ruoruo_mars_bigtts"><span class="chip-main">若若女声</span></div>
+          <div class="chip" data-v="zh_male_zhitian_mars_bigtts"><span class="chip-main">致甜男声</span></div>
+          <div class="chip" data-v="zh_female_wumei_mars_bigtts"><span class="chip-main">妩媚女声</span></div>
+        </div>
+        <input type="text" id="tts-volc-speaker" placeholder="自定义 voice id（点上方胶囊选预设）" style="margin-top:8px">
+      </div>
+    </div>
+
+    <div id="tts-minimax-block" style="display:none">
+      <div class="grid-2" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="field">
+          <div class="field-hd"><span class="label">API Key<span class="opt">留空不修改</span></span></div>
+          <input type="password" id="tts-minimax-key">
+        </div>
+        <div class="field">
+          <div class="field-hd"><span class="label">模型</span></div>
+          <input type="text" id="tts-minimax-model" placeholder="speech-2.8-hd">
+        </div>
+      </div>
+      <div class="field">
+        <div class="field-hd"><span class="label">Voice ID<span class="opt">在 Aura Studio 添加的克隆音色 ID</span></div>
+        <input type="text" id="tts-minimax-voice">
+      </div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn primary" id="btn-tts-save">💾 保存</button>
+    </div>
+  </div>
+
+  <!-- ===== 语音识别 ===== -->
+  <div class="section hidden" id="section-asr">
+    <div class="section-head">
+      <div class="ico">🎤</div>
+      <div class="meta">
+        <div class="title">语音识别</div>
+        <div class="sub">歌词 · 字幕对齐</div>
+      </div>
+      <span class="status checking" id="st-asr">检测中…</span>
+    </div>
+
+    <div class="field">
+      <div class="field-hd"><span class="label">Provider<span class="req">*</span></span></div>
+      <div class="chips" id="asr-providers">
+        <div class="chip" data-v="volcengine"><span class="chip-main">火山引擎 ASR</span><span class="chip-hint">字节跳动</span></div>
+        <div class="chip" data-v="bailian"><span class="chip-main">阿里百炼 ASR</span><span class="chip-hint">Paraformer</span></div>
+        <div class="chip" data-v="funasr"><span class="chip-main">FunASR</span><span class="chip-hint">本地部署</span></div>
+      </div>
+    </div>
+
+    <div class="grid-2" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="field">
+        <div class="field-hd"><span class="label">App ID</span></div>
+        <input type="text" id="asr-appid">
+      </div>
+      <div class="field">
+        <div class="field-hd"><span class="label">Access Key<span class="opt">留空不修改</span></span></div>
+        <input type="password" id="asr-access">
+      </div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn primary" id="btn-asr-save">💾 保存</button>
+    </div>
+  </div>
+
+  <!-- ===== 剪映 ===== -->
+  <div class="section hidden" id="section-draft">
+    <div class="section-head">
+      <div class="ico">🎬</div>
+      <div class="meta">
+        <div class="title">剪映</div>
+        <div class="sub">草稿目录 · BGM</div>
+      </div>
+      <span class="status checking" id="st-draft">检测中…</span>
+    </div>
+
+    <div class="field">
+      <div class="field-hd"><span class="label">剪映草稿目录</span></div>
+      <input type="text" id="jy-draft-path" placeholder="D:\JianyingPro\User Data\Projects\com.lveditor.draft">
+      <div class="field-help">示例路径（按你的实际安装位置修改）：<br>
+        <code>D:\JianyingPro\User Data\Projects\com.lveditor.draft</code><br>
+        <code>C:\Users\&lt;用户名&gt;\AppData\Local\JianyingPro\User Data\Projects\com.lveditor.draft</code>
+      </div>
+    </div>
+
+    <div class="field">
+      <div class="field-hd"><span class="label">BGM 目录<span class="opt">可选</span></span></div>
+      <input type="text" id="jy-bgm-path" placeholder="D:\Music\BGM">
+      <div class="field-help">存放 .mp3 背景音乐文件。生成草稿时会随机挑选一首作为背景。</div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn primary" id="btn-jy-save">💾 保存</button>
+    </div>
+  </div>
+
+  <!-- ===== 激活与订阅 ===== -->
+  <div class="section hidden" id="section-license">
+    <div class="section-head">
+      <div class="ico">🔑</div>
+      <div class="meta">
+        <div class="title">激活与订阅</div>
+        <div class="sub">试用 · 激活码</div>
+      </div>
+      <span class="status bad" id="st-license">未激活</span>
+    </div>
+
+    <div class="field">
+      <div class="field-hd"><span class="label">激活码</span></div>
+      <input type="text" id="license-key" placeholder="粘贴激活码">
+      <div class="field-help">本软件为本地工具，**所有 AI 功能均使用你自己配置的 API Key**，不依赖官方激活码。此处为预留字段。</div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn primary" id="btn-license-save">💾 保存</button>
+    </div>
+  </div>
+
+  <!-- ===== AI 创作（IMA 知识库） ===== -->
+  <div class="section hidden" id="section-ai-creation">
+    <div class="section-head">
+      <div class="ico">📚</div>
+      <div class="meta">
+        <div class="title">AI 创作 · IMA 知识库</div>
+        <div class="sub">素材来源</div>
+      </div>
+      <span class="status checking" id="st-ai-creation">检测中…</span>
+    </div>
+
+    <div class="grid-2" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="field">
+        <div class="field-hd"><span class="label">Client ID</span></div>
+        <input type="text" id="ima-clientid">
+      </div>
+      <div class="field">
+        <div class="field-hd"><span class="label">API Key<span class="opt">留空不修改</span></span></div>
+        <input type="password" id="ima-apikey">
+      </div>
+    </div>
+
+    <div class="grid-2" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="field">
+        <div class="field-hd"><span class="label">Knowledge Base ID</span></div>
+        <input type="text" id="ima-kbid">
+      </div>
+      <div class="field">
+        <div class="field-hd"><span class="label">知识库名称<span class="opt">仅用于显示</span></span></div>
+        <input type="text" id="ima-kbname" placeholder="人物故事系列">
+      </div>
+    </div>
+
+    <div class="info-bar">腾讯 IMA 知识库（<a href="https://ima.qq.com" target="_blank">ima.qq.com</a>）。改写时可引用知识库内容作为素材来源。</div>
+
+    <div class="btn-row">
+      <button class="btn primary" id="btn-ima-save">💾 保存</button>
+    </div>
+  </div>
+
+  <!-- ===== 关于 · 诊断 ===== -->
+  <div class="section hidden" id="section-about">
+    <div class="section-head">
+      <div class="ico">ℹ️</div>
+      <div class="meta">
+        <div class="title">关于 · 诊断</div>
+        <div class="sub">日志 · 重置</div>
+      </div>
+    </div>
+
+    <div class="field">
+      <div class="field-hd"><span class="label">版本</span></div>
+      <div style="font-size:13px">app074 · v1.0.0 · 文案改写双线版</div>
+    </div>
+
+    <div class="field">
+      <div class="field-hd"><span class="label">服务端口</span></div>
+      <div style="font-size:13px">127.0.0.1:18801</div>
+    </div>
+
+    <div class="field">
+      <div class="field-hd"><span class="label">数据目录</span></div>
+      <div style="font-size:13px"><code>D:\1Leida-shipinhao\074-copy-rewrite\data\</code></div>
+    </div>
+
+    <div class="field">
+      <div class="field-hd"><span class="label">诊断</span></div>
+      <button class="btn" id="btn-copy-diagnostics">📋 复制诊断信息</button>
+      <button class="btn danger" id="btn-clear-history">🗑 清除历史任务</button>
+    </div>
+
+    <div class="info-bar">所有 AI 调用均使用你本地配置的 API Key，**数据全部保存在本机**，不依赖任何云端服务。</div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ============================================================
+// 从 Storybound 1.24.0 Settings-XLgSTp15.js 抠的真值表
+// ============================================================
+
+const PROVIDERS = [
+  { id: "deepseek", name: "DeepSeek",
+    baseUrl: "https://api.deepseek.com",
+    helpUrl: "https://platform.deepseek.com/",
+    helpLabel: "性价比之王 · 中文长文本表现好",
+    models: ["deepseek-v4-pro", "deepseek-v4-flash"] },
+  { id: "bailian",  name: "阿里百炼", sub: "通义千问",
+    baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    helpUrl: "https://bailian.console.aliyun.com/",
+    helpLabel: "阿里云百炼平台，集成千问及主流模型",
+    models: ["qwen3.7-max", "qwen3.7-plus", "qwen3.6-plus", "qwen3.6-max-preview"] },
+  { id: "moonshot", name: "Moonshot", sub: "Kimi",
+    baseUrl: "https://api.moonshot.cn/v1",
+    helpUrl: "https://platform.kimi.com/",
+    helpLabel: "256k 上下文，改长文案顺手",
+    models: ["kimi-k2.7-code", "kimi-k2.7-code-highspeed", "kimi-k2.6", "kimi-k2.5"] },
+  { id: "zhipu",    name: "智谱 AI", sub: "GLM",
+    baseUrl: "https://open.bigmodel.cn/api/paas/v4",
+    helpUrl: "https://open.bigmodel.cn/",
+    helpLabel: "GLM 系列，稳定可靠",
+    models: ["glm-5.3", "glm-5.3-flash", "glm-5.2"] },
+  { id: "minimax",  name: "MiniMax",
+    baseUrl: "https://api.minimaxi.com/v1",
+    helpUrl: "https://platform.minimaxi.com/",
+    helpLabel: "国产旗舰，性能全面",
+    models: ["MiniMax-M3", "MiniMax-M2.7", "MiniMax-M2.5"] },
+  { id: "custom",   name: "自定义 / 其他", sub: "OpenAI / Claude",
+    baseUrl: "",
+    helpLabel: "兼容 OpenAI 或 Claude 协议的自建 / 中转 API（含 OpenAI 官方 / Anthropic 官方 / 各种中转站）",
+    models: [] }
+];
+
+const MODEL_HINTS = {
+  "MiniMax-M3": "1M 长上下文",
+  "glm-5.3": "思考型 · 长文案偏慢",
+  "glm-5.3-flash": "思考型 · 长文案偏慢",
+  "kimi-k2.7-code": "强制思考 · 无法关闭",
+  "kimi-k2.7-code-highspeed": "强制思考 · 无法关闭"
+};
+
+const PROVIDER_LABEL = {
+  deepseek: "DeepSeek", openai: "OpenAI", anthropic: "Anthropic",
+  volcengine: "火山方舟", bailian: "阿里百炼", moonshot: "Moonshot",
+  zhipu: "智谱 AI", custom: "自定义", gpt_image: "gpt_image",
+  modelscope: "modelscope", jimeng: "即梦 jimeng",
+  runninghub: "RunningHub", custom_image: "custom_image",
+  minimax: "MiniMax"
+};
+
+// 已知过时模型（被淘汰的）
+const STALE_MODELS = {
+  deepseek: ["deepseek-chat", "deepseek-reasoner", "deepseek-coder"],
+  bailian:  ["qwen-max", "qwen-plus", "qwen-turbo",
+             "qwen2-max", "qwen2.5-max", "qwen2.5-plus", "qwen2.5-turbo",
+             "qwen3-max", "qwen3-plus", "qwen3-turbo"],
+  moonshot: ["moonshot-v1-8k", "moonshot-v1-32k", "moonshot-v1-128k",
+             "kimi-k2", "kimi-k2-thinking"],
+  zhipu:    ["glm-4", "glm-4-plus", "glm-4-air", "glm-4-flash", "glm-4-airx"],
+  minimax:  ["abab6.5-chat", "abab6.5s-chat", "abab5.5-chat", "MiniMax-M2"],
+  custom:   []
+};
+
+function normalizeStale(provider, model) {
+  if (!model || provider === "custom") return { model, upgraded: false };
+  const currentIds = (PROVIDERS.find(p => p.id === provider) || {}).models || [];
+  if (currentIds.includes(model)) return { model, upgraded: false };
+  if ((STALE_MODELS[provider] || []).includes(model)) {
+    return { model: currentIds[0] || "", upgraded: true };
+  }
+  return { model, upgraded: false };
+}
+
+// ============================================================
+// 工具
+// ============================================================
+
+const $ = id => document.getElementById(id);
+const KEEP = "__KEEP__";
+
+async function api(path, method, body) {
+  const opts = { method: method || "GET", headers: { "content-type": "application/json" } };
+  if (body) opts.body = JSON.stringify(body);
+  const r = await fetch(path, opts);
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+
+function toast(msg, ok) {
+  const t = $("toast");
+  t.textContent = msg;
+  t.className = "toast show " + (ok ? "ok" : "bad");
+  setTimeout(() => t.classList.remove("show"), 2500);
+}
+
+function setStatus(id, ok, label) {
+  const el = $(id);
+  if (!el) return;
+  el.className = "status " + (ok ? "ok" : "bad");
+  el.textContent = ok ? "✓ 已配置" : (label || "未配置");
+}
+
+function setDot(id, status) {
+  const el = $(id);
+  if (!el) return;
+  el.className = "dot " + status;
+}
+
+function maskKey(k) {
+  if (!k) return "";
+  if (k.length <= 8) return "•".repeat(k.length);
+  return k.slice(0, 4) + "•".repeat(Math.min(20, k.length - 8)) + k.slice(-4);
+}
+
+// ============================================================
+// 通用 chips 交互
+// ============================================================
+
+function setChip(groupId, value) {
+  const chips = document.querySelectorAll(`#${groupId} .chip[data-v]`);
+  chips.forEach(c => c.classList.toggle("selected", c.dataset.v === value));
+}
+
+function getChip(groupId) {
+  const sel = document.querySelector(`#${groupId} .chip.selected[data-v]`);
+  return sel ? sel.dataset.v : "";
+}
+
+function bindChipGroup(groupId, onChange) {
+  const box = $(groupId);
+  if (!box) return;
+  box.addEventListener("click", (e) => {
+    const chip = e.target.closest(".chip[data-v]");
+    if (!chip || !box.contains(chip)) return;
+    box.querySelectorAll(".chip").forEach(c => c.classList.remove("selected"));
+    chip.classList.add("selected");
+    onChange && onChange(chip.dataset.v);
+  });
+}
+
+// 密码框眼 / 复制
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest(".input-action");
+  if (!btn) return;
+  const id = btn.dataset.toggle || btn.dataset.copy;
+  const el = id && $(id);
+  if (!el) return;
+  if (btn.dataset.toggle) {
+    el.type = el.type === "password" ? "text" : "password";
+    btn.textContent = el.type === "password" ? "👁" : "🙈";
+  } else if (btn.dataset.copy) {
+    if (!el.value) { toast("✗ 没有内容可复制"); return; }
+    navigator.clipboard.writeText(el.value).then(
+      () => toast("✓ 已复制到剪贴板", true),
+      () => { el.select(); document.execCommand("copy"); toast("✓ 已复制", true); }
+    );
+  }
+});
+
+// ============================================================
+// 路由：8 大块切换
+// ============================================================
+
+const SECTIONS = ["llm","image","tts","asr","draft","license","ai-creation","about"];
+
+function showSection(id) {
+  const target = SECTIONS.includes(id) ? id : "llm";
+  SECTIONS.forEach(s => {
+    const el = $("section-" + s);
+    if (el) el.classList.toggle("hidden", s !== target);
+  });
+  document.querySelectorAll(".sidebar .nav-item[data-section]").forEach(c => {
+    c.classList.toggle("active", c.dataset.section === target);
+  });
+  if (history.replaceState) history.replaceState(null, "", "#" + target);
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+document.querySelectorAll(".sidebar .nav-item[data-section]").forEach(it => {
+  it.addEventListener("click", (e) => {
+    e.preventDefault();
+    showSection(it.dataset.section);
+  });
+});
+
+// ============================================================
+// LLM Profile LIST + EDIT
+// ============================================================
+
+let profiles = [];      // [{id, name, provider, model, baseUrl, apiKey, fallback, protocol, proxyUrl, enabled}]
+let editingId = null;   // null = LIST view; string = EDIT view
+
+function renderProfileList() {
+  $("llm-count").textContent = profiles.length;
+  const list = $("llm-list");
+  if (profiles.length === 0) {
+    list.innerHTML = `
+      <div class="profile-empty">
+        <div class="profile-empty-icon">🧠</div>
+        <div class="profile-empty-title">还没有配置</div>
+        <div class="profile-empty-sub">新建一个后才能使用 AI 文案功能</div>
+        <button class="btn primary" onclick="newProfile()">＋ 添加第一个配置</button>
+      </div>`;
+    return;
+  }
+  list.innerHTML = `<div class="profile-list">` + profiles.map(p => {
+    const provLabel = PROVIDER_LABEL[p.provider] || p.provider;
+    const hasKey = !!(p.apiKey && p.apiKey.length >= 4);
+    const statusClass = hasKey ? "profile-status-ok" : "profile-status-empty";
+    const statusTitle = hasKey ? "已配置" : "待配置";
+    return `
+      <div class="profile-row ${p.enabled ? "active" : ""}" data-id="${p.id}">
+        <div class="profile-row-radio"><div class="profile-row-radio-inner"></div></div>
+        <div class="profile-row-body">
+          <div class="profile-row-titlerow">
+            <span class="profile-row-name">${esc(p.name || "未命名")}</span>
+            ${p.enabled ? `<span class="profile-row-activelabel">使用中</span>` : ""}
+            <span class="profile-status ${statusClass}" title="${statusTitle}"></span>
+          </div>
+          <div class="profile-row-meta">
+            <span class="profile-row-provider">${esc(provLabel)}</span>
+            <span class="profile-row-sep">·</span>
+            <span class="profile-row-model">${esc(p.model || "—")}</span>
+            ${hasKey ? `<span class="profile-row-sep">·</span><span class="profile-row-model" style="opacity:.7">${esc(maskKey(p.apiKey))}</span>` : ""}
+          </div>
+        </div>
+        <div class="profile-row-actions">
+          <button class="profile-action-btn" data-act="edit">✏ 编辑</button>
+          <button class="profile-action-btn" data-act="setactive">✓ 设为当前</button>
+          <button class="profile-action-btn" data-act="delete" style="color:var(--danger)">🗑 删除</button>
+        </div>
+      </div>`;
+  }).join("") + `</div>`;
+
+  list.querySelectorAll(".profile-row").forEach(row => {
+    const id = row.dataset.id;
+    row.querySelector('[data-act="edit"]').addEventListener("click", (e) => { e.stopPropagation(); editProfile(id); });
+    row.querySelector('[data-act="setactive"]').addEventListener("click", (e) => { e.stopPropagation(); setActive(id); });
+    row.querySelector('[data-act="delete"]').addEventListener("click", (e) => { e.stopPropagation(); deleteProfile(id); });
+    row.addEventListener("click", () => editProfile(id));
+  });
+}
+
+function esc(s) {
+  return String(s || "").replace(/[<>&"]/g, c => ({"<":"&lt;",">":"&gt;","&":"&amp;",'"':"&quot;"}[c]));
+}
+
+function showList() {
+  editingId = null;
+  $("llm-list-view").style.display = "";
+  $("llm-edit-view").style.display = "none";
+}
+
+function showEdit() {
+  $("llm-list-view").style.display = "none";
+  $("llm-edit-view").style.display = "";
+}
+
+function newProfile() {
+  const id = "p_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6);
+  profiles.push({
+    id, name: "新配置", provider: "deepseek", model: "deepseek-v4-pro",
+    baseUrl: "https://api.deepseek.com", protocol: "openai",
+    apiKey: "", fallback: [], proxyUrl: "", enabled: profiles.length === 0
+  });
+  editingId = id;
+  showEdit();
+  fillEditForm();
+}
+
+function editProfile(id) {
+  editingId = id;
+  showEdit();
+  fillEditForm();
+}
+
+function fillEditForm() {
+  const p = profiles.find(x => x.id === editingId);
+  if (!p) return;
+  $("llm-edit-name").value = p.name || "";
+  setChip("llm-edit-providers", p.provider);
+  $("llm-edit-protocol") && setChip("llm-edit-protocol", p.protocol || "openai");
+  $("llm-edit-apikey").value = "";  // 不回显 key（安全）
+  $("llm-edit-model").value = p.model || "";
+  $("llm-edit-fallback").value = (p.fallback || []).join("\n");
+  $("llm-edit-baseurl").value = p.baseUrl || "";
+  $("llm-edit-proxy").value = p.proxyUrl || "";
+  syncLLMEditUI();
+  $("llm-test-result").innerHTML = "";
+}
+
+function syncLLMEditUI() {
+  const p = profiles.find(x => x.id === editingId);
+  if (!p) return;
+  const provId = getChip("llm-edit-providers") || p.provider;
+  const prov = PROVIDERS.find(x => x.id === provId) || {};
+  const isCustom = provId === "custom";
+
+  // 协议显示（仅 custom）
+  $("llm-protocol-field").style.display = isCustom ? "" : "none";
+  if (!isCustom) {
+    $("llm-edit-protocol").querySelectorAll(".chip").forEach(c => c.classList.remove("selected"));
+  }
+
+  // Base URL 必填标记
+  $("llm-baseurl-req").style.display = isCustom ? "" : "none";
+  $("llm-baseurl-hint").textContent  = isCustom ? "必填" : "可选";
+  $("llm-edit-baseurl").placeholder  = isCustom ? "https://.../..." : (prov.baseUrl || "留空使用服务商默认地址");
+
+  // provider help
+  let helpText = "";
+  if (prov.helpUrl) helpText = `${prov.helpLabel || ""} · <a href="${prov.helpUrl}" target="_blank">获取 API Key</a>`;
+  else helpText = prov.helpLabel || "";
+  $("llm-edit-provider-help").innerHTML = helpText;
+
+  // 模型 chips
+  const modelsBox = $("llm-edit-models");
+  if (isCustom) {
+    modelsBox.innerHTML = "";
+    $("llm-model-field").querySelector(".field-help").textContent = "自定义 provider：手动填写 model id";
+  } else {
+    modelsBox.innerHTML = (prov.models || []).map(id => `
+      <div class="chip ${p.model === id ? "selected" : ""}" data-v="${id}">
+        <span class="chip-main">${id}</span>
+        ${MODEL_HINTS[id] ? `<span class="chip-hint">${MODEL_HINTS[id]}</span>` : ""}
+      </div>`).join("") + `<div class="chip add" data-v="__custom__">
+        <span class="chip-main">＋ 自定义</span>
+        <span class="chip-hint">自己填 model id</span>
+      </div>`;
+    modelsBox.onclick = (e) => {
+      const chip = e.target.closest(".chip[data-v]");
+      if (!chip) return;
+      if (chip.dataset.v === "__custom__") { $("llm-edit-model").focus(); return; }
+      modelsBox.querySelectorAll(".chip").forEach(c => c.classList.remove("selected"));
+      chip.classList.add("selected");
+      $("llm-edit-model").value = chip.dataset.v;
+    };
+  }
+}
+
+bindChipGroup("llm-edit-providers", () => syncLLMEditUI());
+bindChipGroup("llm-edit-protocol", (v) => {
+  const p = profiles.find(x => x.id === editingId); if (p) p.protocol = v;
+});
+
+$("llm-edit-model").addEventListener("input", () => syncLLMEditUI());
+
+function collectEditForm() {
+  const p = profiles.find(x => x.id === editingId);
+  if (!p) return null;
+  p.name = $("llm-edit-name").value.trim() || "未命名";
+  p.provider = getChip("llm-edit-providers") || "deepseek";
+  p.protocol = p.provider === "custom" ? (getChip("llm-edit-protocol") || "openai") : "openai";
+  const newKey = $("llm-edit-apikey").value.trim();
+  if (newKey) p.apiKey = newKey;  // 留空保留旧 key
+  p.model = $("llm-edit-model").value.trim();
+  p.fallback = $("llm-edit-fallback").value.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+  p.baseUrl = $("llm-edit-baseurl").value.trim();
+  p.proxyUrl = $("llm-edit-proxy").value.trim();
+  return p;
+}
+
+async function saveProfile() {
+  const p = collectEditForm();
+  if (!p) return;
+  if (!p.name) { toast("✗ 请填写配置名称"); return; }
+  if (!p.apiKey) { toast("✗ 请填写 API Key（首次创建必填）"); return; }
+  if (p.provider === "custom" && !p.baseUrl) { toast("✗ 自定义 provider 必须填写 Base URL"); return; }
+  try {
+    await api("/api/profiles", "POST", { profiles });
+    toast("✓ 配置已保存", true);
+    showList();
+    await loadAll();
+  } catch (e) { toast("✗ " + e.message); }
+}
+
+async function setActive(id) {
+  profiles.forEach(p => p.enabled = (p.id === id));
+  try {
+    await api("/api/profiles", "POST", { profiles });
+    toast("✓ 已切换当前配置", true);
+    await loadAll();
+  } catch (e) { toast("✗ " + e.message); }
+}
+
+async function deleteProfile(id) {
+  const p = profiles.find(x => x.id === id);
+  if (!p) return;
+  if (!confirm(`确认删除「${p.name}」？`)) return;
+  const remain = profiles.filter(x => x.id !== id);
+  // 如果删的是 active，把第一个标记为 active
+  if (p.enabled && remain.length > 0) remain[0].enabled = true;
+  profiles = remain;
+  try {
+    await api("/api/profiles", "POST", { profiles });
+    toast("✓ 已删除", true);
+    await loadAll();
+  } catch (e) { toast("✗ " + e.message); }
+}
+
+async function testConnection() {
+  const p = collectEditForm();
+  if (!p) return;
+  if (!p.apiKey) { toast("✗ 请先填写 API Key"); return; }
+  $("llm-test-result").innerHTML = `<div class="test-result testing">⏳ 正在测试连接…</div>`;
+  try {
+    const r = await api("/api/test_llm", "POST", {
+      provider: p.provider, model: p.model, api_key: p.apiKey,
+      base_url: p.baseUrl, protocol: p.protocol
+    });
+    if (r.ok) {
+      $("llm-test-result").innerHTML = `<div class="test-result success">✓ 连接成功（${r.elapsed || 0}s）· 模型返回：${esc((r.text || "").slice(0, 80))}</div>`;
+    } else {
+      $("llm-test-result").innerHTML = `<div class="test-result error">✗ ${esc(r.error || "未知错误")}</div>`;
+    }
+  } catch (e) {
+    $("llm-test-result").innerHTML = `<div class="test-result error">✗ ${esc(e.message)}</div>`;
+  }
+}
+
+async function testTools() {
+  toast("功能开发中：将探测该 provider 是否支持 tool calling", true);
+}
+
+$("btn-llm-new").addEventListener("click", newProfile);
+$("btn-llm-back").addEventListener("click", () => showList());
+$("btn-llm-setactive").addEventListener("click", () => editingId && setActive(editingId));
+$("btn-llm-delete").addEventListener("click", () => editingId && deleteProfile(editingId));
+// EDIT 头部没有「保存」按钮 —— 用户填完点「← 返回」就保存（STORY 行为）
+$("btn-llm-back").addEventListener("click", saveProfile);
+// 防止双绑定：先 off 再 on
+$("btn-llm-back").removeEventListener("click", () => showList());
+$("btn-llm-test-conn").addEventListener("click", testConnection);
+$("btn-llm-test-tools").addEventListener("click", testTools);
+
+// ============================================================
+// 出图 / TTS / ASR / 剪映 / IMA / 激活 / 关于 — 各自加载 + 保存
+// ============================================================
+
+// 出图 provider chip 切换
+function syncImgBlocks() {
+  const v = getChip("img-providers");
+  document.querySelectorAll(".img-block").forEach(b => {
+    const list = (b.dataset.block || "").split(",");
+    b.style.display = list.includes(v) ? "" : "none";
+  });
+}
+bindChipGroup("img-providers", () => syncImgBlocks());
+
+// TTS provider chip 切换
+function syncTTSBlocks() {
+  const v = getChip("tts-providers");
+  $("tts-volc-block").style.display = v === "volcengine" ? "" : "none";
+  $("tts-minimax-block").style.display = v === "minimax" ? "" : "none";
+}
+bindChipGroup("tts-providers", () => syncTTSBlocks());
+
+bindChipGroup("tts-speakers", (v) => { $("tts-volc-speaker").value = v; });
+
+async function loadAll() {
+  const [s, profData] = await Promise.all([
+    api("/api/settings"),
+    api("/api/profiles").catch(() => ({ profiles: [] }))
+  ]);
+
+  // LLM profiles
+  profiles = profData.profiles || [];
+  renderProfileList();
+  showList();
+
+  // 侧栏 LLM 状态点
+  const activeProfile = profiles.find(p => p.enabled);
+  const llmOk = !!(activeProfile && activeProfile.apiKey);
+  setDot("dot-llm", llmOk ? "ok" : (activeProfile ? "warn" : "bad"));
+  setStatus("st-llm", llmOk, activeProfile ? (activeProfile.name + " · " + activeProfile.model) : "请新建配置");
+
+  // 出图
+  setChip("img-providers", s.image.provider);
+  $("img-baseurl").value = s.image.base_url || "";
+  $("img-apikey").value = "";
+  $("img-model").value = s.image.model || "";
+  $("img-size").value = s.image.size || "1024x1792";
+  $("img-ratio").value = s.image.ratio || "9:16";
+  $("img-resolution").value = s.image.resolution || "1k";
+  $("jm-ak").value = s.jimeng.ak || "";
+  $("jm-sk").value = "";
+  $("rh-workflow").value = s.runninghub.workflow_id || "";
+  $("rh-baseurl").value = s.runninghub.base_url || "";
+  $("rh-apikey").value = "";
+  syncImgBlocks();
+  setStatus("st-image", s.image.configured, s.image.provider);
+  setDot("dot-image", s.image.configured ? "ok" : "bad");
+
+  // TTS
+  setChip("tts-providers", s.tts.provider);
+  setChip("tts-speakers", s.tts.volcengine_speaker);
+  $("tts-volc-appid").value = s.tts.volcengine_app_id || "";
+  $("tts-volc-access").value = "";
+  $("tts-volc-speaker").value = s.tts.volcengine_speaker || "";
+  $("tts-minimax-model").value = s.tts.minimax_model || "";
+  $("tts-minimax-voice").value = s.tts.minimax_voice_id || "";
+  $("tts-minimax-key").value = "";
+  syncTTSBlocks();
+  const ttsOk = (s.tts.provider === "volcengine" && s.tts.volcengine_configured) ||
+                (s.tts.provider === "minimax" && s.tts.minimax_configured);
+  setStatus("st-tts", ttsOk, s.tts.provider);
+  setDot("dot-tts", ttsOk ? "ok" : "bad");
+
+  // ASR
+  setStatus("st-asr", !!s.asr.app_id, "火山引擎 ASR");
+  setDot("dot-asr", s.asr.app_id ? "ok" : "bad");
+  $("asr-appid").value = s.asr.app_id || "";
+  $("asr-access").value = "";
+
+  // 剪映
+  setStatus("st-draft", s.jianying.configured, "");
+  setDot("dot-draft", s.jianying.configured ? "ok" : "bad");
+  $("jy-draft-path").value = s.jianying.draft_path || "";
+  $("jy-bgm-path").value = s.jianying.bgm_path || "";
+
+  // 激活
+  setStatus("st-license", !!s.license.key, s.license.key ? "已激活" : "未激活");
+  setDot("dot-license", s.license.key ? "ok" : "bad");
+  $("license-key").value = s.license.key || "";
+
+  // IMA
+  setStatus("st-ai-creation", s.ima.configured, s.ima.kb_name || "");
+  setDot("dot-ai-creation", s.ima.configured ? "ok" : "bad");
+  $("ima-clientid").value = s.ima.client_id || "";
+  $("ima-kbid").value = s.ima.kb_id || "";
+  $("ima-kbname").value = s.ima.kb_name || "";
+  $("ima-apikey").value = "";
+}
+
+async function saveImage() {
+  try {
+    const apikey = $("img-apikey").value.trim();
+    await api("/api/settings", "POST", {
+      image_provider: getChip("img-providers") || KEEP,
+      image_base_url: $("img-baseurl").value.trim() || KEEP,
+      image_api_key: apikey || KEEP,
+      image_model: $("img-model").value.trim() || KEEP,
+      image_size: $("img-size").value.trim() || KEEP,
+      image_ratio: $("img-ratio").value.trim() || KEEP,
+      image_resolution: $("img-resolution").value.trim() || KEEP,
+      jimeng_ak: $("jm-ak").value.trim() || KEEP,
+      jimeng_sk: $("jm-sk").value.trim() || KEEP,
+      rh_api_key: $("rh-apikey").value.trim() || KEEP,
+      rh_workflow_id: $("rh-workflow").value.trim() || KEEP,
+      rh_base_url: $("rh-baseurl").value.trim() || KEEP
+    });
+    toast("✓ 出图已保存", true);
+    $("img-apikey").value = ""; $("jm-sk").value = ""; $("rh-apikey").value = "";
+    await loadAll();
+  } catch (e) { toast("✗ " + e.message); }
+}
+
+async function saveTTS() {
+  try {
+    await api("/api/settings", "POST", {
+      tts_provider: getChip("tts-providers") || KEEP,
+      tts_volc_appid: $("tts-volc-appid").value.trim() || KEEP,
+      tts_volc_access: $("tts-volc-access").value.trim() || KEEP,
+      tts_volc_speaker: $("tts-volc-speaker").value.trim() || KEEP,
+      tts_minimax_key: $("tts-minimax-key").value.trim() || KEEP,
+      tts_minimax_model: $("tts-minimax-model").value.trim() || KEEP,
+      tts_minimax_voice: $("tts-minimax-voice").value.trim() || KEEP
+    });
+    toast("✓ TTS 已保存", true);
+    $("tts-volc-access").value = ""; $("tts-minimax-key").value = "";
+    await loadAll();
+  } catch (e) { toast("✗ " + e.message); }
+}
+
+async function saveASR() {
+  try {
+    await api("/api/settings", "POST", {
+      asr_app_id: $("asr-appid").value.trim() || KEEP,
+      asr_access: $("asr-access").value.trim() || KEEP
+    });
+    toast("✓ 语音识别已保存", true);
+    $("asr-access").value = "";
+    await loadAll();
+  } catch (e) { toast("✗ " + e.message); }
+}
+
+async function saveDraft() {
+  try {
+    await api("/api/settings", "POST", {
+      jianying_draft_path: $("jy-draft-path").value.trim(),
+      jianying_bgm_path: $("jy-bgm-path").value.trim()
+    });
+    toast("✓ 剪映已保存", true);
+    await loadAll();
+  } catch (e) { toast("✗ " + e.message); }
+}
+
+async function saveLicense() {
+  try {
+    await api("/api/settings", "POST", {
+      license_key: $("license-key").value.trim()
+    });
+    toast("✓ 激活码已保存", true);
+    await loadAll();
+  } catch (e) { toast("✗ " + e.message); }
+}
+
+async function saveIMA() {
+  try {
+    await api("/api/settings", "POST", {
+      ima_client_id: $("ima-clientid").value.trim() || KEEP,
+      ima_api_key: $("ima-apikey").value.trim() || KEEP,
+      ima_kb_id: $("ima-kbid").value.trim() || KEEP,
+      ima_kb_name: $("ima-kbname").value.trim() || KEEP
+    });
+    toast("✓ IMA 已保存", true);
+    $("ima-apikey").value = "";
+    await loadAll();
+  } catch (e) { toast("✗ " + e.message); }
+}
+
+$("btn-img-save").addEventListener("click", saveImage);
+$("btn-tts-save").addEventListener("click", saveTTS);
+$("btn-asr-save").addEventListener("click", saveASR);
+$("btn-jy-save").addEventListener("click", saveDraft);
+$("btn-license-save").addEventListener("click", saveLicense);
+$("btn-ima-save").addEventListener("click", saveIMA);
+
+$("btn-img-test").addEventListener("click", async () => {
+  $("img-test-result").innerHTML = `<div class="test-result testing">⏳ 正在生成测试图…</div>`;
+  try {
+    const r = await api("/api/cover", "POST", { title: "测试图", content: "一张简单的测试图片", style: "现代电影", provider: getChip("img-providers") });
+    $("img-test-result").innerHTML = `<div class="test-result success">✓ 生成成功：<a href="${r.url}" target="_blank">${r.url}</a></div>`;
+  } catch (e) {
+    $("img-test-result").innerHTML = `<div class="test-result error">✗ ${esc(e.message)}</div>`;
+  }
+});
+
+$("btn-copy-diagnostics").addEventListener("click", async () => {
+  const s = await api("/api/settings").catch(() => ({}));
+  const txt = JSON.stringify({ profiles: profiles.map(p => ({...p, apiKey: maskKey(p.apiKey)})), settings: s }, null, 2);
+  navigator.clipboard.writeText(txt).then(() => toast("✓ 诊断信息已复制", true), () => toast("✗ 复制失败"));
+});
+
+$("btn-clear-history").addEventListener("click", async () => {
+  if (!confirm("确认清除所有历史任务？此操作不可恢复")) return;
+  try {
+    await api("/api/tasks/clear", "POST", {});
+    toast("✓ 历史已清除", true);
+  } catch (e) { toast("✗ " + e.message); }
+});
+
+// ============================================================
+// 启动
+// ============================================================
+
+const initialHash = (location.hash || "#llm").slice(1);
+showSection(initialHash);
+
+(async () => { await loadAll(); })();
+</script>
+</body>
+</html>

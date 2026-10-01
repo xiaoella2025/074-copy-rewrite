@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>任务列表 · app074</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22><text y=%2214%22 font-size=%2214%22>📋</text></svg>">
+<style>
+:root {
+  --bg: #0f172a; --panel: #1e293b; --panel2: #334155; --text: #e2e8f0; --muted: #94a3b8;
+  --ok: #10b981; --warn: #f59e0b; --err: #ef4444; --accent: #14b8a6; --border: #475569;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, "Segoe UI", "PingFang SC", sans-serif; background: var(--bg); color: var(--text); padding: 20px; min-height: 100vh; }
+.header { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+.header h1 { font-size: 20px; font-weight: 600; }
+.header .badge { background: var(--panel2); color: var(--muted); padding: 4px 10px; border-radius: 6px; font-size: 12px; }
+.header .spacer { flex: 1; }
+.btn { background: var(--panel); color: var(--text); border: 1px solid var(--border); padding: 8px 14px; border-radius: 6px; cursor: pointer; font-size: 13px; transition: all .15s; }
+.btn:hover { background: var(--panel2); border-color: var(--accent); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: white; }
+.btn.primary:hover { background: #0d9488; }
+.btn.danger { color: var(--err); }
+.layout { display: grid; grid-template-columns: 360px 1fr; gap: 20px; height: calc(100vh - 100px); }
+.list-panel { background: var(--panel); border-radius: 8px; padding: 12px; overflow-y: auto; }
+.detail-panel { background: var(--panel); border-radius: 8px; padding: 20px; overflow-y: auto; }
+.task-card { padding: 12px; border-radius: 6px; cursor: pointer; margin-bottom: 8px; border: 1px solid transparent; transition: all .15s; }
+.task-card:hover { background: var(--panel2); }
+.task-card.active { background: var(--panel2); border-color: var(--accent); }
+.task-card .title { font-size: 14px; font-weight: 500; margin-bottom: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.task-card .meta { font-size: 11px; color: var(--muted); margin-bottom: 8px; }
+.task-card .steps { display: flex; gap: 4px; flex-wrap: wrap; }
+.step-pill { background: var(--bg); color: var(--muted); padding: 2px 8px; border-radius: 4px; font-size: 10px; }
+.step-pill.done { background: var(--ok); color: white; }
+.step-pill.meta { background: var(--accent); color: white; }
+.empty-state { text-align: center; padding: 40px 20px; color: var(--muted); }
+.detail-header { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
+.detail-header h2 { font-size: 18px; font-weight: 600; flex: 1; }
+.section { margin-bottom: 24px; }
+.section h3 { font-size: 14px; color: var(--accent); margin-bottom: 10px; font-weight: 600; }
+.shot-item { background: var(--bg); padding: 10px; border-radius: 6px; margin-bottom: 6px; display: flex; gap: 12px; align-items: flex-start; }
+.shot-item .idx { background: var(--accent); color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px; flex-shrink: 0; }
+.shot-item .txt { font-size: 13px; line-height: 1.6; flex: 1; }
+.shot-item img { max-width: 140px; border-radius: 4px; margin-left: 8px; }
+.shot-item audio { height: 32px; margin-left: 8px; }
+.image-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
+.image-grid .item { background: var(--bg); padding: 8px; border-radius: 6px; }
+.image-grid img { width: 100%; border-radius: 4px; }
+.image-grid .label { font-size: 11px; color: var(--muted); margin-top: 4px; }
+.meta-k { color: var(--muted); font-size: 11px; }
+.meta-v { color: var(--text); font-size: 13px; word-break: break-all; }
+.json-block { background: var(--bg); padding: 12px; border-radius: 6px; font-family: ui-monospace, Menlo, monospace; font-size: 11px; max-height: 240px; overflow: auto; white-space: pre-wrap; word-break: break-all; }
+.refresh-icon { animation: spin 1s linear infinite; display: inline-block; }
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>📋 任务列表</h1>
+  <span class="badge" id="badge-count">0 个任务</span>
+  <span class="spacer"></span>
+  <button class="btn" onclick="loadList()">🔄 刷新</button>
+  <button class="btn primary" onclick="location.href='/'">＋ 新建任务</button>
+  <button class="btn" onclick="location.href='/settings.html'">⚙ 设置</button>
+</div>
+
+<div class="layout">
+  <div class="list-panel" id="list-panel">
+    <div class="empty-state">加载中...</div>
+  </div>
+  <div class="detail-panel" id="detail-panel">
+    <div class="empty-state">← 选择左侧任务查看详情</div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const STEP_LABELS = {0:"预审",1:"改写","meta":"元信息",2:"分镜",3:"出图Prompt",4:"出图",5:"配音",6:"草稿"};
+let currentTaskId = null;
+
+async function api(path, method = "GET", body = null) {
+  const opt = {method, headers: {"Content-Type": "application/json"}};
+  if (body) opt.body = JSON.stringify(body);
+  const r = await fetch(path, opt);
+  const t = await r.text();
+  let j;
+  try { j = JSON.parse(t); } catch { j = {error: t}; }
+  if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+  return j;
+}
+
+function escapeHtml(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]);
+}
+
+function renderStepPills(steps) {
+  // 6 步：0 预审 / 1 改写 / meta / 2 分镜 / 3 prompt / 4 出图 / 5 配音 / 6 草稿
+  const order = [0, 1, "meta", 2, 3, 4, 5, 6];
+  return order.map(k => {
+    const done = steps.includes(k);
+    const cls = done ? (k === "meta" ? "meta" : "done") : "";
+    return `<span class="step-pill ${cls}">${STEP_LABELS[k] || k}</span>`;
+  }).join("");
+}
+
+async function loadList() {
+  $("list-panel").innerHTML = '<div class="empty-state"><span class="refresh-icon">⏳</span> 加载中...</div>';
+  try {
+    const r = await api("/api/tasks");
+    const tasks = r.tasks || [];
+    $("badge-count").textContent = `${tasks.length} 个任务`;
+    if (tasks.length === 0) {
+      $("list-panel").innerHTML = '<div class="empty-state">暂无任务<br><br><a href="index.html" style="color:var(--accent)">→ 去创建一个</a></div>';
+      return;
+    }
+    $("list-panel").innerHTML = tasks.map(t => `
+      <div class="task-card ${t.task_id === currentTaskId ? 'active' : ''}" data-id="${escapeHtml(t.task_id)}" onclick="selectTask('${escapeHtml(t.task_id)}')">
+        <div class="title">${escapeHtml(t.title || t.task_id)}</div>
+        <div class="meta">${t.created_at} · ${t.shot_count} 镜 · ${t.image_count} 图 · ${t.audio_count} 音频${t.total_duration_sec ? ' · ' + t.total_duration_sec + 's' : ''}</div>
+        <div class="steps">${renderStepPills(t.completed_steps)}</div>
+      </div>
+    `).join("");
+  } catch (e) {
+    $("list-panel").innerHTML = `<div class="empty-state" style="color:var(--err)">❌ ${escapeHtml(e.message)}</div>`;
+  }
+}
+
+async function selectTask(taskId) {
+  currentTaskId = taskId;
+  // 高亮
+  document.querySelectorAll(".task-card").forEach(c => c.classList.toggle("active", c.dataset.id === taskId));
+  // 加载详情
+  $("detail-panel").innerHTML = '<div class="empty-state"><span class="refresh-icon">⏳</span> 加载中...</div>';
+  try {
+    const d = await api(`/api/task/${encodeURIComponent(taskId)}`);
+    renderDetail(d);
+  } catch (e) {
+    $("detail-panel").innerHTML = `<div class="empty-state" style="color:var(--err)">❌ ${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function renderDetail(d) {
+  const info = d.info;
+  const steps = d.steps || {};
+  const html = [];
+  // Header
+  html.push(`<div class="detail-header">
+    <h2>${escapeHtml(info.title || info.task_id)}</h2>
+    <span class="badge">${info.completed_steps.length}/8 步完成</span>
+    <span class="badge">${info.created_at}</span>
+    ${info.draft_dir ? `<span class="badge" title="剪映草稿路径">📁 ${escapeHtml(info.draft_dir)}</span>` : ''}
+  </div>`);
+  // 统计
+  html.push(`<div class="section">
+    <h3>📊 产物统计</h3>
+    <div style="display:grid;grid-template-columns:repeat(4, 1fr);gap:12px">
+      <div><div class="meta-k">分镜数</div><div class="meta-v">${info.shot_count}</div></div>
+      <div><div class="meta-k">出图数</div><div class="meta-v">${info.image_count}</div></div>
+      <div><div class="meta-k">配音数</div><div class="meta-v">${info.audio_count}</div></div>
+      <div><div class="meta-k">总时长</div><div class="meta-v">${info.total_duration_sec || 0}s</div></div>
+    </div>
+  </div>`);
+  // 改写
+  if (steps.rewrite) {
+    html.push(`<div class="section">
+      <h3>📝 Step 1 改写后文案（${steps.rewrite.length} 字）</h3>
+      <div class="json-block">${escapeHtml(steps.rewrite)}</div>
+    </div>`);
+  }
+  // 元信息
+  if (steps.meta) {
+    const m = steps.meta;
+    html.push(`<div class="section">
+      <h3>★ 元信息</h3>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div><div class="meta-k">封面主标题</div><div class="meta-v">${escapeHtml(m.title || "")}</div></div>
+        <div><div class="meta-k">短标题（≤16字）</div><div class="meta-v">${escapeHtml(m.short_title || "")}</div></div>
+        <div style="grid-column:1/-1"><div class="meta-k">发布文案</div><div class="meta-v">${escapeHtml(m.summary || "")}</div></div>
+        <div style="grid-column:1/-1"><div class="meta-k">话题标签</div><div class="meta-v">${(m.tags || []).map(escapeHtml).join(" ")}</div></div>
+        <div style="grid-column:1/-1"><div class="meta-k">种子评论</div><div class="meta-v">${(m.comments || []).map((c, i) => `${i+1}. ${escapeHtml(c)}`).join("<br>")}</div></div>
+        <div style="grid-column:1/-1"><div class="meta-k">封面构图方向</div><div class="meta-v">${(m.cover_image_prompts || []).map((c, i) => `${i+1}. ${escapeHtml(c)}`).join("<br><br>")}</div></div>
+      </div>
+    </div>`);
+  }
+  // 分镜
+  if (steps.shots && steps.shots.length) {
+    html.push(`<div class="section">
+      <h3>🎬 Step 2 分镜（${steps.shots.length} 镜）</h3>
+      ${steps.shots.map(s => `<div class="shot-item"><div class="idx">${s.idx}</div><div class="txt">${escapeHtml(s.text || "")}</div></div>`).join("")}
+    </div>`);
+  }
+  // 出图 prompt
+  if (steps.prompts && steps.prompts.length) {
+    html.push(`<div class="section">
+      <h3>🎨 Step 3 出图 Prompt（${steps.prompts.length} 个）</h3>
+      ${steps.prompts.map(p => `<div class="shot-item"><div class="idx">${p.idx}</div><div class="txt">${escapeHtml(p.desc_prompt || "")}</div></div>`).join("")}
+    </div>`);
+  }
+  // 出图图片
+  if (steps.images && steps.images.length) {
+    html.push(`<div class="section">
+      <h3>🖼 Step 4 出图（${steps.images.length} 张）</h3>
+      <div class="image-grid">
+        ${steps.images.map(img => `<div class="item"><img src="${escapeHtml(img.url)}" loading="lazy"><div class="label">${escapeHtml(img.name)} · ${(img.size/1024).toFixed(1)}KB</div></div>`).join("")}
+      </div>
+    </div>`);
+  }
+  // 配音
+  if (steps.audios && steps.audios.length) {
+    html.push(`<div class="section">
+      <h3>🎤 Step 5 配音（${steps.audios.length} 段）</h3>
+      ${steps.audios.map((a, i) => {
+        const seg = (steps.segments || [])[i] || {};
+        return `<div class="shot-item">
+          <div class="idx">${a.name.replace("seg_", "").replace(".mp3", "")}</div>
+          <audio controls src="${escapeHtml(a.url)}"></audio>
+          <div class="txt" style="flex:0 0 auto">${(seg.duration || 0).toFixed(1)}s · ${(a.size/1024).toFixed(1)}KB</div>
+        </div>`;
+      }).join("")}
+    </div>`);
+  }
+  // 草稿
+  if (steps.draft) {
+    const dr = steps.draft;
+    html.push(`<div class="section">
+      <h3>📦 Step 6 剪映草稿</h3>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div><div class="meta-k">标题</div><div class="meta-v">${escapeHtml(dr.title || "")}</div></div>
+        <div><div class="meta-k">分镜数</div><div class="meta-v">${dr.shot_count}</div></div>
+        <div><div class="meta-k">出图数</div><div class="meta-v">${dr.image_count}</div></div>
+        <div><div class="meta-k">配音数</div><div class="meta-v">${dr.segment_count}</div></div>
+        <div><div class="meta-k">总时长</div><div class="meta-v">${dr.total_duration_sec}s</div></div>
+        <div style="grid-column:1/-1"><div class="meta-k">草稿目录</div><div class="meta-v">${escapeHtml(dr.draft_dir || "")}</div></div>
+      </div>
+    </div>`);
+  }
+  $("detail-panel").innerHTML = html.join("");
+}
+
+// 初始化
+loadList();
+// 自动刷新：每 5 秒
+setInterval(() => {
+  if (!currentTaskId) loadList();
+}, 5000);
+</script>
+</body>
+</html>

@@ -1,0 +1,1553 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>app074 · 文案改写</title>
+<style>
+:root{
+  --bg:#fafafa;--panel:#fff;--panel-2:#f7f8fa;--border:#e5e7eb;--border-strong:#d1d5db;
+  --text:#1f2937;--muted:#6b7280;--accent:#10b981;--accent-2:#059669;--accent-soft:#ecfdf5;
+  --primary:#111827;--warn:#f59e0b;--danger:#ef4444;--code:#f9fafb;
+  --shadow:0 1px 2px rgba(0,0,0,.04);
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  font-size:13px;line-height:1.6;}
+.container{max-width:780px;margin:0 auto;padding:16px 16px 110px;}
+
+header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
+header .brand{display:flex;align-items:center;gap:8px;font-weight:600;font-size:15px;}
+header .brand .logo{width:28px;height:28px;background:linear-gradient(135deg,#10b981,#059669);border-radius:7px;display:flex;align-items:center;justify-content:center;color:white;font-weight:700;font-size:12px;}
+header .right{display:flex;gap:6px;align-items:center;}
+header .right button{background:transparent;border:1px solid var(--border);color:var(--muted);cursor:pointer;font-size:12px;padding:5px 10px;border-radius:6px;}
+header .right button:hover{background:var(--panel-2);color:var(--text);}
+.status{font-size:11px;padding:2px 8px;border-radius:10px;display:inline-block;margin-right:6px;}
+.status.ok{background:var(--accent-soft);color:var(--accent-2);}
+.status.warn{background:#fef3c7;color:#b45309;}
+.status.bad{background:#fee2e2;color:var(--danger);}
+
+/* Big choice cards */
+.big-cards{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.big-card{border:1px solid var(--border);border-radius:8px;padding:14px;cursor:pointer;background:var(--panel);transition:.15s;}
+.big-card:hover{border-color:var(--accent);}
+.big-card.active{border-color:var(--accent);background:var(--accent-soft);}
+.big-card .title{font-weight:600;font-size:13px;color:var(--text);}
+.big-card .desc{font-size:11px;color:var(--muted);margin-top:2px;}
+.big-card .new{font-size:9px;background:#ef4444;color:white;padding:1px 5px;border-radius:3px;vertical-align:middle;margin-left:4px;}
+
+/* Sections */
+.section{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:12px;}
+.section-title{font-size:13px;font-weight:600;color:var(--text);margin-bottom:10px;display:flex;align-items:center;gap:8px;}
+.section-title .icon{color:var(--accent-2);}
+.section-title .badge{font-size:10px;background:var(--accent-soft);color:var(--accent-2);padding:1px 6px;border-radius:8px;font-weight:500;}
+.section-title .caret{margin-left:auto;color:var(--muted);transition:.2s;cursor:pointer;}
+.section-title .caret.open{transform:rotate(90deg);}
+.section-body.collapsed{display:none;}
+.help{font-size:11px;color:var(--muted);margin-top:4px;line-height:1.5;}
+.help.danger{color:var(--danger);}
+
+/* Inputs */
+textarea,input[type=text]{width:100%;background:var(--code);color:var(--text);
+  border:1px solid var(--border);border-radius:6px;padding:10px;font-size:13px;
+  font-family:inherit;resize:vertical;transition:.15s;}
+textarea:focus,input[type=text]:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);}
+textarea{min-height:80px;}
+textarea.big{min-height:200px;}
+input.inline{width:auto;display:inline-block;}
+
+/* Chip groups */
+.chips{display:flex;flex-wrap:wrap;gap:6px;}
+.chip{padding:5px 11px;background:var(--panel-2);border:1px solid var(--border);
+  border-radius:14px;cursor:pointer;font-size:12px;color:var(--text);transition:.15s;user-select:none;}
+.chip:hover{border-color:var(--accent);}
+.chip.active{background:var(--primary);border-color:var(--primary);color:white;}
+.chip.sub{padding:3px 8px;font-size:11px;}
+.chip.disabled{opacity:.4;cursor:not-allowed;}
+
+/* Radio cards */
+.radio-cards{display:flex;flex-wrap:wrap;gap:6px;}
+.radio-card{padding:5px 11px;background:var(--panel-2);border:1px solid var(--border);
+  border-radius:6px;cursor:pointer;font-size:12px;}
+.radio-card:hover{border-color:var(--accent);}
+.radio-card.active{background:var(--primary);border-color:var(--primary);color:white;}
+
+/* Inline field */
+.field-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+.field-row .label{font-size:12px;color:var(--muted);white-space:nowrap;}
+.field-row input[type=text]{width:80px;padding:6px 8px;}
+
+/* Toggle row */
+.toggle-row{display:flex;align-items:center;gap:8px;padding:6px 0;font-size:13px;cursor:pointer;user-select:none;}
+.toggle-row .switch{width:32px;height:18px;background:var(--border-strong);border-radius:9px;position:relative;transition:.2s;flex-shrink:0;}
+.toggle-row .switch::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;background:white;border-radius:50%;transition:.2s;}
+.toggle-row.on .switch{background:var(--accent);}
+.toggle-row.on .switch::after{left:16px;}
+.toggle-row .label{color:var(--text);font-weight:500;}
+
+/* Sub grid */
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+.grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;}
+
+/* Output */
+#output{background:var(--code);border:1px solid var(--border);border-radius:6px;
+  padding:14px;min-height:120px;white-space:pre-wrap;word-break:break-word;
+  font-size:13px;max-height:400px;overflow:auto;line-height:1.7;}
+
+/* Footer */
+.footer{position:fixed;left:0;right:0;bottom:0;background:white;border-top:1px solid var(--border);
+  padding:10px 16px;display:flex;align-items:center;gap:12px;z-index:10;box-shadow:0 -2px 6px rgba(0,0,0,.04);}
+.footer .inner{max-width:880px;margin:0 auto;display:flex;align-items:center;gap:12px;width:100%;}
+
+/* Sidebar */
+body{padding-left:220px;}
+.sidebar{position:fixed;left:0;top:0;bottom:0;width:220px;background:#fafbfc;border-right:1px solid var(--border);overflow-y:auto;padding:14px 8px;z-index:5;}
+.sidebar .brand{display:flex;align-items:center;gap:8px;padding:6px 10px 12px;border-bottom:1px solid var(--border);margin-bottom:10px;}
+.sidebar .brand .logo{width:26px;height:26px;background:linear-gradient(135deg,#10b981,#059669);border-radius:6px;display:flex;align-items:center;justify-content:center;color:white;font-weight:700;font-size:12px;}
+.sidebar .brand .name{font-weight:600;font-size:13px;}
+.sidebar .brand .ver{font-size:10px;color:var(--muted);}
+.sidebar .new-btn{display:block;width:100%;padding:8px 12px;background:var(--accent);color:white;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:500;margin-bottom:14px;text-align:center;}
+.sidebar .new-btn:hover{background:var(--accent-2);}
+.sidebar .new-btn .kbd{float:right;background:rgba(255,255,255,.25);padding:1px 6px;border-radius:3px;font-size:10px;}
+.nav-item{display:flex;align-items:center;gap:8px;padding:6px 12px;font-size:12px;color:var(--text);cursor:pointer;border-radius:5px;margin:1px 0;text-decoration:none;}
+.nav-item:hover{background:var(--panel-2);}
+.nav-item .ico{width:14px;text-align:center;color:var(--muted);}
+.nav-group{margin-bottom:6px;}
+.nav-group .grp{padding:6px 12px 2px;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;}
+.nav-sub{padding:4px 12px 4px 30px;font-size:11px;color:var(--muted);cursor:pointer;border-radius:4px;margin:1px 0;}
+.nav-sub:hover{background:var(--panel-2);color:var(--text);}
+.nav-sub.active{background:var(--accent-soft);color:var(--accent-2);font-weight:500;}
+.user-box{margin-top:14px;padding:10px;border-top:1px solid var(--border);font-size:11px;color:var(--muted);}
+.user-box .name{color:var(--text);font-weight:500;margin-bottom:2px;}
+.user-box .quota{color:var(--danger);font-size:10px;}
+.sidebar-bottom{position:sticky;bottom:0;background:#fafbfc;padding-top:8px;border-top:1px solid var(--border);font-size:11px;}
+
+/* Page header */
+.page-hd{margin-bottom:14px;}
+.page-hd h1{margin:0;font-size:18px;font-weight:600;display:flex;align-items:center;gap:8px;}
+.page-hd h1 .ico{font-size:16px;color:var(--accent-2);}
+.page-hd .sub{font-size:12px;color:var(--muted);margin-top:2px;}
+.page-hd .quota-bar{margin-top:8px;padding:6px 12px;background:#fef2f2;border:1px solid #fecaca;color:#991b1b;border-radius:5px;font-size:11px;}
+.page-hd .topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+.page-hd .actions{display:flex;align-items:center;gap:6px;}
+.iconbtn{background:transparent;border:none;color:var(--muted);cursor:pointer;width:24px;height:24px;border-radius:4px;font-size:13px;}
+.iconbtn:hover{background:var(--panel-2);color:var(--text);}
+.iconbtn.green{color:var(--accent-2);}
+
+/* Hint line under shots/words */
+.shot-hint{font-size:11px;color:var(--muted);padding:8px 10px;background:var(--code);border-radius:5px;margin-top:6px;}
+.shot-hint strong{color:var(--text);font-weight:600;}
+
+/* Progress bar (直播出片 mode) */
+.progress{display:none;height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden;margin:10px 0 6px;}
+.progress.show{display:block;}
+.progress .bar{height:100%;background:linear-gradient(90deg,#10b981,#059669);width:100%;border-radius:4px;}
+.direct-hint{display:none;font-size:11px;color:var(--muted);margin-bottom:14px;line-height:1.6;}
+.direct-hint.show{display:block;}
+
+/* Mid-page action bar */
+.actionbar{display:flex;align-items:center;justify-content:space-between;background:white;border:1px solid var(--border);border-radius:8px;padding:10px 14px;margin-bottom:12px;}
+.actionbar .cost{font-size:12px;color:var(--muted);margin:0;}
+.actionbar .cost strong{color:var(--text);font-weight:600;}
+
+/* 改写强度 打断轮数 / 带改模式 */
+.rewrite-extra{margin-top:10px;padding-top:10px;border-top:1px dashed var(--border);}
+.rewrite-extra .row{margin-bottom:6px;}
+.btn{padding:7px 16px;border-radius:6px;border:1px solid var(--border);background:white;cursor:pointer;font-size:13px;}
+.btn:hover{background:var(--panel-2);}
+.btn.primary{background:var(--primary);color:white;border-color:var(--primary);}
+.btn.primary:hover{background:#374151;}
+.btn.primary:disabled{background:#9ca3af;border-color:#9ca3af;cursor:not-allowed;}
+.btn.accent{background:var(--accent);color:white;border-color:var(--accent);}
+.btn.accent:hover{background:var(--accent-2);}
+.btn.ghost{background:transparent;}
+.cost{font-size:12px;color:var(--muted);margin-left:auto;}
+.cost strong{color:var(--text);font-weight:600;}
+.cost .muted{color:var(--muted);margin-left:6px;}
+
+/* Modal */
+.modal-mask{position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;
+  align-items:center;justify-content:center;z-index:100;}
+.modal-mask.open{display:flex;}
+.modal{background:white;border-radius:8px;width:min(480px,90vw);padding:20px;
+  box-shadow:0 10px 30px rgba(0,0,0,.15);}
+.modal h2{margin:0 0 14px;font-size:15px;}
+.modal label{display:block;font-size:12px;color:var(--muted);margin:10px 0 4px;}
+.modal select,.modal input{width:100%;background:var(--code);color:var(--text);
+  border:1px solid var(--border);border-radius:6px;padding:8px;font-size:13px;}
+.modal .actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px;}
+.error{color:var(--danger);font-size:12px;margin-top:8px;}
+
+.spinner{display:inline-block;width:12px;height:12px;border:2px solid rgba(255,255,255,.4);
+  border-top-color:white;border-radius:50%;animation:spin .8s linear infinite;
+  vertical-align:middle;margin-right:4px;}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Upload dropzone */
+.dropzone{border:1px dashed var(--border-strong);border-radius:6px;padding:18px;text-align:center;color:var(--muted);font-size:12px;background:var(--code);cursor:pointer;}
+.dropzone:hover{border-color:var(--accent);color:var(--text);}
+
+.model-select{background:var(--code);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:12px;cursor:pointer;}
+
+/* Style chip with preview swatch */
+.style-chip{display:flex;align-items:center;gap:8px;padding:4px 10px 4px 4px;background:var(--panel-2);border:1px solid var(--border);border-radius:14px;cursor:pointer;font-size:12px;color:var(--text);transition:.15s;user-select:none;}
+.style-chip:hover{border-color:var(--accent);}
+.style-chip.active{background:var(--primary);border-color:var(--primary);color:white;}
+.style-chip .swatch{width:28px;height:28px;border-radius:10px;flex-shrink:0;border:1px solid rgba(0,0,0,.06);}
+.style-chip.active .swatch{border-color:rgba(255,255,255,.3);}
+
+/* Checkbox row */
+.cb-row{display:flex;align-items:center;gap:8px;padding:5px 0;cursor:pointer;font-size:13px;}
+.cb-row input[type=checkbox]{width:14px;height:14px;accent-color:var(--accent);cursor:pointer;}
+
+/* File input hidden */
+.file-hidden{position:absolute;width:0;height:0;opacity:0;}
+.upload-result{margin-top:8px;font-size:11px;color:var(--muted);}
+.upload-result.ok{color:var(--accent-2);}
+
+/* 完整生成结果面板 */
+.full-step{margin-bottom:14px;padding:10px 12px;background:var(--code);border:1px solid var(--border);border-radius:6px;}
+.full-step:last-child{margin-bottom:0;}
+.step-label{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;color:var(--text);margin-bottom:8px;}
+.step-no{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;background:var(--accent);color:white;border-radius:50%;font-size:11px;font-weight:600;}
+.step-note{font-size:11px;color:var(--muted);margin-bottom:6px;}
+.step-body{font-size:12px;line-height:1.7;white-space:pre-wrap;word-break:break-word;background:white;padding:8px 10px;border-radius:4px;border:1px solid var(--border);}
+.step-stats{font-size:11px;color:var(--muted);margin-top:4px;}
+
+.meta-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 14px;}
+.meta-k{font-size:11px;color:var(--muted);margin-bottom:2px;}
+.meta-v{font-size:12px;color:var(--text);background:white;padding:6px 10px;border-radius:4px;border:1px solid var(--border);line-height:1.6;white-space:pre-wrap;word-break:break-word;}
+
+.shots-list,.prompts-list{display:flex;flex-direction:column;gap:6px;}
+.shot-item,.prompt-item{display:flex;gap:8px;background:white;padding:8px 10px;border-radius:4px;border:1px solid var(--border);font-size:12px;line-height:1.6;}
+.shot-item .idx,.prompt-item .idx{flex-shrink:0;width:24px;height:24px;background:var(--accent-soft);color:var(--accent-2);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;}
+.shot-item .txt,.prompt-item .txt{flex:1;white-space:pre-wrap;word-break:break-word;}
+.prompt-item .txt{color:var(--text);font-family:"SF Mono","Cascadia Code",Consolas,monospace;font-size:11.5px;}
+</style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<aside class="sidebar">
+  <div class="brand">
+    <div class="logo">07</div>
+    <div>
+      <div class="name">app074</div>
+      <div class="ver">v1.0.0 · 文案改写</div>
+    </div>
+  </div>
+  <button class="new-btn">+ 新建任务 <span class="kbd">Ctrl+K</span></button>
+
+  <div class="nav-group">
+    <div class="nav-item"><span class="ico">📋</span>任务队列</div>
+    <div class="nav-item"><span class="ico">🕐</span>历史任务</div>
+    <div class="nav-item"><span class="ico">🎨</span>画面实验室</div>
+    <div class="nav-item"><span class="ico">🎙️</span>配音实验室</div>
+    <div class="nav-item"><span class="ico">📦</span>素材库</div>
+  </div>
+
+  <div class="nav-group">
+    <div class="nav-item" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'':'none'">
+      <span class="ico">📝</span>文案工作台 <span style="margin-left:auto;color:var(--muted)">▾</span>
+    </div>
+    <div>
+      <div class="nav-sub">提示词模板</div>
+      <div class="nav-sub">草稿模板</div>
+    </div>
+  </div>
+
+  <div class="nav-group">
+    <div class="nav-item"><span class="ico">🛒</span>选品助手</div>
+    <div class="nav-item"><span class="ico">🎯</span>对标监控</div>
+    <div class="nav-item"><span class="ico">🏪</span>创作市场</div>
+  </div>
+
+  <div class="nav-group">
+    <a class="nav-item" href="/settings.html"><span class="ico">⚙️</span>系统设置</a>
+    <div class="nav-item"><span class="ico">👤</span>账号管理</div>
+    <div class="nav-item"><span class="ico">🔑</span>激活管理</div>
+    <div class="nav-item"><span class="ico">💎</span>积分管理</div>
+  </div>
+
+  <div class="nav-group">
+    <div class="nav-item" style="color:var(--danger)"><span class="ico">👑</span>帝王密码</div>
+    <div class="nav-item"><span class="ico">⭐</span>对标监控</div>
+    <div class="nav-item"><span class="ico">🏪</span>创作市场</div>
+  </div>
+
+  <div class="sidebar-bottom">
+    <div class="user-box">
+      <div class="name">半半·龙月</div>
+      <div>完成 23 小时前</div>
+      <div class="quota">150/150 已用完</div>
+    </div>
+    <div class="nav-item" style="margin-top:6px"><span class="ico">💬</span>不能地图的部分</div>
+    <div class="nav-item"><span class="ico">📝</span>意见反馈</div>
+  </div>
+</aside>
+
+<div class="container">
+
+  <!-- Page header -->
+  <div class="page-hd">
+    <div style="display:flex;align-items:center;justify-content:space-between">
+      <h1><span class="ico">🎬</span>创建视频任务</h1>
+      <div style="display:flex;align-items:center;gap:8px">
+        <span id="status" class="status warn">未配置</span>
+        <button id="btn-tasks" onclick="location.href='/tasks.html'" style="background:transparent;border:1px solid var(--border);color:var(--muted);cursor:pointer;font-size:12px;padding:5px 10px;border-radius:6px">📋 任务</button>
+        <button id="btn-settings" style="background:transparent;border:1px solid var(--border);color:var(--muted);cursor:pointer;font-size:12px;padding:5px 10px;border-radius:6px">⚙ 设置</button>
+      </div>
+    </div>
+    <div class="sub">粘贴一段人物故事，几十秒后在剪映里打开</div>
+    <div class="quota-bar">⚠ 半半·龙月 150/150 · 已用完 · 可用积分继续（0 积分/条）</div>
+  </div>
+
+  <!-- 标题 -->
+  <div class="section">
+    <div class="section-title"><span class="icon">📝</span> 标题</div>
+    <input type="text" id="title" placeholder="留空会从文案自动提取">
+  </div>
+
+  <!-- 入口大按钮 -->
+  <div class="big-cards" style="margin-bottom:12px">
+    <div class="big-card active" data-entry="paste">
+      <div class="title">📋 粘贴文案</div>
+      <div class="desc">已有对标文案，直接粘进改写区</div>
+    </div>
+    <div class="big-card" data-entry="ai">
+      <div class="title">✨ AI 创作<span class="new">NEW</span></div>
+      <div class="desc">输入关键词，AI 自动搜索并创作思路</div>
+    </div>
+  </div>
+
+  <!-- 视频形态 -->
+  <div class="section">
+    <div class="section-title"><span class="icon">🎬</span> 视频形态</div>
+    <div class="chips" id="video-form">
+      <div class="chip active" data-form="narrator">旁白视频 · 单人出镜讲述（默认）</div>
+      <div class="chip" data-form="podcast">双人播客 · 两位主播一问一答内容</div>
+    </div>
+  </div>
+
+  <!-- 文案内容 -->
+  <div class="section">
+    <div class="section-title">
+      <span class="icon">📄</span> 文案内容
+      <span style="margin-left:auto;font-size:11px;color:var(--muted);font-weight:400" id="ref-stats">0 字 · 配音 约 0s</span>
+    </div>
+    <textarea id="reference" class="big" placeholder="粘贴一段人物故事原始文案，AI 会自动改写为口播版、拆分分镜、匹配配音"></textarea>
+  </div>
+
+  <!-- 内容赛道 -->
+  <div class="section">
+    <div class="section-title"><span class="icon">🏷️</span> 内容赛道</div>
+    <div class="chips" id="tracks">
+      <div class="chip active" data-track="character">人物故事 · 历史人物/名人事迹</div>
+      <div class="chip" data-track="health">健康图书 · 慢病养生/医学知识</div>
+      <div class="chip" data-track="tradition">传统文化 · 非遗/汉服/国风</div>
+      <div class="chip" data-track="picture">绘本故事 · 儿童绘本/睡前故事</div>
+      <div class="chip" data-track="ecom">电商带货 · 产品种草/好物种草</div>
+      <div class="chip" data-track="soul">心灵鸡汤 · 情感治愈/励志感悟</div>
+      <div class="chip" data-track="folk">民间故事 · 志怪传说/奇闻异事</div>
+      <div class="chip" data-track="general">通用故事 · 通用写实风，没有特定赛道</div>
+      <div class="chip" data-track="food">美食探店V2 · 都市街角小店的烟火气</div>
+    </div>
+  </div>
+
+  <!-- 高级选项 -->
+  <div class="section">
+    <div class="section-title">
+      <span class="icon">⚙️</span> 高级选项 <span class="badge">按需展开</span>
+      <span class="caret open" data-toggle="advanced"></span>
+    </div>
+    <div class="section-body" id="advanced">
+      <div style="margin-bottom:12px">
+        <div class="field-row" style="margin-bottom:6px">
+          <span class="label">处理模式：</span>
+          <span class="label">区别只在「要不要在改写停的文案」后面出图 / 配音 / 出片是一样</span>
+        </div>
+        <div class="chips" id="process-mode">
+          <div class="chip active" data-pm="full">全自动 · AI 改写+智能分镜+出片</div>
+          <div class="chip" data-pm="half">半自动 · 不改写，AI 智能分镜</div>
+          <div class="chip" data-pm="live">直播出片 · 不改写，按改行机台成机</div>
+        </div>
+        <div class="help" style="margin-top:6px">半自动 · 不改动文字，AI 不改写，只帮你智能分镜（拆分更顺、起图更贴）—— 此模式无文案改写过程，改写强度 / 叙事视角 / 钩子已自动隐藏。</div>
+      </div>
+      <div>
+        <div class="field-row" style="margin-bottom:6px">
+          <span class="label">暂停确认：</span>
+          <span class="label">选择流水样在哪些步骤需要暂停，等待确认后再继续</span>
+        </div>
+        <div class="chips" id="pause-mode">
+          <div class="chip active" data-pam="never">不暂停</div>
+          <div class="chip" data-pam="key">关键节点 · 改写后</div>
+          <div class="chip" data-pam="every">每步确认</div>
+          <div class="chip" data-pam="custom">自定义</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 固定开头 / 尾部引导 -->
+  <div class="section">
+    <div class="toggle-row" id="toggle-fixed" style="padding:2px 0"><div class="switch"></div><span class="label">固定开头</span><span class="help" style="margin:0">每条视频固定的开始白（如骂导入设语）</span></div>
+    <div id="fixed-area" style="display:none;margin-bottom:8px"><input type="text" id="fixed-opening" placeholder="账号开场白或原文开头前 N 句原样保留"></div>
+    <div class="toggle-row" id="toggle-tail" style="padding:2px 0"><div class="switch"></div><span class="label">尾部引导</span><span class="help" style="margin:0">改写后自动追加的引导关注 / 互动文案</span></div>
+    <div id="tail-area" style="display:none"><input type="text" id="tail-guide" placeholder="结尾拼接你的引流文案"></div>
+  </div>
+
+  <!-- 发布素材 -->
+  <div class="section">
+    <div class="section-title"><span class="icon">📢</span> 发布素材</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 18px;margin-top:4px">
+      <label class="cb-row"><input type="checkbox" id="pub-title" checked>生成短标题</label>
+      <label class="cb-row"><input type="checkbox" id="pub-desc" checked>生成发布文案</label>
+      <label class="cb-row"><input type="checkbox" id="pub-tags" checked>生成话题标签</label>
+      <label class="cb-row"><input type="checkbox" id="pub-seed">生成种子评论</label>
+    </div>
+  </div>
+
+  <!-- 改写强度（双线）—— 直播出片模式下自动隐藏 -->
+  <div class="section" id="rewrite-section">
+    <div class="section-title">
+      <span class="icon">🔥</span> 改写强度
+      <span class="help" style="font-weight:400">越复刻是原创便越高，但与对标结构差异越大</span>
+    </div>
+    <div class="chips" id="lines" style="margin-bottom:10px">
+      <div class="chip active" data-line="story">图文1号线</div>
+      <div class="chip" data-line="user">图文2号线</div>
+    </div>
+    <div class="chips" id="levels-story">
+      <div class="chip active" data-key="standard" data-line="story">标准改写 · 40%</div>
+      <div class="chip" data-key="deep" data-line="story">深度改写 · 60%</div>
+      <div class="chip" data-key="original" data-line="story">高度原创 · 80%</div>
+    </div>
+    <div class="chips" id="levels-user" style="display:none">
+      <div class="chip active" data-key="surface" data-line="user">改表层 · 50%</div>
+      <div class="chip" data-key="creative_surface" data-line="user">创意改表层 · 70%</div>
+      <div class="chip" data-key="skeleton" data-line="user">改骨架 · 80%</div>
+      <div class="chip" data-key="original" data-line="user">原创</div>
+    </div>
+    <div class="rewrite-extra">
+      <div class="row" style="margin-bottom:8px">
+        <div class="help" style="margin-bottom:4px">打断轮数</div>
+        <div class="chips" id="rounds">
+          <div class="chip active" data-rd="std">标准（最多 3 轮）</div>
+          <div class="chip" data-rd="fast">快速（1 轮）</div>
+        </div>
+      </div>
+      <div class="toggle-row" id="toggle-keep">
+        <div class="switch"></div>
+        <span class="label">带改模式</span>
+        <span class="help" style="margin:0">保留产品信息和定句子内容</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 改写参数（移到改写强度后面） -->
+  <div class="section">
+    <div class="section-title"><span class="icon">🎯</span> 改写参数</div>
+    <div style="margin-bottom:10px">
+      <div class="help" style="margin-bottom:6px">黄金 3 秒钩子（可多选）</div>
+      <div class="chips" id="hooks">
+        <div class="chip active" data-hook="subvert">颠覆认知型</div>
+        <div class="chip" data-hook="resonate">扎心共鸣型</div>
+        <div class="chip" data-hook="cost">代价悬念型</div>
+        <div class="chip" data-hook="reveal">内幕揭秘型</div>
+        <div class="chip" data-hook="contrast">反差独白型</div>
+      </div>
+    </div>
+    <div style="margin-bottom:10px">
+      <div class="help" style="margin-bottom:6px">叙事视角</div>
+      <div class="chips" id="viewpoints">
+        <div class="chip" data-vp="keep">保持原文</div>
+        <div class="chip" data-vp="first">第一人称</div>
+        <div class="chip" data-vp="third">第三人称</div>
+        <div class="chip active" data-vp="overview">概述</div>
+      </div>
+    </div>
+    <div style="margin-bottom:10px">
+      <div class="help" style="margin-bottom:6px">数据源（可多选）</div>
+      <div class="chips" id="sources">
+        <div class="chip active" data-src="search">全网搜索</div>
+        <div class="chip" data-src="kb">AI 内置知识库</div>
+        <div class="chip" data-src="ima">IMA 知识库</div>
+      </div>
+    </div>
+    <div style="margin-bottom:10px">
+      <div class="help" style="margin-bottom:6px">带货商品信息（可选）</div>
+      <input type="text" id="product" placeholder="从选品助手带入书籍信息，改写会精准围绕这本书展开">
+    </div>
+    <div style="margin-bottom:10px">
+      <div class="help" style="margin-bottom:6px">关键词</div>
+      <input type="text" id="keywords" placeholder="可填入希望被覆盖的关键词">
+    </div>
+    <div>
+      <div class="help" style="margin-bottom:6px">选题 / 标题（原创必填）</div>
+      <input type="text" id="topic" placeholder="例如：刘欢去世那天，韩红 55 岁生日">
+    </div>
+  </div>
+
+  <!-- 直播出片 进度条 + 说明（默认隐藏） -->
+  <div class="progress" id="live-progress"><div class="bar"></div></div>
+  <div class="direct-hint" id="direct-hint">直接出片：完全用你的原文，AI 不改写也不重新分句，按你写的空行 / 句号机械切分 —— 此模式无改写过程，改写强度 / 叙事视角 / 钩子已自动隐藏。</div>
+
+  <!-- 目标分镜数 / 每镜字数 -->
+  <div class="section" id="shots-section">
+    <div class="grid-2">
+      <div class="field-row">
+        <span class="label">目标分镜数</span>
+        <span class="chip sub" data-shots="auto">自动</span>
+        <input type="text" id="shots" placeholder="个 (±10%)">
+      </div>
+      <div class="field-row">
+        <span class="label">每镜字数</span>
+        <span class="chip sub" data-words="auto">自动</span>
+        <input type="text" id="words" placeholder="字">
+      </div>
+    </div>
+    <div class="shot-hint" id="shot-hint">本镜 <strong id="hint-chars">0</strong> 字 · 标准档 30-50 字/镜 · 预计 <strong id="hint-shots">0</strong> 个分镜 · 约 <strong id="hint-mins">0</strong> 分钟</div>
+  </div>
+
+  <!-- 出图 -->
+  <div class="section">
+    <div class="section-title"><span class="icon">🖼️</span> 出图 <span class="badge" style="background:var(--panel-2);color:var(--muted)">素材来源·绘图引擎·比例·参考图</span></div>
+
+    <div style="margin-bottom:10px">
+      <div class="help" style="margin-bottom:6px">素材来源</div>
+      <div class="chips" id="img-source">
+        <div class="chip active" data-img-src="ai">AI 绘图 · 按画面风格生成插画/写实图</div>
+        <div class="chip" data-img-src="web">网络素材 · 真实视频画面，免版权可用素材</div>
+        <div class="chip" data-img-src="mine">我的素材库 · 用你收集的真实图片</div>
+        <div class="chip" data-img-src="external">外部出图 · 提供说明文案，由你/智能体接手</div>
+      </div>
+    </div>
+
+    <div class="grid-2" style="margin-bottom:10px">
+      <div>
+        <div class="help" style="margin-bottom:6px">绘图引擎</div>
+        <select class="model-select" style="width:100%;padding:6px 10px" id="img-engine">
+          <option>🎨 全能绘图（内置）</option>
+          <option>🪄 魔搭 · ModelScope</option>
+          <option>Runwayml-Hub-Kev</option>
+          <option>Runwayml-Hub-...</option>
+        </select>
+      </div>
+      <div>
+        <div class="help" style="margin-bottom:6px">动态分镜</div>
+        <div class="chips">
+          <span class="chip active" data-dynamic="off">关闭</span>
+          <span class="chip" data-dynamic="3">前 3 张</span>
+          <span class="chip" data-dynamic="all">全部</span>
+          <span class="chip" data-dynamic="custom">自定义</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="toggle-row" id="toggle-retry">
+      <div class="switch"></div>
+      <span class="label">失败自动补位</span>
+      <span class="help" style="margin:0">个别图失败时任务停不停你处理（默认）；开启自动按帧重拍</span>
+    </div>
+  </div>
+
+  <!-- 画面风格 -->
+  <div class="section">
+    <div class="section-title"><span class="icon">🎨</span> 画面风格</div>
+    <div class="chips" id="style">
+      <div class="style-chip" data-style="bw"><span class="swatch" style="background:linear-gradient(135deg,#222,#555)"></span>黑白摄影 · 纪实感</div>
+      <div class="style-chip" data-style="realistic"><span class="swatch" style="background:linear-gradient(135deg,#a36b3f,#5b3920)"></span>写实彩色 · 质感照片</div>
+      <div class="style-chip" data-style="oil"><span class="swatch" style="background:linear-gradient(135deg,#d4a017,#7a4a0a)"></span>油画风格 · 印象写意</div>
+      <div class="style-chip" data-style="modern"><span class="swatch" style="background:linear-gradient(135deg,#1f3a5f,#0a1929)"></span>现代电影 · 亚洲调色</div>
+      <div class="style-chip" data-style="ancient"><span class="swatch" style="background:linear-gradient(135deg,#8b5a2b,#3e2410)"></span>古风电影 · 古代史诗</div>
+      <div class="style-chip" data-style="retro"><span class="swatch" style="background:linear-gradient(135deg,#d4a574,#8b4513)"></span>复古胶片 · 80年代怀旧</div>
+      <div class="style-chip" data-style="watercolor"><span class="swatch" style="background:linear-gradient(135deg,#ffd6e0,#c8e6f5)"></span>水彩治愈 · 柔和笔触</div>
+      <div class="style-chip" data-style="comic"><span class="swatch" style="background:linear-gradient(135deg,#ff3366,#ffcc00)"></span>杂志漫画 · 极端色块</div>
+      <div class="style-chip" data-style="pixar"><span class="swatch" style="background:linear-gradient(135deg,#7eb8ff,#ff9a5a)"></span>皮克斯 3D · 动画质感</div>
+      <div class="style-chip" data-style="ink"><span class="swatch" style="background:linear-gradient(135deg,#f5f5f0,#2c2c2c)"></span>中国水墨 · 文人雅趣</div>
+      <div class="style-chip" data-style="folk-paint"><span class="swatch" style="background:linear-gradient(135deg,#c94e1f,#3a1a0a)"></span>民间故事工笔风 · 工笔叙事</div>
+      <div class="style-chip" data-style="palace"><span class="swatch" style="background:linear-gradient(135deg,#fce8d4,#d9b48f)"></span>宫 1 十 · 治愈白漫</div>
+      <div class="style-chip" data-style="dark-flame"><span class="swatch" style="background:linear-gradient(135deg,#ff5722,#1a0a05)"></span>黑暗橙焰 · 知识申作援助</div>
+      <div class="style-chip" data-style="custom"><span class="swatch" style="background:linear-gradient(135deg,#e0e0e0,#9e9e9e)">+</span>自定义</div>
+    </div>
+  </div>
+
+  <!-- 草稿模板 + AI出图比例 -->
+  <div class="section">
+    <div class="grid-2">
+      <div>
+        <div class="help" style="margin-bottom:6px">草稿模板</div>
+        <div class="chips" style="margin-bottom:6px">
+          <span class="chip active" data-tpl="default-916">★ 默认竖屏 · 出图 9:16</span>
+          <span class="chip" data-tpl="43">竖屏 4:3 · 出图 4:3</span>
+          <span class="chip" data-tpl="169">锁屏 16:9 · 出图 16:9</span>
+        </div>
+        <div class="chips">
+          <span class="chip" data-tpl="card">知识卡（分栏）· 出图 1:1</span>
+          <span class="chip" data-tpl="new">新模板 · 出图 9:16</span>
+          <span class="chip" data-tpl="manage">管理模板</span>
+        </div>
+      </div>
+      <div>
+        <div class="help" style="margin-bottom:6px">AI 出图比例 · 已忽略草稿模板</div>
+        <div class="chips" style="margin-bottom:6px">
+          <span class="chip active" data-ratio="916">9:16 · 预演</span>
+          <span class="chip" data-ratio="43">4:3 · 标准</span>
+          <span class="chip" data-ratio="11">1:1 · 方形</span>
+          <span class="chip" data-ratio="169">16:9 · 横屏</span>
+        </div>
+        <div class="help">竖模板默认自动同步调整比例，例如自定义，请去模板编辑调画面图区区域比例。</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 产品参考图 -->
+  <div class="section">
+    <div class="section-title"><span class="icon">📦</span> 产品参考图 <span class="badge" style="background:var(--panel-2);color:var(--muted)">可选</span></div>
+    <div class="help" style="margin-bottom:8px">上传产品参考图</div>
+    <label class="dropzone" id="prod-drop" style="display:block">
+      ⬆ 上传产品参考图 · 上传后，出图产品部分会改写为发墨保持产品一致；不上传全部走纯文案生图（点击选择、直接把图片拖进来，或 <span style="color:var(--accent-2)">从素材库选</span>）
+      <input type="file" id="prod-file" class="file-hidden" accept="image/*">
+    </label>
+    <div class="upload-result" id="prod-result"></div>
+  </div>
+
+  <!-- 封面海报 -->
+  <div class="section">
+    <div class="section-title"><span class="icon">🖼️</span> 封面海报 <span class="badge" style="background:var(--panel-2);color:var(--muted)">发布时上传的封面，独立于成片（素材库模式也是 AI 画封面）</span></div>
+    <div class="chips" id="cover-mode" style="margin-bottom:10px">
+      <span class="chip" data-cv="none">封面海报 不生成</span>
+      <span class="chip active" data-cv="ai">AI 生成封面</span>
+      <span class="chip" data-cv="title">带标题文字</span>
+      <span class="chip" data-cv="blank">留白不带字</span>
+      <span class="chip" data-cv="upload">本地上传</span>
+    </div>
+
+    <!-- AI 生成 -->
+    <div id="cover-ai-area">
+      <div class="help" style="margin-bottom:8px">由 LLM 根据标题/文案/画面风格/钩子写英文出图 prompt，再调出图 API 生成 9:16 竖图</div>
+      <div style="display:flex;gap:8px;margin-bottom:10px">
+        <button class="btn primary" id="btn-gen-cover" style="flex:1">🎨 生成封面</button>
+        <button class="btn" id="btn-regen-cover">🔄 重画</button>
+      </div>
+      <div id="cover-prompt-box" style="display:none;margin-bottom:10px">
+        <div class="help" style="margin-bottom:4px">出图 prompt（可改后再点 重画）</div>
+        <textarea id="cover-prompt" style="min-height:60px"></textarea>
+      </div>
+      <div id="cover-preview" style="display:none;margin-bottom:8px;text-align:center">
+        <img id="cover-img" style="max-width:240px;border-radius:6px;border:1px solid var(--border)">
+        <div class="help" id="cover-elapsed" style="margin-top:4px"></div>
+        <div style="margin-top:8px;display:flex;gap:6px;justify-content:center">
+          <a id="cover-download" class="btn" download="cover.png">⬇ 下载</a>
+          <button class="btn" id="cover-use-upload">⬆ 改成本地上传</button>
+        </div>
+      </div>
+      <div id="cover-status" class="help" style="margin-bottom:8px"></div>
+    </div>
+
+    <!-- 本地上传（默认隐藏） -->
+    <div id="cover-upload-area" style="display:none">
+      <div class="help" style="margin-bottom:8px">自己上传一张图当封面；出片自动带入剪映，不用 AI 画，不花钱</div>
+      <label class="dropzone" id="cover-drop" style="display:block">
+        📁 拖封面图拖到框里，或点击选择 · 支持 png / jpg / webp · 建议竖图
+        <input type="file" id="cover-file" class="file-hidden" accept="image/*">
+      </label>
+      <div class="upload-result" id="cover-result"></div>
+    </div>
+  </div>
+
+  <!-- 配音之前的中段行动栏 -->
+  <div class="actionbar">
+    <span class="cost">预计 <strong>22-30</strong> 分钟完成 <span class="muted" style="color:var(--muted);margin-left:6px">改写仅几秒</span></span>
+    <div style="display:flex;gap:8px">
+      <button class="btn ghost">保存为草稿</button>
+      <button class="btn primary" id="btn-run-full">▶ 完整生成（Step 0-3）</button>
+    </div>
+  </div>
+
+  <!-- 配音 -->
+  <div class="section">
+    <div class="section-title"><span class="icon">🎙️</span> 配音 <span class="badge" style="background:var(--panel-2);color:var(--muted)">音色·语速·背景音乐</span></div>
+
+    <div class="chips" id="tts-mode" style="margin-bottom:10px">
+      <span class="chip active" data-tts="system">系统配音（TTS 生成）</span>
+      <span class="chip" data-tts="custom">上传自定义配音</span>
+    </div>
+
+    <div class="grid-2" style="margin-bottom:10px">
+      <div>
+        <div class="help" style="margin-bottom:6px">配音员</div>
+        <select class="model-select" style="width:100%;padding:6px 10px" id="voice">
+          <option>豆包 · MiniMax · Aura</option>
+          <option>智谱 · 智声 · 中文合成</option>
+          <option>阿里 · CosyVoice · 温柔学姐</option>
+        </select>
+      </div>
+      <div>
+        <div class="help" style="margin-bottom:6px">在「设置 → TTS 配音 → Aura Studio」添加平台克隆好的音色 ID</div>
+      </div>
+    </div>
+
+    <div class="help" style="margin-bottom:6px">平台克隆音色</div>
+    <div class="chips" id="cloned-voices" style="margin-bottom:10px">
+      <span class="chip" data-cv="xiaomang">小忙老师</span>
+      <span class="chip active" data-cv="wang">王老师</span>
+      <span class="chip" data-cv="shuguo">shuguo</span>
+      <span class="chip" data-cv="stable">沉稳高管</span>
+      <span class="chip" data-cv="tomboy">闺蜜竹马</span>
+      <span class="chip" data-cv="jiejie">润白姐姐</span>
+      <span class="chip" data-cv="senior">温柔学姐</span>
+      <span class="chip" data-cv="more">更多音色...</span>
+    </div>
+
+    <div class="grid-2" style="margin-bottom:10px">
+      <div>
+        <div class="help" style="margin-bottom:6px">配音语速</div>
+        <div class="chips">
+          <span class="chip" data-speed="085">慢速 · 0.85x</span>
+          <span class="chip active" data-speed="10">默认 · 1.0x</span>
+          <span class="chip" data-speed="115">快语 · 1.15x</span>
+          <span class="chip" data-speed="13">更快 · 1.3x</span>
+        </div>
+      </div>
+      <div>
+        <div class="help" style="margin-bottom:6px">背景音乐</div>
+        <div class="chips">
+          <span class="chip active" data-bgm="builtin">▶ 内置 BGM</span>
+          <span class="chip" data-bgm="add">+ 添加</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 补充要求 -->
+  <div class="section">
+    <div class="section-title"><span class="icon">💬</span> 补充要求</div>
+    <input type="text" id="extra" placeholder="例如：再口语一点 / 把第三段展开 / 不要出现具体人名">
+  </div>
+
+  <!-- 输出 -->
+  <div class="section">
+    <div class="section-title"><span class="icon">📤</span> 输出</div>
+    <div id="output">点击底部「▶ 开始生成」开始改写文案，其余产物（出图/配音/剪映草稿）本版本暂未实现。</div>
+    <div class="row" style="display:flex;gap:8px;margin-top:10px">
+      <button class="btn" id="btn-copy" disabled>📋 复制文案</button>
+      <button class="btn" id="btn-rerun" disabled>🔄 再改一轮</button>
+      <span class="muted" id="elapsed" style="font-size:11px;color:var(--muted);align-self:center"></span>
+    </div>
+  </div>
+
+  <!-- 完整生成（Step 0-3）结果面板，默认隐藏 -->
+  <div class="section" id="full-result" style="display:none">
+    <div class="section-title">
+      <span class="icon">🎬</span> 完整生成结果
+      <span class="badge" id="full-meta" style="margin-left:auto"></span>
+    </div>
+
+    <!-- Step 0 预审 -->
+    <div class="full-step" id="step0-block" style="display:none">
+      <div class="step-label"><span class="step-no">0</span> 文案预审</div>
+      <div class="step-note" id="step0-note"></div>
+      <div class="step-body" id="step0-body" style="max-height:120px;overflow:auto"></div>
+    </div>
+
+    <!-- Step 1 改写 -->
+    <div class="full-step" id="step1-block" style="display:none">
+      <div class="step-label"><span class="step-no">1</span> 改写后文案</div>
+      <div class="step-body" id="step1-body" style="max-height:200px;overflow:auto"></div>
+      <div class="step-stats" id="step1-stats"></div>
+    </div>
+
+    <!-- Step 1 元信息 -->
+    <div class="full-step" id="meta-block" style="display:none">
+      <div class="step-label"><span class="step-no">★</span> 元信息（标题 / 短标题 / 文案 / 标签 / 评论）</div>
+      <div class="meta-grid">
+        <div><div class="meta-k">封面主标题</div><div class="meta-v" id="meta-title"></div></div>
+        <div><div class="meta-k">视频号短标题（≤16字）</div><div class="meta-v" id="meta-short"></div></div>
+        <div><div class="meta-k" style="grid-column:1/-1">发布文案</div><div class="meta-v" id="meta-summary"></div></div>
+        <div><div class="meta-k">话题标签</div><div class="meta-v" id="meta-tags"></div></div>
+        <div><div class="meta-k">种子评论（5）</div><div class="meta-v" id="meta-comments"></div></div>
+        <div><div class="meta-k" style="grid-column:1/-1">封面构图方向（3）</div><div class="meta-v" id="meta-covers"></div></div>
+      </div>
+    </div>
+
+    <!-- Step 2 分镜 -->
+    <div class="full-step" id="step2-block" style="display:none">
+      <div class="step-label"><span class="step-no">2</span> 分镜</div>
+      <div class="step-note" id="step2-note"></div>
+      <div class="shots-list" id="shots-list"></div>
+    </div>
+
+    <!-- Step 3 出图 prompt -->
+    <div class="full-step" id="step3-block" style="display:none">
+      <div class="step-label"><span class="step-no">3</span> 出图 prompt（中文）</div>
+      <div class="step-note" id="step3-note"></div>
+      <div class="prompts-list" id="prompts-list"></div>
+    </div>
+
+    <!-- Step 4 出图 -->
+    <div class="full-step" id="step4-block" style="display:none">
+      <div class="step-label"><span class="step-no">4</span> 出图 <span class="muted" id="step4-meta" style="font-weight:400"></span></div>
+      <div class="step-note" id="step4-note"></div>
+      <div class="shots-list" id="shots-images-list"></div>
+    </div>
+
+    <!-- Step 5 配音 -->
+    <div class="full-step" id="step5-block" style="display:none">
+      <div class="step-label"><span class="step-no">5</span> 配音 <span class="muted" id="step5-meta" style="font-weight:400"></span></div>
+      <div class="step-note" id="step5-note"></div>
+      <div class="shots-list" id="shots-audio-list"></div>
+    </div>
+
+    <!-- Step 6 剪映草稿 -->
+    <div class="full-step" id="step6-block" style="display:none">
+      <div class="step-label"><span class="step-no">6</span> 剪映草稿 <span class="muted" id="step6-meta" style="font-weight:400"></span></div>
+      <div class="step-note" id="step6-note"></div>
+      <div class="meta-grid">
+        <div><div class="meta-k">草稿目录</div><div class="meta-v" id="draft-dir"></div></div>
+        <div><div class="meta-k">分镜数</div><div class="meta-v" id="draft-shot-count"></div></div>
+        <div><div class="meta-k">视频轨</div><div class="meta-v" id="draft-video-track"></div></div>
+        <div><div class="meta-k">音频轨</div><div class="meta-v" id="draft-audio-track"></div></div>
+        <div><div class="meta-k">字幕轨</div><div class="meta-v" id="draft-subtitle-track"></div></div>
+        <div><div class="meta-k">总时长</div><div class="meta-v" id="draft-duration"></div></div>
+      </div>
+    </div>
+
+    <div class="row" style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+      <button class="btn primary" id="btn-run-full-pipeline">🚀 完整工作流（Step 0-6）</button>
+      <button class="btn" id="btn-copy-full">📋 复制全部 JSON</button>
+      <button class="btn" id="btn-copy-prompts">🎨 复制所有出图 prompt</button>
+      <span class="muted" id="full-elapsed" style="font-size:11px;color:var(--muted);align-self:center"></span>
+    </div>
+  </div>
+
+</div>
+
+<!-- Footer -->
+<div class="footer">
+  <div class="inner">
+    <span class="status ok" id="footer-status" style="margin-right:auto">✓ 文案改写链路已就绪</span>
+    <select class="model-select" id="model-pick">
+      <option value="">加载中…</option>
+    </select>
+    <span class="cost" id="cost-estimate">预计 <strong>1-3</strong> 分钟完成 <span class="muted">改写仅几秒</span></span>
+    <button class="btn ghost">保存为草稿</button>
+    <button class="btn primary" id="btn-run">▶ 开始生成 <kbd style="font-size:10px;background:rgba(255,255,255,.2);padding:1px 5px;border-radius:3px;margin-left:4px">Enter</kbd></button>
+    <button class="btn accent" id="btn-run-full-footer">▶ 完整生成（Step 0-3）</button>
+  </div>
+</div>
+
+<!-- Settings Modal —— 已被 /settings.html 取代 -->
+<div id="modal-settings" style="display:none"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+// State
+let currentLine = "story";
+let currentLevel = { story: "standard", user: "surface" };
+let settings = {};
+
+// Big cards (entry mode)
+document.querySelectorAll(".big-card").forEach(c => c.onclick = () => {
+  document.querySelectorAll(".big-card").forEach(x => x.classList.toggle("active", x === c));
+});
+
+// Chip groups (generic handler)
+function bindChips(containerId, onChange, single = true) {
+  const c = $(containerId);
+  if (!c) return;
+  c.querySelectorAll(".chip").forEach(chip => {
+    chip.onclick = () => {
+      if (single) {
+        c.querySelectorAll(".chip").forEach(x => x.classList.remove("active"));
+        chip.classList.add("active");
+      } else {
+        chip.classList.toggle("active");
+      }
+      if (onChange) onChange(chip);
+    };
+  });
+}
+
+bindChips("video-form");
+bindChips("tracks");
+bindChips("hooks", null, false);
+bindChips("viewpoints");
+bindChips("sources", null, false);
+bindChips("img-source");
+bindChips("style");
+bindChips("cover-mode");
+bindChips("tts-mode");
+bindChips("cloned-voices");
+bindChips("process-mode");
+bindChips("pause-mode");
+
+// Style chips with preview swatch (use style-chip class, not chip)
+document.querySelectorAll("#style .style-chip").forEach(chip => {
+  chip.onclick = () => {
+    document.querySelectorAll("#style .style-chip").forEach(x => x.classList.toggle("active", x === chip));
+  };
+});
+
+// Clickable cover upload — wrap dropzone in label
+const coverInput = $("cover-file");
+const coverResult = $("cover-result");
+const coverDrop = $("cover-drop");
+if (coverDrop && coverInput) {
+  coverDrop.addEventListener("click", e => {
+    if (e.target.tagName !== "INPUT") coverInput.click();
+  });
+  coverInput.addEventListener("change", () => {
+    const f = coverInput.files && coverInput.files[0];
+    if (f) {
+      coverResult.textContent = `✓ 已选择：${f.name}（${(f.size / 1024).toFixed(1)} KB）`;
+      coverResult.classList.add("ok");
+    }
+  });
+}
+
+// Product reference upload
+const prodInput = $("prod-file");
+const prodResult = $("prod-result");
+const prodDrop = $("prod-drop");
+if (prodDrop && prodInput) {
+  prodDrop.addEventListener("click", e => {
+    if (e.target.tagName !== "INPUT") prodInput.click();
+  });
+  prodInput.addEventListener("change", () => {
+    const f = prodInput.files && prodInput.files[0];
+    if (f) {
+      prodResult.textContent = `✓ 已选择：${f.name}`;
+      prodResult.classList.add("ok");
+    }
+  });
+}
+
+// 封面模式切换
+function syncCoverMode() {
+  const active = document.querySelector("#cover-mode .chip.active");
+  const mode = active ? active.dataset.cv : "ai";
+  const ai = $("cover-ai-area");
+  const up = $("cover-upload-area");
+  if (ai) ai.style.display = (mode === "upload") ? "none" : "";
+  if (up) up.style.display = (mode === "upload") ? "" : "none";
+}
+document.querySelectorAll("#cover-mode .chip").forEach(c => {
+  c.addEventListener("click", () => setTimeout(syncCoverMode, 0));
+});
+syncCoverMode();
+
+// AI 生成封面
+async function callCover(promptOverride) {
+  const status = $("cover-status");
+  const btn = $("btn-gen-cover");
+  const regen = $("btn-regen-cover");
+  status.textContent = "生成中...（先 LLM 写 prompt，再调出图 API）";
+  status.style.color = "var(--muted)";
+  btn.disabled = true; regen.disabled = true;
+  try {
+    const hooks = [...document.querySelectorAll("#hooks .chip.active")].map(x => x.dataset.hook);
+    const styleActive = document.querySelector("#style .style-chip.active");
+    const styleLabel = styleActive ? styleActive.textContent.trim().split("·")[1]?.trim() || styleActive.textContent.trim() : "";
+    const r = await api("/api/cover", "POST", {
+      title: $("title").value,
+      content: $("reference").value,
+      style: styleLabel,
+      hooks: hooks,
+      prompt: promptOverride || "",
+    });
+    $("cover-img").src = r.url + "?t=" + Date.now();
+    $("cover-img").dataset.url = r.url;
+    $("cover-download").href = r.url;
+    if (!promptOverride) $("cover-prompt").value = r.prompt;
+    $("cover-prompt-box").style.display = "";
+    $("cover-preview").style.display = "";
+    $("cover-elapsed").textContent = `耗时 ${r.elapsed}s · prompt ${r.prompt.length} 字`;
+    status.textContent = "✓ 封面已生成，可改 prompt 后点重画";
+    status.style.color = "var(--accent-2)";
+  } catch (e) {
+    status.textContent = "❌ " + e.message;
+    status.style.color = "var(--danger)";
+  } finally {
+    btn.disabled = false; regen.disabled = false;
+  }
+}
+$("btn-gen-cover").onclick = () => callCover();
+$("btn-regen-cover").onclick = () => callCover($("cover-prompt").value);
+$("cover-use-upload").onclick = () => {
+  document.querySelectorAll("#cover-mode .chip").forEach(c => c.classList.toggle("active", c.dataset.cv === "upload"));
+  syncCoverMode();
+};
+
+bindChips("lines", () => {
+  currentLine = document.querySelector("#lines .chip.active").dataset.line;
+  $("line-badge").textContent = currentLine === "story" ? "图文1号线" : "图文2号线";
+  $("levels-story").style.display = currentLine === "story" ? "" : "none";
+  $("levels-user").style.display = currentLine === "user" ? "" : "none";
+});
+bindChips("levels-story", () => {
+  currentLevel.story = document.querySelector("#levels-story .chip.active").dataset.key;
+});
+bindChips("levels-user", () => {
+  currentLevel.user = document.querySelector("#levels-user .chip.active").dataset.key;
+});
+
+// Auto chips (目标分镜数 / 每镜字数)
+document.querySelectorAll('[data-shots]').forEach(c => c.onclick = () => {
+  document.querySelectorAll('[data-shots]').forEach(x => x.classList.toggle("active", x === c));
+  $("shots").value = "";
+  $("shots").disabled = c.dataset.shots !== "auto";
+});
+document.querySelectorAll('[data-words]').forEach(c => c.onclick = () => {
+  document.querySelectorAll('[data-words]').forEach(x => x.classList.toggle("active", x === c));
+  $("words").value = "";
+  $("words").disabled = c.dataset.words !== "auto";
+});
+// Default: auto active
+$("shots").disabled = true;
+$("words").disabled = true;
+
+// Collapsible
+document.querySelectorAll(".caret").forEach(c => c.onclick = () => {
+  c.classList.toggle("open");
+  const target = document.getElementById(c.dataset.toggle);
+  if (target) target.classList.toggle("collapsed");
+});
+
+// Toggle rows
+["toggle-publish", "toggle-fixed", "toggle-tail", "toggle-retry"].forEach(id => {
+  const row = $(id);
+  row.onclick = e => {
+    if (e.target.tagName === "INPUT") return;
+    row.classList.toggle("on");
+    if (id === "toggle-fixed") $("fixed-area").style.display = row.classList.contains("on") ? "" : "none";
+    if (id === "toggle-tail") $("tail-area").style.display = row.classList.contains("on") ? "" : "none";
+  };
+});
+
+// Settings
+$("btn-settings").onclick = () => { location.href = "/settings.html"; };
+
+function openSettings() {
+  // 旧的 modal 设置已被 /settings.html 取代 —— 引导到独立设置页
+  if (confirm("设置已迁移到独立设置页（支持多 profile 切换）。现在打开设置页？")) {
+    location.href = "/settings.html";
+  }
+}
+
+$("btn-cancel").onclick = () => $("modal-settings").classList.remove("open");
+
+async function api(path, method = "GET", body) {
+  const opts = { method, headers: { "content-type": "application/json" } };
+  if (body) opts.body = JSON.stringify(body);
+  const r = await fetch(path, opts);
+  if (!r.ok) {
+    const j = await r.json().catch(() => ({ error: r.statusText }));
+    throw new Error(j.error || ("HTTP " + r.status));
+  }
+  return r.json();
+}
+
+$("btn-save").onclick = async () => {
+  $("set-error").textContent = "";
+  try {
+    await api("/api/settings", "POST", {
+      provider: $("set-provider").value,
+      protocol: $("set-protocol").value,
+      base_url: $("set-baseurl").value.trim(),
+      model: $("set-model").value.trim(),
+      api_key: $("set-apikey").value.trim(),
+      image_provider: "openai",
+      image_base_url: $("set-img-baseurl").value.trim(),
+      image_api_key:  $("set-img-apikey").value.trim(),
+      image_model:    $("set-img-model").value.trim(),
+      image_size:     $("set-img-size").value.trim(),
+    });
+    $("modal-settings").classList.remove("open");
+    await refreshStatus();
+  } catch (e) {
+    $("set-error").textContent = e.message;
+  }
+};
+
+async function refreshStatus() {
+  try {
+    settings = await api("/api/settings");
+    const [profData] = await Promise.all([
+      api("/api/profiles").catch(() => ({ profiles: [] }))
+    ]);
+    const profiles = profData.profiles || [];
+    const active = profiles.find(p => p.enabled) || profiles[0];
+
+    // 模型下拉填充
+    const sel = $("model-pick");
+    if (sel) {
+      if (profiles.length === 0) {
+        sel.innerHTML = `<option value="">⚠ 未配置任何 profile（去设置页新建）</option>`;
+      } else {
+        sel.innerHTML = profiles.map(p =>
+          `<option value="${p.id}" ${p.enabled ? "selected" : ""}>${escapeHtml(p.name)} · ${escapeHtml(p.provider)} · ${escapeHtml(p.model)}</option>`
+        ).join("");
+      }
+    }
+
+    if (active) {
+      $("status").className = "status ok";
+      $("status").textContent = `${active.provider} · ${active.model}`;
+      $("footer-status").textContent = `✓ 当前配置：${active.name} · ${active.model}`;
+      $("footer-status").className = "status ok";
+    } else {
+      $("status").className = "status warn";
+      $("status").textContent = "未配置";
+      $("footer-status").textContent = "⚠ 未配置任何 LLM（点右上角「设置」新建）";
+      $("footer-status").className = "status warn";
+    }
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+// Run
+async function runRewrite() {
+  const btn = $("btn-run");
+  btn.disabled = true;
+  const origText = btn.innerHTML;
+  btn.innerHTML = '<span class="spinner"></span>生成中...';
+  $("elapsed").textContent = "";
+  $("output").textContent = "";
+  try {
+    const r = await api("/api/rewrite", "POST", {
+      line: currentLine,
+      level: currentLevel[currentLine],
+      viewpoint: document.querySelector("#viewpoints .chip.active").dataset.vp,
+      reference: $("reference").value,
+      topic: $("topic").value,
+      title: $("title").value,
+      track: document.querySelector("#tracks .chip.active").dataset.track,
+      hooks: [...document.querySelectorAll("#hooks .chip.active")].map(x => x.dataset.hook),
+      sources: [...document.querySelectorAll("#sources .chip.active")].map(x => x.dataset.src),
+      keywords: $("keywords").value,
+      product: $("product").value,
+      fixed_opening: $("toggle-fixed").classList.contains("on") ? $("fixed-opening").value : "",
+      tail_guide: $("toggle-tail").classList.contains("on") ? $("tail-guide").value : "",
+      extra: $("extra").value,
+    });
+    $("output").textContent = r.text;
+    $("elapsed").textContent = `耗时 ${r.elapsed}s`;
+    $("btn-copy").disabled = false;
+    $("btn-rerun").disabled = false;
+  } catch (e) {
+    $("output").textContent = "❌ " + e.message;
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = origText;
+  }
+}
+
+$("btn-run").onclick = runRewrite;
+$("btn-rerun").onclick = runRewrite;
+$("btn-copy").onclick = () => {
+  navigator.clipboard.writeText($("output").textContent).then(() => {
+    $("btn-copy").textContent = "✓ 已复制";
+    setTimeout(() => $("btn-copy").textContent = "📋 复制文案", 1200);
+  });
+};
+
+// ========== 完整生成（Step 0-3） ==========
+let lastFullResult = null;
+
+async function runFull() {
+  const btn = document.activeElement;
+  const btns = [$("btn-run-full"), $("btn-run-full-footer")].filter(b => b);
+  btns.forEach(b => { b.disabled = true; b.dataset.orig = b.innerHTML; b.innerHTML = '<span class="spinner"></span>生成中...'; });
+  $("full-result").style.display = "";
+  $("full-elapsed").textContent = "";
+
+  try {
+    const styleActive = document.querySelector("#style .style-chip.active");
+    const styleLabel = styleActive ? styleActive.textContent.trim() : "现代电影";
+    const trackActive = document.querySelector("#tracks .chip.active");
+    const track = trackActive ? trackActive.dataset.track : "";
+    const r = await api("/api/generate", "POST", {
+      line: currentLine,
+      level: currentLevel[currentLine],
+      viewpoint: document.querySelector("#viewpoints .chip.active")?.dataset.vp || "overview",
+      reference: $("reference").value,
+      topic: $("topic").value,
+      title: $("title").value,
+      track: track,
+      hooks: [...document.querySelectorAll("#hooks .chip.active")].map(x => x.dataset.hook),
+      sources: [...document.querySelectorAll("#sources .chip.active")].map(x => x.dataset.src),
+      keywords: $("keywords").value,
+      product: $("product").value,
+      fixed_opening: $("toggle-fixed").classList.contains("on") ? $("fixed-opening").value : "",
+      tail_guide: $("toggle-tail").classList.contains("on") ? $("tail-guide").value : "",
+      extra: $("extra").value,
+      style: styleLabel,
+      run_steps: ["0", "1", "meta", "2", "3"],
+      targets: {
+        shots: $("shots").disabled ? null : parseInt($("shots").value) || null,
+        words: $("words").disabled ? null : parseInt($("words").value) || null,
+      },
+    });
+    lastFullResult = r;
+    renderFull(r);
+    $("full-elapsed").textContent = `总耗时 ${(r.steps && r.steps.elapsed) || ""}s · ${track || "通用"} · ${styleLabel.split("·")[0].trim()}`;
+    $("full-result").scrollIntoView({behavior: "smooth", block: "start"});
+  } catch (e) {
+    $("full-result").style.display = "";
+    $("full-meta").textContent = "❌ " + e.message;
+    $("full-meta").style.color = "var(--danger)";
+  } finally {
+    btns.forEach(b => { b.disabled = false; b.innerHTML = b.dataset.orig; });
+  }
+}
+
+function renderFull(r) {
+  const steps = r.steps || {};
+  $("full-meta").textContent = `${(r.line||"")} · ${(r.level||"")} · 共 ${Object.keys(steps).length} 步`;
+  $("full-meta").style.color = "";
+
+  // Step 0
+  const s0 = steps["0"];
+  if (s0 && typeof s0 === "object") {
+    $("step0-block").style.display = "";
+    $("step0-note").textContent = s0.notes || "";
+    $("step0-body").textContent = (s0.reviewed_text || "").slice(0, 600) + ((s0.reviewed_text || "").length > 600 ? "…" : "");
+  } else {
+    $("step0-block").style.display = "none";
+  }
+
+  // Step 1
+  const s1 = steps["1"];
+  if (s1 && s1.text) {
+    $("step1-block").style.display = "";
+    $("step1-body").textContent = s1.text;
+    $("step1-stats").textContent = `${s1.text.length} 字`;
+  } else {
+    $("step1-block").style.display = "none";
+  }
+
+  // Step meta
+  const m = steps["meta"] || {};
+  if (m && (m.title || m.summary || (m.tags||[]).length)) {
+    $("meta-block").style.display = "";
+    $("meta-title").textContent = m.title || "（空）";
+    $("meta-short").textContent = m.short_title || "（空）";
+    $("meta-summary").textContent = m.summary || "（空）";
+    $("meta-tags").textContent = (m.tags || []).join(" ") || "（空）";
+    $("meta-comments").textContent = (m.comments || []).map((c, i) => `${i+1}. ${c}`).join("\n") || "（空）";
+    $("meta-covers").textContent = (m.cover_image_prompts || []).map((c, i) => `${i+1}. ${c}`).join("\n\n") || "（空）";
+  } else {
+    $("meta-block").style.display = "none";
+  }
+
+  // Step 2
+  const s2 = steps["2"] || {};
+  const shots = s2.shots || [];
+  if (shots.length) {
+    $("step2-block").style.display = "";
+    $("step2-note").textContent = s2.notes || `共 ${shots.length} 镜`;
+    $("shots-list").innerHTML = shots.map(s =>
+      `<div class="shot-item"><div class="idx">${s.idx}</div><div class="txt">${escapeHtml(s.text)}</div></div>`
+    ).join("");
+  } else {
+    $("step2-block").style.display = "none";
+  }
+
+  // Step 3
+  const s3 = steps["3"] || [];
+  if (s3.length) {
+    $("step3-block").style.display = "";
+    $("step3-note").textContent = `共 ${s3.length} 个出图 prompt`;
+    $("prompts-list").innerHTML = s3.map(p =>
+      `<div class="prompt-item"><div class="idx">${p.idx}</div><div class="txt">${escapeHtml(p.desc_prompt || "")}</div></div>`
+    ).join("");
+  } else {
+    $("step3-block").style.display = "none";
+  }
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]);
+}
+
+$("btn-run-full").onclick = runFull;
+
+// ========== 完整工作流（Step 0-6）一键跑 ==========
+let lastPipelineResult = null;
+
+async function runPipeline() {
+  const btn = $("btn-run-full-pipeline");
+  const orig = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> 生成中...';
+  $("full-result").style.display = "";
+  $("full-elapsed").textContent = "";
+  // 隐藏 Step 4/5/6 旧结果
+  ["step4-block","step5-block","step6-block"].forEach(id => $(id).style.display = "none");
+  try {
+    // 1. 跑 /api/generate（Step 0-3）
+    const styleActive = document.querySelector("#style .style-chip.active");
+    const styleLabel = styleActive ? styleActive.textContent.trim() : "现代电影";
+    const trackActive = document.querySelector("#tracks .chip.active");
+    const track = trackActive ? trackActive.dataset.track : "";
+    const gen = await api("/api/generate", "POST", {
+      line: currentLine,
+      level: currentLevel[currentLine],
+      viewpoint: document.querySelector("#viewpoints .chip.active")?.dataset.vp || "overview",
+      reference: $("reference").value,
+      topic: $("topic").value,
+      title: $("title").value,
+      track: track,
+      hooks: [...document.querySelectorAll("#hooks .chip.active")].map(x => x.dataset.hook),
+      sources: [...document.querySelectorAll("#sources .chip.active")].map(x => x.dataset.src),
+      keywords: $("keywords").value,
+      product: $("product").value,
+      fixed_opening: $("toggle-fixed").classList.contains("on") ? $("fixed-opening").value : "",
+      tail_guide: $("toggle-tail").classList.contains("on") ? $("tail-guide").value : "",
+      extra: $("extra").value,
+      style: styleLabel,
+      run_steps: ["0", "1", "meta", "2", "3"],
+      targets: {
+        shots: $("shots").disabled ? null : parseInt($("shots").value) || null,
+        words: $("words").disabled ? null : parseInt($("words").value) || null,
+      },
+    });
+    lastFullResult = gen;
+    renderFull(gen);
+    const meta = (gen.steps && gen.steps.meta) || {};
+    const shots = ((gen.steps || {})["2"] || {}).shots || [];
+    const prompts = (gen.steps || {})["3"] || [];
+    const title = meta.title || $("title").value || "未命名任务";
+    // 用 /api/generate 返回的 task_id（让 step4/5/6 都落盘到同一目录）
+    const taskId = gen.task_id || `task_${Date.now()}`;
+    // 2. Step 4 出图
+    btn.innerHTML = '<span class="spinner"></span> Step 4 出图中...';
+    let step4 = null;
+    try {
+      step4 = await api("/api/step4_generate_images", "POST", {
+        prompts: prompts.map(p => ({idx: p.idx, desc_prompt: p.desc_prompt})),
+        ratio: "9:16",
+        resolution: "1k",
+        concurrency: 3,
+        task_id: taskId,
+      });
+      renderStep4(step4);
+    } catch (e) {
+      renderStep4({error: e.message});
+    }
+    // 3. Step 5 配音
+    btn.innerHTML = '<span class="spinner"></span> Step 5 配音中...';
+    let step5 = null;
+    try {
+      step5 = await api("/api/step5_tts", "POST", {
+        task_id: taskId,
+        segments: shots.map(s => ({idx: s.idx, text: s.text})),
+        speed: 1.0,
+      });
+      renderStep5(step5);
+    } catch (e) {
+      renderStep5({error: e.message});
+    }
+    // 4. Step 6 剪映草稿
+    btn.innerHTML = '<span class="spinner"></span> Step 6 草稿打包中...';
+    let step6 = null;
+    try {
+      const images = (step4 && step4.results) || [];
+      const segments = ((step5 && step5.results) || []).map(r => ({
+        idx: r.idx, ok: r.ok, duration: r.duration, path: r.path, url: r.url, text: r.text,
+      }));
+      step6 = await api("/api/step6_jianying_draft", "POST", {
+        task_id: taskId,
+        shots, images, segments, title,
+        ratio: "9:16",
+        cover_title: meta,
+      });
+      renderStep6(step6);
+    } catch (e) {
+      renderStep6({error: e.message});
+    }
+    lastPipelineResult = {gen, step4, step5, step6, taskId, title};
+    $("full-elapsed").innerHTML = `✓ 全链路完成（任务 ${taskId}）<a href="/tasks.html" style="margin-left:8px;color:var(--accent)">📋 查看任务</a>`;
+    $("full-elapsed").style.color = "var(--ok, #10b981)";
+    $("full-result").scrollIntoView({behavior: "smooth", block: "start"});
+  } catch (e) {
+    $("full-meta").textContent = "❌ " + e.message;
+    $("full-meta").style.color = "var(--danger)";
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = orig;
+  }
+}
+
+function renderStep4(r) {
+  const block = $("step4-block");
+  if (r.error) {
+    block.style.display = "";
+    $("step4-meta").textContent = "（失败）";
+    $("step4-note").textContent = "❌ " + r.error;
+    $("step4-note").style.color = "var(--danger)";
+    $("shots-images-list").innerHTML = "";
+    return;
+  }
+  $("step4-note").style.color = "";
+  const results = r.results || [];
+  const ok = results.filter(x => x && x.ok).length;
+  $("step4-block").style.display = "";
+  $("step4-meta").textContent = `（${ok}/${results.length} 成功 · ${r.total_elapsed}s · concurrency=${r.concurrency}）`;
+  $("step4-note").textContent = `provider: ${r.provider}`;
+  $("shots-images-list").innerHTML = results.map(x => {
+    if (!x) return "";
+    if (x.ok) {
+      return `<div class="shot-item">
+        <div class="idx">${x.idx}</div>
+        <img class="shot-img" src="${escapeHtml(x.url)}" loading="lazy" style="max-width:160px;border-radius:6px;margin:6px 0">
+        <div class="muted" style="font-size:11px">${x.elapsed || 0}s · 尝试 ${x.attempt || 1} 次</div>
+      </div>`;
+    }
+    return `<div class="shot-item">
+      <div class="idx">${x.idx}</div>
+      <div class="txt" style="color:var(--danger)">❌ ${escapeHtml(x.error || "失败")}</div>
+    </div>`;
+  }).join("");
+}
+
+function renderStep5(r) {
+  const block = $("step5-block");
+  if (r.error) {
+    block.style.display = "";
+    $("step5-meta").textContent = "（失败）";
+    $("step5-note").textContent = "❌ " + r.error;
+    $("step5-note").style.color = "var(--danger)";
+    $("shots-audio-list").innerHTML = "";
+    return;
+  }
+  $("step5-note").style.color = "";
+  const results = r.results || [];
+  const ok = results.filter(x => x && x.ok).length;
+  $("step5-block").style.display = "";
+  $("step5-meta").textContent = `（${ok}/${results.length} 合成 · ${r.elapsed}s · ${r.provider}/${r.speaker}）`;
+  $("step5-note").textContent = `task_id: ${r.task_id}`;
+  $("shots-audio-list").innerHTML = results.map(x => {
+    if (!x) return "";
+    if (x.ok) {
+      return `<div class="shot-item">
+        <div class="idx">${x.idx}</div>
+        <audio controls src="${escapeHtml(x.url)}" style="height:32px;margin:6px 0"></audio>
+        <div class="muted" style="font-size:11px">${(x.duration || 0).toFixed(1)}s · ${escapeHtml(x.text || "").slice(0, 30)}</div>
+      </div>`;
+    }
+    return `<div class="shot-item">
+      <div class="idx">${x.idx}</div>
+      <div class="txt" style="color:var(--danger)">❌ ${escapeHtml(x.error || "失败")}</div>
+    </div>`;
+  }).join("");
+}
+
+function renderStep6(r) {
+  const block = $("step6-block");
+  if (r.error) {
+    block.style.display = "";
+    $("step6-meta").textContent = "（失败）";
+    $("step6-note").textContent = "❌ " + r.error;
+    $("step6-note").style.color = "var(--danger)";
+    return;
+  }
+  $("step6-note").style.color = "";
+  $("step6-block").style.display = "";
+  $("step6-meta").textContent = `（${r.shot_count} 镜 · ${r.total_duration_sec}s）`;
+  $("step6-note").textContent = r.note || "";
+  $("draft-dir").textContent = r.draft_dir || "—";
+  $("draft-shot-count").textContent = `${r.shot_count} 镜 / ${r.image_count} 图 / ${r.segment_count} 音频`;
+  const tracks = r.tracks || [];
+  const tByType = {};
+  tracks.forEach(t => { tByType[t.type] = t.segment_count; });
+  $("draft-video-track").textContent = `${tByType.video || 0} 段`;
+  $("draft-audio-track").textContent = `${tByType.audio || 0} 段`;
+  $("draft-subtitle-track").textContent = `${tByType.text || 0} 段`;
+  $("draft-duration").textContent = `${r.total_duration_sec}s`;
+}
+
+$("btn-run-full-pipeline").onclick = runPipeline;
+$("btn-run-full-footer").onclick = runFull;
+$("btn-copy-full").onclick = () => {
+  if (!lastFullResult) return;
+  navigator.clipboard.writeText(JSON.stringify(lastFullResult, null, 2)).then(() => {
+    $("btn-copy-full").textContent = "✓ 已复制";
+    setTimeout(() => $("btn-copy-full").textContent = "📋 复制全部 JSON", 1200);
+  });
+};
+$("btn-copy-prompts").onclick = () => {
+  if (!lastFullResult) return;
+  const prompts = (lastFullResult.steps || {})["3"] || [];
+  const text = prompts.map(p => `[${p.idx}] ${p.desc_prompt}`).join("\n\n");
+  navigator.clipboard.writeText(text).then(() => {
+    $("btn-copy-prompts").textContent = "✓ 已复制";
+    setTimeout(() => $("btn-copy-prompts").textContent = "🎨 复制所有出图 prompt", 1200);
+  });
+};
+
+// Enter 键提交
+document.addEventListener("keydown", e => {
+  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+    e.preventDefault();
+    runRewrite();
+  }
+});
+
+// 镜头提示动态行：根据参考文案字数自动算分镜数 + 时长
+function updateShotHint() {
+  const text = $("reference").value;
+  // 按 CJK 字符 + 英文单词计算字数
+  const cjkChars = (text.match(/[一-龥]/g) || []).length;
+  const enWords = (text.match(/[a-zA-Z]+/g) || []).length;
+  const totalChars = cjkChars + Math.ceil(enWords * 1.5);
+  $("hint-chars").textContent = totalChars.toLocaleString();
+  // 标准档 30-50 字/镜
+  const low = Math.max(1, Math.floor(totalChars / 50));
+  const high = Math.max(low, Math.ceil(totalChars / 30));
+  $("hint-shots").textContent = totalChars === 0 ? "0" : `${low}-${high}`;
+  // 配音语速 1x ≈ 4 字/秒，所以分钟 = chars / 240
+  const mins = totalChars / 240;
+  $("hint-mins").textContent = totalChars === 0 ? "0" : mins.toFixed(1);
+  // 文案内容右上角统计
+  $("ref-stats").textContent = `${totalChars.toLocaleString()} 字 · 配音 约 ${Math.round(totalChars / 4)}s`;
+}
+$("reference").addEventListener("input", updateShotHint);
+updateShotHint();
+
+// 处理模式切换：半自动/直播出片 隐藏改写强度+钩子+视角；直播出片再隐藏目标分镜数
+document.querySelectorAll("#process-mode .chip").forEach(chip => {
+  chip.addEventListener("click", () => {
+    setTimeout(() => {
+      const active = document.querySelector("#process-mode .chip.active");
+      if (!active) return;
+      const pm = active.dataset.pm;
+      const noRewrite = pm === "half" || pm === "live";
+      const isLive = pm === "live";
+      // 改写强度 整段
+      $("rewrite-section").style.display = noRewrite ? "none" : "";
+      // 钩子 + 视角（改写参数里的两块）
+      const hooksBlock = document.querySelector("#hooks").parentElement;
+      const vpBlock = document.querySelector("#viewpoints").parentElement;
+      const topicBlock = document.querySelector("#topic").parentElement;
+      if (hooksBlock) hooksBlock.style.display = noRewrite ? "none" : "";
+      if (vpBlock) vpBlock.style.display = noRewrite ? "none" : "";
+      if (topicBlock) topicBlock.style.display = noRewrite ? "none" : "";
+      // 目标分镜数 仅直播出片隐藏
+      $("shots-section").style.display = isLive ? "none" : "";
+      // 进度条 + 直接出片说明
+      $("live-progress").classList.toggle("show", isLive);
+      $("direct-hint").classList.toggle("show", isLive);
+    }, 0);
+  });
+});
+
+(async function init() {
+  await refreshStatus();
+})();
+</script>
+</body>
+</html>

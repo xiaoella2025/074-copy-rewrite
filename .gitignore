@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+*.pyo
+data/
+_reverse/
+_story_assets/
+*.log
+.DS_Store
+*.tmp
