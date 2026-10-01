@@ -51,6 +51,33 @@ class TtsSettingsTests(unittest.TestCase):
 
 
 class AuraAdapterTests(unittest.TestCase):
+    def test_audio_url_response_is_downloaded(self):
+        class Response:
+            status = 200
+
+            def __init__(self, body):
+                self.body = body
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def read(self):
+                return self.body
+
+        calls = []
+
+        def fake_urlopen(request, timeout):
+            calls.append(request.full_url if hasattr(request, "full_url") else request)
+            return Response(b'{"audio":"https://example.test/signed-audio.mp3"}' if len(calls) == 1 else b"ID3-url")
+
+        with patch.object(server.urllib.request, "urlopen", side_effect=fake_urlopen):
+            result = server._aura_tts_synthesize("fake-token", "测试", "voice_test", 1)
+        self.assertEqual(result["audio_bytes"], b"ID3-url")
+        self.assertEqual(calls[1], "https://example.test/signed-audio.mp3")
+
     def test_request_and_hex_audio_response(self):
         class Response:
             status = 200

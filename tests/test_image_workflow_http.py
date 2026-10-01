@@ -12,6 +12,67 @@ import server
 
 
 class ImageWorkflowHttpTests(unittest.TestCase):
+    def test_runninghub_probe_accepts_unsaved_key_without_writing_settings(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            settings_path = root / "settings.json"
+            settings_path.write_text(json.dumps({"runninghub": {"model": "rh-image-g2"}}), encoding="utf-8")
+            with patch.object(server, "DATA_DIR", root), patch.object(server, "SETTINGS_PATH", settings_path), \
+                 patch.object(server, "_probe_runninghub_key") as probe:
+                httpd = ThreadingHTTPServer(("127.0.0.1", 0), server.Handler)
+                worker = threading.Thread(target=httpd.serve_forever, daemon=True)
+                worker.start()
+                try:
+                    conn = http.client.HTTPConnection("127.0.0.1", httpd.server_port, timeout=5)
+                    body = {"provider": "runninghub", "api_key": "fake-unsaved-key", "model": "rh-image-x"}
+                    conn.request("POST", "/api/test_image", json.dumps(body).encode("utf-8"),
+                                 {"Content-Type": "application/json"})
+                    response = conn.getresponse()
+                    result = json.loads(response.read().decode("utf-8"))
+                    conn.close()
+                    self.assertEqual(response.status, 200, result)
+                    self.assertTrue(result["verified"])
+                    self.assertEqual(probe.call_args.args[0]["api_key"], "fake-unsaved-key")
+                    self.assertEqual(probe.call_args.args[0]["model"], "rh-image-x")
+                    self.assertNotIn("api_key", json.loads(settings_path.read_text(encoding="utf-8"))["runninghub"])
+                finally:
+                    httpd.shutdown()
+                    httpd.server_close()
+                    worker.join(timeout=5)
+
+    def test_runninghub_task_uses_key_only_and_saved_resolution(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            settings = {"image": {"provider": "runninghub"},
+                        "runninghub": {"api_key": "fake", "model": "rh-image-g2",
+                                       "ratio": "3:4", "resolution": "2k", "concurrency": 6}}
+            settings_path = root / "settings.json"
+            settings_path.write_text(json.dumps(settings), encoding="utf-8")
+            with patch.object(server, "DATA_DIR", root), patch.object(server, "SETTINGS_PATH", settings_path), \
+                 patch.object(server, "image_dispatcher", return_value={
+                     "b64": base64.b64encode(b"fake-image").decode("ascii")}) as dispatcher:
+                httpd = ThreadingHTTPServer(("127.0.0.1", 0), server.Handler)
+                worker = threading.Thread(target=httpd.serve_forever, daemon=True)
+                worker.start()
+                try:
+                    conn = http.client.HTTPConnection("127.0.0.1", httpd.server_port, timeout=5)
+                    body = {"provider": "runninghub", "task_id": "test_rh",
+                            "prompts": [{"idx": 1, "desc_prompt": "画面"}]}
+                    conn.request("POST", "/api/step4_generate_images", json.dumps(body).encode("utf-8"),
+                                 {"Content-Type": "application/json"})
+                    response = conn.getresponse()
+                    result = json.loads(response.read().decode("utf-8"))
+                    conn.close()
+                    self.assertEqual(response.status, 200, result)
+                    self.assertTrue(result["results"][0]["ok"], result)
+                    self.assertEqual(result["concurrency"], 6)
+                    self.assertEqual(dispatcher.call_args.kwargs,
+                                     {"ratio": "3:4", "resolution": "2k"})
+                finally:
+                    httpd.shutdown()
+                    httpd.server_close()
+                    worker.join(timeout=5)
+
     def test_complete_route_sequence_writes_one_task_and_draft_without_external_calls(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

@@ -822,8 +822,7 @@ def public_settings():
         },
         "runninghub": {
             "configured": bool((s.get("runninghub") or {}).get("api_key") and
-                               (s.get("runninghub") or {}).get("workflow_id") and
-                               (s.get("runninghub") or {}).get("prompt_node_id")),
+                               (s.get("runninghub") or {}).get("model", "rh-image-g2") in RUNNINGHUB_IMAGE_MODELS),
             "model": (s.get("runninghub") or {}).get("model", "rh-image-g2"),
             "ratio": (s.get("runninghub") or {}).get("ratio", "9:16"),
             "resolution": (s.get("runninghub") or {}).get("resolution", "1k"),
@@ -1321,52 +1320,97 @@ def _call_modelscope(cfg, prompt, max_wait=180):
     raise RuntimeError(f"魔搭任务 {task_id} 超时（{max_wait}s）")
 
 
-def _call_runninghub(cfg, prompt, ratio, resolution, max_wait=180):
-    """RunningHub 提交工作流 + 轮询拿图。"""
-    api_key = cfg.get("api_key", "").strip()
-    workflow_id = cfg.get("workflow_id") or ""
-    prompt_node_id = cfg.get("prompt_node_id") or ""
-    prompt_field_name = cfg.get("prompt_field_name") or "text"
-    base_url = cfg.get("base_url") or "https://www.runninghub.ai"
-    if not api_key or not workflow_id or not prompt_node_id:
-        raise RuntimeError("RunningHub 需要 API Key、工作流 ID 和提示词节点 ID")
+RUNNINGHUB_IMAGE_MODELS = {
+    "rh-image-g2": {"path": "/openapi/v2/rhart-image-g-2/text-to-image", "resolution": True},
+    "rh-image-x": {"path": "/openapi/v2/rhart-image-x-official/text-to-image", "resolution": False,
+                   "output_format": "png"},
+    "rh-image-v2": {"path": "/openapi/v2/rhart-image-n-g31-flash/text-to-image", "resolution": True},
+}
 
-    # 1. 提交
-    submit_url = base_url.rstrip("/") + "/task/openapi/create"
-    submit_body = json.dumps({
-        "apiKey": api_key,
-        "workflowId": workflow_id,
-        "nodeInfoList": [{"nodeId": str(prompt_node_id), "fieldName": prompt_field_name,
-                          "fieldValue": prompt}],
-    }).encode("utf-8")
-    status, text = _http_post_json(submit_url, {
-        "Content-Type": "application/json",
-        "Authorization": "Bearer " + api_key,
-    }, submit_body)
-    sub = json.loads(text)
-    sub_data = sub.get("data") or {}
-    task_id = sub_data.get("taskId") if isinstance(sub_data, dict) else None
+
+def _probe_runninghub_key(cfg):
+    """查询不存在的任务来验证 Key；不会提交生成任务或扣取出图费用。"""
+    api_key = (cfg.get("api_key") or "").strip()
+    if not api_key:
+        raise ValueError("RunningHub API Key 未配置")
+    base_url = (cfg.get("base_url") or "https://www.runninghub.ai").rstrip("/")
+    try:
+        _, text = _http_post_json(base_url + "/openapi/v2/query",
+                                  {"Content-Type": "application/json", "Authorization": "Bearer " + api_key},
+                                  json.dumps({"taskId": "00000000-0000-0000-0000-000000000000"}).encode("utf-8"),
+                                  timeout=20)
+    except RuntimeError as error:
+        if re.search(r"HTTP 40[13]|UNAUTHORIZED|invalid.*(?:api.?key|token)", str(error), re.I):
+            raise ValueError("RunningHub API Key 无效") from error
+        raise ValueError("RunningHub 校验请求失败，请检查网络或稍后重试") from error
+    try:
+        result = _runninghub_result(json.loads(text))
+    except (ValueError, RuntimeError) as error:
+        if re.search(r"\[40[13]\]|UNAUTHORIZED|invalid.*(?:api.?key|token)", str(error), re.I):
+            raise ValueError("RunningHub API Key 无效") from error
+        raise ValueError("RunningHub 校验响应无法确认 API Key") from error
+    if re.search(r"UNAUTHORIZED|invalid.*(?:api.?key|token)",
+                 str(result.get("errorCode") or "") + " " + str(result.get("errorMessage") or ""), re.I):
+        raise ValueError("RunningHub API Key 无效")
+
+
+def _runninghub_result(payload):
+    """兼容 RunningHub v2 直接响应和 code/data 包装响应。"""
+    if not isinstance(payload, dict):
+        raise RuntimeError("RunningHub 响应格式不正确")
+    if "code" in payload:
+        if str(payload["code"]) not in ("0", "200"):
+            raise RuntimeError(f"RunningHub 业务错误 [{payload['code']}]: {str(payload.get('msg') or payload.get('message') or '')[:160]}")
+        if "data" in payload:
+            payload = payload["data"]
+    if not isinstance(payload, dict):
+        raise RuntimeError("RunningHub 响应缺少任务数据")
+    return payload
+
+
+def _call_runninghub(cfg, prompt, ratio, resolution, max_wait=900):
+    """按 Story 1.24 的模型 API 提交任务并查询结果，不需要工作流 ID。"""
+    api_key = (cfg.get("api_key") or "").strip()
+    model = cfg.get("model") or "rh-image-g2"
+    spec = RUNNINGHUB_IMAGE_MODELS.get(model)
+    if not api_key:
+        raise RuntimeError("RunningHub API Key 未配置")
+    if not spec:
+        raise RuntimeError(f"未知 RunningHub 模型: {model}")
+    base_url = (cfg.get("base_url") or "https://www.runninghub.ai").rstrip("/")
+    headers = {"Content-Type": "application/json", "Authorization": "Bearer " + api_key}
+    aspect_ratio = str(ratio or "9:16")
+    if model == "rh-image-x" and aspect_ratio == "21:9":
+        aspect_ratio = "20:9"
+    body = {"prompt": prompt, "aspectRatio": aspect_ratio}
+    if spec["resolution"]:
+        body["resolution"] = str(resolution or "1k").lower()
+    if spec.get("output_format"):
+        body["outputFormat"] = spec["output_format"]
+    _, text = _http_post_json(base_url + spec["path"], headers,
+                              json.dumps(body, ensure_ascii=False).encode("utf-8"))
+    submitted = _runninghub_result(json.loads(text))
+    if submitted.get("status") == "FAILED":
+        raise RuntimeError("RunningHub 提交失败: " + str(submitted.get("errorMessage") or submitted.get("errorCode") or "未知原因")[:160])
+    task_id = submitted.get("taskId")
     if not task_id:
-        raise RuntimeError(f"RunningHub 提交失败: {str(sub.get('msg') or sub.get('message') or text[:200])}")
+        raise RuntimeError("RunningHub 提交未返回 taskId")
 
-    # 2. 轮询
-    poll_url = base_url.rstrip("/") + "/task/openapi/outputs"
-    import time as _time
-    deadline = _time.time() + max_wait
-    while _time.time() < deadline:
-        _, ptext = _http_post_json(poll_url, {
-            "Content-Type": "application/json", "Authorization": "Bearer " + api_key,
-        }, json.dumps({"apiKey": api_key, "taskId": task_id}).encode("utf-8"))
-        pres = json.loads(ptext)
-        if pres.get("code") not in (0, "0", None):
-            raise RuntimeError(f"RunningHub 查询失败: {str(pres.get('msg') or '')[:200]}")
-        outputs = pres.get("data") or []
-        if isinstance(outputs, list):
-            for output in outputs:
-                val = output.get("fileUrl") if isinstance(output, dict) else None
-                if isinstance(val, str) and val.startswith(("http://", "https://")):
-                    return {"url": val, "mime": "image/png"}
-        _time.sleep(3)
+    deadline = time.monotonic() + max_wait
+    while time.monotonic() < deadline:
+        _, text = _http_post_json(base_url + "/openapi/v2/query", headers,
+                                  json.dumps({"taskId": task_id}).encode("utf-8"))
+        result = _runninghub_result(json.loads(text))
+        state = result.get("status")
+        if state == "SUCCESS":
+            for item in result.get("results") or []:
+                url = item.get("url") if isinstance(item, dict) else None
+                if isinstance(url, str) and url.startswith(("https://", "http://")):
+                    return {"url": url, "mime": "image/png"}
+            raise RuntimeError("RunningHub 任务成功但没有图片 URL")
+        if state == "FAILED":
+            raise RuntimeError("RunningHub 任务失败: " + str(result.get("errorMessage") or result.get("errorCode") or "未知原因")[:160])
+        time.sleep(3)
     raise RuntimeError(f"RunningHub 任务 {task_id} 超时（{max_wait}s）")
 
 
@@ -1423,6 +1467,20 @@ def resolve_image_config(settings, provider=None):
                 "base_url": ms.get("base_url") or "https://api-inference.modelscope.cn/v1",
                 "gpt_fallback": settings.get("image") or {}}
     raise ValueError(f"未知出图 provider: {selected}")
+
+
+def image_job_options(request_data, image_cfg):
+    """任务显式比例优先，分辨率和其余比例沿用所选出图平台的设置。"""
+    ratio = str(request_data.get("ratio") or image_cfg.get("ratio") or "9:16").strip()
+    resolution = str(request_data.get("resolution") or image_cfg.get("resolution") or "1k").strip()
+    return ratio, resolution
+
+
+def image_job_concurrency(request_data, image_cfg):
+    """沿用平台并发设置；任务显式值优先，按平台上限约束。"""
+    value = int(request_data.get("concurrency") or image_cfg.get("concurrency") or 3)
+    cap = 20 if image_cfg.get("provider") in ("runninghub", "gpt_image") else 10
+    return max(1, min(cap, value))
 
 
 # ============================================================
@@ -1587,7 +1645,7 @@ AURA_TTS_URL = "https://tts.aurastd.com/api/v1/tts"
 
 
 def _aura_tts_synthesize(api_key, text, voice_id, idx, speed=1.0, aura_cfg=None):
-    """Aura Studio 同步 TTS；仅从响应中的 hex audio 落盘。"""
+    """Aura Studio 同步 TTS；兼容响应中的 hex 音频与下载地址。"""
     body = {
         "model": (aura_cfg or {}).get("model") or "minimax-speech-2.8-turbo",
         "text": text,
@@ -1612,11 +1670,20 @@ def _aura_tts_synthesize(api_key, text, voice_id, idx, speed=1.0, aura_cfg=None)
         return {"idx": idx, "ok": False, "text": text, "error": f"Aura Studio 请求失败: {e}"}
     if status >= 400 or not isinstance(obj, dict):
         return {"idx": idx, "ok": False, "text": text, "error": f"Aura Studio 响应错误: HTTP {status}"}
-    hex_audio = obj.get("audio") or ((obj.get("data") or {}).get("audio")) or ""
-    try:
-        audio = bytes.fromhex(hex_audio)
-    except (TypeError, ValueError):
-        audio = b""
+    audio_ref = obj.get("audio") or ((obj.get("data") or {}).get("audio")) or ""
+    if isinstance(audio_ref, str) and audio_ref.startswith(("https://", "http://")):
+        try:
+            with urllib.request.urlopen(audio_ref, timeout=60) as resp:
+                if resp.status >= 400:
+                    raise RuntimeError(f"HTTP {resp.status}")
+                audio = resp.read()
+        except Exception as e:
+            return {"idx": idx, "ok": False, "text": text, "error": f"Aura Studio 音频下载失败: {e}"}
+    else:
+        try:
+            audio = bytes.fromhex(audio_ref)
+        except (TypeError, ValueError):
+            audio = b""
     if not audio:
         return {"idx": idx, "ok": False, "text": text,
                 "error": f"Aura Studio 未返回有效音频: {str(obj.get('message') or obj.get('error') or 'audio 为空')[:160]}"}
@@ -2814,6 +2881,7 @@ class Handler(BaseHTTPRequestHandler):
             provider = (data.get("provider") or "").strip()
             s = load_settings()
             t0 = time.time()
+            verified = False
             try:
                 if provider == "jimeng":
                     jm = s.get("jimeng") or {}
@@ -2828,9 +2896,17 @@ class Handler(BaseHTTPRequestHandler):
                     if not ms.get("tokens"):
                         raise ValueError("魔搭 Access Token 未配置")
                 elif provider == "runninghub":
-                    rh = s.get("runninghub") or {}
-                    if not (rh.get("api_key") and rh.get("workflow_id") and rh.get("prompt_node_id")):
-                        raise ValueError("RunningHub API Key、工作流 ID 或提示词节点 ID 未配置")
+                    rh = dict(s.get("runninghub") or {})
+                    if isinstance(data.get("api_key"), str) and data["api_key"].strip():
+                        rh["api_key"] = data["api_key"].strip()
+                    if isinstance(data.get("model"), str) and data["model"].strip():
+                        rh["model"] = data["model"].strip()
+                    if not rh.get("api_key"):
+                        raise ValueError("RunningHub API Key 未配置")
+                    if (rh.get("model") or "rh-image-g2") not in RUNNINGHUB_IMAGE_MODELS:
+                        raise ValueError("RunningHub 模型无效")
+                    _probe_runninghub_key(rh)
+                    verified = True
                 elif provider == "custom":
                     cu = s.get("custom_image") or {}
                     if not (cu.get("api_key") and cu.get("model") and cu.get("base_url")):
@@ -2838,7 +2914,8 @@ class Handler(BaseHTTPRequestHandler):
                 else:
                     raise ValueError(f"未知 provider: {provider}")
                 elapsed = round(time.time() - t0, 1)
-                self._json(200, {"ok": True, "elapsed": elapsed, "provider": provider})
+                self._json(200, {"ok": True, "elapsed": elapsed, "provider": provider,
+                                 "verified": verified})
             except ValueError as e:
                 self._json(200, {"ok": False, "error": str(e)})
             return
@@ -2979,8 +3056,8 @@ class Handler(BaseHTTPRequestHandler):
                 if provider == "jimeng" and not (image_cfg.get("ak") and image_cfg.get("sk")):
                     self._json(400, {"error": "未配置即梦 AK / SK"})
                     return
-                if provider == "runninghub" and not (image_cfg.get("api_key") and image_cfg.get("workflow_id") and image_cfg.get("prompt_node_id")):
-                    self._json(400, {"error": "未配置 RunningHub 必需字段"})
+                if provider == "runninghub" and not image_cfg.get("api_key"):
+                    self._json(400, {"error": "未配置 RunningHub API Key"})
                     return
                 ratio = image_cfg.get("ratio") or "9:16"
                 resolution = image_cfg.get("resolution") or "1k"
@@ -3244,17 +3321,12 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 s = load_settings()
                 prompts_in = data.get("prompts") or []
-                ratio = (data.get("ratio") or "9:16").strip()
-                resolution = (data.get("resolution") or "1k").strip()
                 provider = (data.get("provider") or "").strip()
                 task_id = (data.get("task_id") or f"task_{int(time.time())}").strip()
                 # 若指定 task_id → 同时落盘到 task_dir/covers/（让 Task 页能加载）
                 task_dir = (_tasks_root() / task_id) if task_id else None
                 if task_dir is not None:
                     (task_dir / "covers").mkdir(parents=True, exist_ok=True)
-                # 并发数：参考 M_ 默认 3；外部可传
-                concurrency = int(data.get("concurrency") or 3)
-                concurrency = max(1, min(10, concurrency))
                 retry = bool(data.get("retry", False))
                 if not prompts_in:
                     self._json(400, {"error": "prompts 不能为空"})
@@ -3264,6 +3336,8 @@ class Handler(BaseHTTPRequestHandler):
                     provider = (s.get("image") or {}).get("provider", "gpt_image")
                 img_cfg = resolve_image_config(s, provider)
                 provider = img_cfg["provider"]
+                ratio, resolution = image_job_options(data, img_cfg)
+                concurrency = image_job_concurrency(data, img_cfg)
                 if provider in ("gpt_image", "modelscope", "custom_image"):
                     if not (img_cfg.get("api_key") and img_cfg.get("base_url")):
                         self._json(400, {"error": f"未配置 {provider} 出图 API"})
@@ -3273,8 +3347,8 @@ class Handler(BaseHTTPRequestHandler):
                         self._json(400, {"error": "未配置即梦 jimeng（AK / SK 必填）"})
                         return
                 elif provider == "runninghub":
-                    if not (img_cfg.get("api_key") and img_cfg.get("workflow_id") and img_cfg.get("prompt_node_id")):
-                        self._json(400, {"error": "未配置 RunningHub（API Key / 工作流 ID / 提示词节点 ID 必填）"})
+                    if not img_cfg.get("api_key"):
+                        self._json(400, {"error": "未配置 RunningHub API Key"})
                         return
                 else:
                     self._json(400, {"error": f"未知 provider: {provider}"})
@@ -3346,8 +3420,6 @@ class Handler(BaseHTTPRequestHandler):
                 assignments = data.get("assignments") or []
                 task_id = (data.get("task_id") or f"task_{int(time.time())}").strip()
                 fallback_to_ai = bool(data.get("fallback_to_ai", False))
-                ratio = (data.get("ratio") or "9:16").strip()
-                resolution = (data.get("resolution") or "1k").strip()
                 ai_provider = (data.get("provider") or "").strip()
                 if not assignments:
                     self._json(400, {"error": "assignments 不能为空"})
@@ -3393,6 +3465,8 @@ class Handler(BaseHTTPRequestHandler):
                         if not ai_provider:
                             ai_provider = (s.get("image") or {}).get("provider", "gpt_image")
                         img_cfg = resolve_image_config(s, ai_provider)
+                        ratio, resolution = image_job_options(data, img_cfg)
+                        ai_concurrency = image_job_concurrency(data, img_cfg)
                         def ai_one(item):
                             i, a = item
                             idx = a.get("idx")
@@ -3415,7 +3489,7 @@ class Handler(BaseHTTPRequestHandler):
                                           "source": "ai_fallback"}
                             except Exception as e:
                                 return i, {"idx": idx, "ok": False, "error": f"AI 兜底失败: {e}"}
-                        with ThreadPoolExecutor(max_workers=3) as ex:
+                        with ThreadPoolExecutor(max_workers=ai_concurrency) as ex:
                             futs = [ex.submit(ai_one, item) for item in failed]
                             for f_ in as_completed(futs):
                                 i, r = f_.result()

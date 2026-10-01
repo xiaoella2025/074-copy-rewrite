@@ -1268,7 +1268,17 @@ function syncVoiceOptions() {
   if (provider === "volcengine") add(tts.volcengine_speaker || "zh_male_dongfanghaoran_moon_bigtts", "火山 · 默认音色");
   if (provider === "minimax") add(tts.minimax_voice_id, "MiniMax · 默认音色");
   if (provider === "aura") {
-    add(tts.aura_voice_id || "Chinese (Mandarin)_Reliable_Executive", "Aura · 默认音色");
+    const systemVoices = [
+      ["Chinese (Mandarin)_Reliable_Executive", "沉稳高管"],
+      ["Chinese (Mandarin)_Stubborn_Friend", "嘴硬竹马"],
+      ["Chinese (Mandarin)_Wise_Women", "阅历姐姐"],
+      ["Chinese (Mandarin)_Gentle_Senior", "温柔学姐"],
+    ];
+    const selected = tts.aura_voice_id || systemVoices[0][0];
+    const customName = (tts.aura_custom_voices || []).find(v => v.id === selected)?.name;
+    const systemName = systemVoices.find(v => v[0] === selected)?.[1];
+    add(selected, "默认 · " + (customName || systemName || "Aura 音色"));
+    systemVoices.forEach(([id, name]) => add(id, name));
     (tts.aura_custom_voices || []).forEach(v => add(v.id, v.name));
   }
   voice.replaceChildren();
