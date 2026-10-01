@@ -299,6 +299,18 @@ code{background:var(--bg);padding:1px 5px;border-radius:3px;font-family:var(--fo
           <button class="btn primary" onclick="$('btn-llm-new').click()">添加第一个配置</button>
         </div>
         <div class="profile-hint">ⓘ 创建任务时可在「使用模型」下拉里秒切 · 不同配置可以用不同的代理、Base URL · API Key 安全存储在系统钥匙串</div>
+
+        <!-- STORY 真值：思考模式（Settings.js:1174-1235） -->
+        <div id="thinking-mode-block" style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border-subtle)">
+          <div style="font-size:13px;font-weight:600;margin-bottom:3px">思考模式</div>
+          <div style="font-size:11.5px;color:var(--text-faint);margin-bottom:8px;line-height:1.6">新一代模型（DeepSeek v4 / MiniMax M3 / GLM 5 / Kimi 等）多数默认开启深度思考，速度慢、消耗高。觉得跑得慢可以切「全部关闭」。</div>
+          <div class="chips" id="thinking-mode-chips">
+            <button type="button" class="chip" data-tm="auto" title="分句/断行等机械步骤关思考提速，改写/提示词等创作步骤保留思考——实测思考对开头钩子这类需要构思的部分有实质帮助">智能（推荐）</button>
+            <button type="button" class="chip" data-tm="off" title="所有步骤都不思考：改写快 3-8 倍，但开头钩子等需要动脑筋的部分容易顺着原文平铺直叙（实测），赶时间或模型太慢时用">全部关闭</button>
+            <button type="button" class="chip" data-tm="model_default" title="完全不干预，模型自己决定是否思考（部分模型单步会磨到 1 分钟以上）">跟随模型默认</button>
+          </div>
+          <div id="thinking-mode-hint" style="font-size:11.5px;color:var(--text-muted);margin-top:7px;line-height:1.6"></div>
+        </div>
       </div>
 
       <!-- EDIT 视图 -->
@@ -1176,6 +1188,18 @@ async function loadProfiles() {
     setDot("dot-llm", active && active.has_key ? "ok" : (active ? "warn" : "bad"));
     setStatus("st-llm", active ? (active.has_key ? "✓ 当前：" + active.name : "当前配置缺 API Key") : "未激活",
       active && active.has_key);
+
+    // STORY 真值：思考模式（Settings.js:1174-1235）
+    const tm = r.llm_thinking_mode || "auto";
+    document.querySelectorAll("#thinking-mode-chips .chip").forEach(c => {
+      c.dataset.active = (c.dataset.tm === tm) ? "true" : "false";
+    });
+    const hints = {
+      auto: "分句/断行等机械步骤关思考提速，改写/提示词等创作步骤保留思考——实测思考对开头钩子这类需要构思的部分有实质帮助",
+      off: "所有步骤都不思考：改写快 3-8 倍，但开头钩子等需要动脑筋的部分容易顺着原文平铺直叙（实测），赶时间或模型太慢时用",
+      model_default: "完全不干预，模型自己决定是否思考（部分模型单步会磨到 1 分钟以上）",
+    };
+    if ($("thinking-mode-hint")) $("thinking-mode-hint").textContent = hints[tm] || "";
   } catch (e) {
     setDot("dot-llm", "bad");
     setStatus("st-llm", "❌ " + e.message, false);
@@ -1317,6 +1341,24 @@ function syncTTSBlocks() {
 bindChipGroup("tts-providers", () => syncTTSBlocks());
 bindChipGroup("tts-speakers", (v) => { $("tts-volc-speaker").value = v; });
 bindChipGroup("asr-providers", () => {});
+
+// STORY 真值：思考模式切换（Settings.js:1175-1180）
+document.querySelectorAll("#thinking-mode-chips .chip").forEach(c => {
+  c.addEventListener("click", async () => {
+    const tm = c.dataset.tm;
+    document.querySelectorAll("#thinking-mode-chips .chip").forEach(x => x.dataset.active = (x.dataset.tm === tm) ? "true" : "false");
+    const hints = {
+      auto: "分句/断行等机械步骤关思考提速，改写/提示词等创作步骤保留思考——实测思考对开头钩子这类需要构思的部分有实质帮助",
+      off: "所有步骤都不思考：改写快 3-8 倍，但开头钩子等需要动脑筋的部分容易顺着原文平铺直叙（实测），赶时间或模型太慢时用",
+      model_default: "完全不干预，模型自己决定是否思考（部分模型单步会磨到 1 分钟以上）",
+    };
+    if ($("thinking-mode-hint")) $("thinking-mode-hint").textContent = hints[tm] || "";
+    try {
+      await api("/api/settings", "POST", { llm_thinking_mode: tm });
+      toast("✓ 思考模式：" + (tm === "auto" ? "智能（推荐）" : tm === "off" ? "全部关闭" : "跟随模型默认"), true);
+    } catch (e) { toast("❌ " + e.message, false); }
+  });
+});
 
 // ============ AI 绘图 tab 切换（STORY 真值 Settings.js:1620-2280） ============
 const RH_MODELS = [

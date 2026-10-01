@@ -524,6 +524,14 @@ def _merged(values):
     lic_cur = cur.get("license", {}) or {}
     license_info = {"key": _val(values.get("license_key"), lic_cur.get("key", ""))}
 
+    # STORY 真值：思考模式（Settings.js:1175-1235）— auto / off / model_default
+    valid_tm = {"auto", "off", "model_default"}
+    tm_in = values.get("llm_thinking_mode")
+    if tm_in in valid_tm:
+        llm_thinking_mode = tm_in
+    else:
+        llm_thinking_mode = cur.get("llm_thinking_mode", "auto")
+
     return {
         "provider": out_provider,
         "protocol": out_protocol,
@@ -542,6 +550,7 @@ def _merged(values):
         "ima":      ima,
         "asr":      asr,
         "license":  license_info,
+        "llm_thinking_mode": llm_thinking_mode,
     }
 
 
@@ -1991,7 +2000,12 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, public_settings())
             return
         if self.path == "/api/profiles":
-            self._json(200, {"profiles": public_profiles(), "active_id": next((p["id"] for p in load_profiles() if p.get("enabled")), "")})
+            settings = load_settings()
+            self._json(200, {
+                "profiles": public_profiles(),
+                "active_id": next((p["id"] for p in load_profiles() if p.get("enabled")), ""),
+                "llm_thinking_mode": settings.get("llm_thinking_mode", "auto"),
+            })
             return
         if self.path == "/api/levels":
             self._json(200, {
