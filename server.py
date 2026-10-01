@@ -11,6 +11,7 @@ import tempfile
 import time
 import uuid
 import urllib.error
+import urllib.parse
 import urllib.request
 import base64
 import shutil
@@ -2271,6 +2272,50 @@ class Handler(BaseHTTPRequestHandler):
             "duration": duration,
         })
 
+    def _handle_material_upload(self, form, files):
+        """上传图片到素材库：返回 material_id + url。
+        字段：file（图片），可选 task_id（上传后顺便拷贝到该任务 covers/）。"""
+        content = files.get("file")
+        if not content:
+            raise ValueError("缺少 file 字段")
+        if len(content) > 20 * 1024 * 1024:
+            raise ValueError("图片文件超过 20MB 上限")
+        # 校验 magic bytes（PNG/JPEG/WebP）
+        if content[:8].startswith(b"\x89PNG\r\n\x1a\n"):
+            ext = "png"; mime = "image/png"
+        elif content[:2] == b"\xff\xd8":
+            ext = "jpg"; mime = "image/jpeg"
+        elif content[:4] == b"RIFF" and content[8:12] == b"WEBP":
+            ext = "webp"; mime = "image/webp"
+        elif content[:6] in (b"GIF87a", b"GIF89a"):
+            ext = "gif"; mime = "image/gif"
+        else:
+            raise ValueError("仅支持 PNG / JPEG / WebP / GIF")
+        materials_dir = DATA_DIR / "materials"
+        materials_dir.mkdir(parents=True, exist_ok=True)
+        material_id = uuid.uuid4().hex[:12]
+        out = materials_dir / f"{material_id}.{ext}"
+        out.write_bytes(content)
+        # 写 metadata
+        meta_path = materials_dir / f"{material_id}.json"
+        meta_path.write_text(json.dumps({
+            "id": material_id,
+            "filename": out.name,
+            "url": f"/api/material/{material_id}.{ext}",
+            "size": len(content),
+            "mime": mime,
+            "uploaded_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "width": 0, "height": 0,
+        }, ensure_ascii=False, indent=2), encoding="utf-8")
+        self._json(200, {
+            "ok": True,
+            "material_id": material_id,
+            "url": f"/api/material/{material_id}.{ext}",
+            "filename": out.name,
+            "size": len(content),
+            "mime": mime,
+        })
+
     def _file(self, path, ctype):
         if not path.exists():
             self.send_error(404)
@@ -2350,6 +2395,36 @@ class Handler(BaseHTTPRequestHandler):
                 return
             self._json(404, {"error": "仅支持 .mp4"})
             return
+        if self.path.startswith("/api/material/"):
+            # /api/material/<filename> → 直接放文件（路径校验：仅 uuid12.ext）
+            rel = self.path[len("/api/material/"):]
+            import re as _re_mat
+            if not _re_mat.fullmatch(r"[a-f0-9]{12}\.(png|jpg|jpeg|webp|gif)", rel):
+                self._json(404, {"error": "非法文件名"})
+                return
+            f = DATA_DIR / "materials" / rel
+            if f.exists() and f.is_file():
+                ctype = "image/jpeg" if rel.endswith((".jpg", ".jpeg")) else \
+                        f"image/{rel.rsplit('.', 1)[-1].lower()}"
+                if ctype == "image/jpg": ctype = "image/jpeg"
+                self._file(f, ctype)
+            else:
+                self._json(404, {"error": "素材不存在"})
+            return
+        if self.path == "/api/materials":
+            # 列出所有素材
+            materials_dir = DATA_DIR / "materials"
+            if not materials_dir.exists():
+                self._json(200, {"materials": [], "count": 0})
+                return
+            items = []
+            for meta_path in sorted(materials_dir.glob("*.json")):
+                try:
+                    items.append(json.loads(meta_path.read_text(encoding="utf-8")))
+                except (OSError, ValueError):
+                    continue
+            self._json(200, {"materials": items, "count": len(items)})
+            return
         if self.path.startswith("/tasks/"):
             # /tasks/<task_id>/<filename> — 让前端能 fetch 任务产物 JSON / 文本
             rel = self.path.lstrip("/")
@@ -2408,6 +2483,14 @@ class Handler(BaseHTTPRequestHandler):
             if self.path == "/api/upload_voice":
                 try:
                     self._handle_upload_voice(form, files)
+                except ValueError as e:
+                    self._json(400, {"error": str(e)})
+                except RuntimeError as e:
+                    self._json(500, {"error": str(e)})
+                return
+            if self.path == "/api/materials/upload":
+                try:
+                    self._handle_material_upload(form, files)
                 except ValueError as e:
                     self._json(400, {"error": str(e)})
                 except RuntimeError as e:
@@ -2562,6 +2645,34 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(500, {"error": f"写入失败: {e}"})
                 return
             self._json(200, {"ok": True})
+            return
+
+        if self.path.startswith("/api/materials/"):
+            # /api/materials/<id> — DELETE 删除单个素材
+            mid = self.path[len("/api/materials/"):].strip("/")
+            if not re.fullmatch(r"[a-f0-9]{12}", mid):
+                self._json(400, {"error": "无效素材 ID"})
+                return
+            materials_dir = DATA_DIR / "materials"
+            deleted = []
+            for meta_path in materials_dir.glob(f"{mid}.json"):
+                try:
+                    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                    fname = meta.get("filename", f"{mid}.png")
+                except (OSError, ValueError):
+                    fname = f"{mid}.png"
+                img_path = materials_dir / fname
+                try:
+                    img_path.unlink(missing_ok=True)
+                    meta_path.unlink(missing_ok=True)
+                    deleted.append(fname)
+                except OSError as e:
+                    self._json(500, {"error": f"删除失败: {e}"})
+                    return
+            if not deleted:
+                self._json(404, {"error": "素材不存在"})
+                return
+            self._json(200, {"ok": True, "deleted": deleted})
             return
 
         if self.path == "/api/cover_upload":
@@ -2958,6 +3069,224 @@ class Handler(BaseHTTPRequestHandler):
                     "provider": provider,
                     "concurrency": concurrency,
                     "total_elapsed": round(time.time() - t_total, 1),
+                })
+            except ValueError as e:
+                self._json(400, {"error": str(e)})
+            except RuntimeError as e:
+                self._json(502, {"error": str(e)})
+            return
+
+        # ============================================================
+        # Step 4 素材库出图：把已上传的素材拷贝到 task_dir/covers/，
+        # 返回 step4 同构的 {results:[{idx, ok, url, task_local}]}。
+        #   body: {"task_id":"...", "assignments":[{"idx":1,"material_id":"abc"}]}
+        # 未指定的 idx 可选回退到 AI 出图（fallback_to_ai: true），否则标 error。
+        # ============================================================
+        if self.path == "/api/step4_from_materials":
+            try:
+                s = load_settings()
+                assignments = data.get("assignments") or []
+                task_id = (data.get("task_id") or f"task_{int(time.time())}").strip()
+                fallback_to_ai = bool(data.get("fallback_to_ai", False))
+                ratio = (data.get("ratio") or "9:16").strip()
+                resolution = (data.get("resolution") or "1k").strip()
+                ai_provider = (data.get("provider") or "").strip()
+                if not assignments:
+                    self._json(400, {"error": "assignments 不能为空"})
+                    return
+                task_dir = _tasks_root() / task_id
+                (task_dir / "covers").mkdir(parents=True, exist_ok=True)
+                materials_dir = DATA_DIR / "materials"
+                out = [None] * len(assignments)
+                def assign_one(slot, a):
+                    idx = a.get("idx")
+                    mid = (a.get("material_id") or "").strip()
+                    if not re.fullmatch(r"[a-f0-9]{12}", mid):
+                        return slot, {"idx": idx, "ok": False, "error": f"无效素材 ID: {mid}"}
+                    meta_path = materials_dir / f"{mid}.json"
+                    if not meta_path.exists():
+                        return slot, {"idx": idx, "ok": False, "error": f"素材 {mid} 不存在"}
+                    try:
+                        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                    except (OSError, ValueError):
+                        return slot, {"idx": idx, "ok": False, "error": "素材元数据损坏"}
+                    src = materials_dir / meta["filename"]
+                    if not src.exists():
+                        return slot, {"idx": idx, "ok": False, "error": "素材文件丢失"}
+                    ext = Path(meta["filename"]).suffix.lstrip(".") or "png"
+                    target = task_dir / "covers" / f"{idx}.{ext}"
+                    try:
+                        target.write_bytes(src.read_bytes())
+                    except OSError as e:
+                        return slot, {"idx": idx, "ok": False, "error": f"拷贝失败: {e}"}
+                    task_local = f"/api/task_image/{task_id}/{idx}.{ext}"
+                    return slot, {"idx": idx, "ok": True, "url": meta["url"],
+                                  "task_local": task_local, "source": "material",
+                                  "material_id": mid, "elapsed": 0.0, "attempt": 1}
+                from concurrent.futures import ThreadPoolExecutor, as_completed
+                with ThreadPoolExecutor(max_workers=4) as ex:
+                    futs = [ex.submit(assign_one, i, a) for i, a in enumerate(assignments)]
+                    for f_ in as_completed(futs):
+                        slot, r = f_.result()
+                        out[slot] = r
+                if fallback_to_ai:
+                    failed = [(i, a) for i, a in enumerate(assignments) if not out[i].get("ok")]
+                    if failed:
+                        if not ai_provider:
+                            ai_provider = (s.get("image") or {}).get("provider", "gpt_image")
+                        img_cfg = resolve_image_config(s, ai_provider)
+                        def ai_one(item):
+                            i, a = item
+                            idx = a.get("idx")
+                            desc = (a.get("desc_prompt") or "").strip()
+                            if not desc:
+                                return i, {"idx": idx, "ok": False, "error": "缺 desc_prompt"}
+                            try:
+                                r = image_dispatcher(img_cfg, desc, ratio=ratio, resolution=resolution)
+                                if "b64" in r:
+                                    url = save_cover_image(r["b64"], r.get("mime", "image/png"))
+                                else:
+                                    url = save_cover_image(r["url"], r.get("mime", "image/png"))
+                                fname = f"{idx}.png"
+                                target = task_dir / "covers" / fname
+                                if url.startswith("/covers/"):
+                                    src = DATA_DIR / url.lstrip("/")
+                                    target.write_bytes(src.read_bytes())
+                                return i, {"idx": idx, "ok": True, "url": url,
+                                          "task_local": f"/api/task_image/{task_id}/{fname}",
+                                          "source": "ai_fallback"}
+                            except Exception as e:
+                                return i, {"idx": idx, "ok": False, "error": f"AI 兜底失败: {e}"}
+                        with ThreadPoolExecutor(max_workers=3) as ex:
+                            futs = [ex.submit(ai_one, item) for item in failed]
+                            for f_ in as_completed(futs):
+                                i, r = f_.result()
+                                out[i] = r
+                ok_count = sum(1 for r in out if r.get("ok"))
+                self._json(200, {
+                    "results": out,
+                    "task_id": task_id,
+                    "ok_count": ok_count,
+                    "total": len(assignments),
+                })
+            except ValueError as e:
+                self._json(400, {"error": str(e)})
+            except RuntimeError as e:
+                self._json(502, {"error": str(e)})
+            return
+
+        # ============================================================
+        # Step 4 网络素材：用 DuckDuckGo 图搜按 prompt 关键词搜图（无需 key），
+        # 保存到 task_dir/covers/ 并返回 step4 同构结果。
+        #   body: {"task_id":"...", "queries":[{"idx":1,"query":"古风 山水","ratio":"9:16"}]}
+        # ============================================================
+        if self.path == "/api/step4_web_search":
+            try:
+                queries = data.get("queries") or []
+                task_id = (data.get("task_id") or f"task_{int(time.time())}").strip()
+                if not queries:
+                    self._json(400, {"error": "queries 不能为空"})
+                    return
+                task_dir = _tasks_root() / task_id
+                (task_dir / "covers").mkdir(parents=True, exist_ok=True)
+                out = [None] * len(queries)
+
+                def parse_ratio(r):
+                    if not r: return (720, 1280)
+                    try:
+                        a, b = r.split(":")
+                        a, b = int(a), int(b)
+                        if a >= b:
+                            return (1024, round(1024 * b / a))
+                        return (round(1024 * a / b), 1024)
+                    except (ValueError, ZeroDivisionError):
+                        return (720, 1280)
+
+                def fetch_one(slot, q):
+                    idx = q.get("idx")
+                    query = (q.get("query") or q.get("desc_prompt") or "").strip()
+                    if not query:
+                        return slot, {"idx": idx, "ok": False, "error": "query 为空"}
+                    ratio = (q.get("ratio") or "9:16").strip()
+                    w, h = parse_ratio(ratio)
+                    try:
+                        token_url = "https://duckduckgo.com/?q=" + urllib.parse.quote(query + " 图片") + "&iax=images&ia=images"
+                        req = urllib.request.Request(token_url, headers={
+                            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+                        })
+                        with urllib.request.urlopen(req, timeout=8) as resp:
+                            html = resp.read().decode("utf-8", errors="replace")
+                        import re as _re_ddg
+                        m = _re_ddg.search(r"vqd=([\"'])([\d-]+)\1", html)
+                        if not m:
+                            return slot, {"idx": idx, "ok": False, "error": "DuckDuckGo vqd token 未找到"}
+                        vqd = m.group(2)
+                        api = f"https://duckduckgo.com/i.js?l=cn-zh&o=json&q={urllib.parse.quote(query)}&vqd={vqd}&f=size:Wide,type:photo"
+                        req2 = urllib.request.Request(api, headers={
+                            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+                            "Referer": token_url,
+                        })
+                        with urllib.request.urlopen(req2, timeout=10) as resp2:
+                            data_json = json.loads(resp2.read().decode("utf-8", errors="replace"))
+                        candidates = data_json.get("results") or []
+                        if not candidates:
+                            return slot, {"idx": idx, "ok": False, "error": "DuckDuckGo 未找到匹配图片"}
+                        target_ratio = w / h
+                        best = None; best_diff = 99
+                        for cand in candidates:
+                            cw = cand.get("image_width") or 0
+                            ch = cand.get("image_height") or 0
+                            if cw <= 0 or ch <= 0:
+                                continue
+                            diff = abs(cw / ch - target_ratio)
+                            if diff < best_diff:
+                                best = cand; best_diff = diff
+                        if not best:
+                            best = candidates[0]
+                        img_url = best.get("image") or best.get("url")
+                        if not img_url:
+                            return slot, {"idx": idx, "ok": False, "error": "图片 URL 缺失"}
+                        req3 = urllib.request.Request(img_url, headers={
+                            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+                            "Referer": "https://duckduckgo.com/",
+                        })
+                        with urllib.request.urlopen(req3, timeout=15) as resp3:
+                            img_bytes = resp3.read()
+                        if len(img_bytes) > 8 * 1024 * 1024:
+                            return slot, {"idx": idx, "ok": False, "error": "图片超过 8MB"}
+                        ext = "jpg"
+                        if img_bytes[:8].startswith(b"\x89PNG\r\n\x1a\n"):
+                            ext = "png"
+                        elif img_bytes[:4] == b"RIFF" and img_bytes[8:12] == b"WEBP":
+                            ext = "webp"
+                        fname = f"{idx}.{ext}"
+                        target = task_dir / "covers" / fname
+                        target.write_bytes(img_bytes)
+                        return slot, {"idx": idx, "ok": True,
+                                      "url": f"/api/task_image/{task_id}/{fname}",
+                                      "task_local": f"/api/task_image/{task_id}/{fname}",
+                                      "source": "web",
+                                      "source_link": best.get("url", ""),
+                                      "width": best.get("image_width", 0),
+                                      "height": best.get("image_height", 0)}
+                    except (urllib.error.URLError, TimeoutError, ValueError) as e:
+                        return slot, {"idx": idx, "ok": False, "error": f"网络抓取失败: {e}"}
+                    except Exception as e:
+                        return slot, {"idx": idx, "ok": False, "error": f"抓图失败: {e}"}
+
+                from concurrent.futures import ThreadPoolExecutor, as_completed
+                with ThreadPoolExecutor(max_workers=3) as ex:
+                    futs = [ex.submit(fetch_one, i, q) for i, q in enumerate(queries)]
+                    for f_ in as_completed(futs):
+                        slot, r = f_.result()
+                        out[slot] = r
+                ok_count = sum(1 for r in out if r.get("ok"))
+                self._json(200, {
+                    "results": out,
+                    "task_id": task_id,
+                    "source": "web",
+                    "ok_count": ok_count,
+                    "total": len(queries),
                 })
             except ValueError as e:
                 self._json(400, {"error": str(e)})

@@ -140,13 +140,46 @@ async function runImagePipeline({ request, generate, tts, image, cover, resume, 
   const missingImages = prompts.filter(item => !savedImages.has(Number(item.idx)));
   let newImages = [];
   if (missingImages.length) {
-    const response = await call('images', '/api/step4_generate_images', {
-      prompts: missingImages.map(item => ({ idx: item.idx, desc_prompt: item.desc_prompt })),
-      ratio: image.ratio, resolution: image.resolution, concurrency: image.concurrency,
-      provider: image.provider, retry: !!image.retry, task_id: taskId,
-    });
-    requireResults('images', response?.results, missingImages.length);
-    newImages = response.results;
+    const imageSource = image.source || 'ai';
+    const externalProvider = imageSource === 'external' ? 'custom' : image.provider;
+    let endpoint = '/api/step4_generate_images';
+    let payload;
+    if (imageSource === 'mine') {
+      const picked = (image.materials?.picks || {});
+      const fallbackToAi = (image.materials?.fallback || 'ai') === 'ai';
+      payload = {
+        task_id: taskId, ratio: image.ratio, resolution: image.resolution,
+        fallback_to_ai: fallbackToAi, provider: externalProvider,
+        assignments: missingImages.map(item => {
+          const mid = picked[item.idx] || '';
+          const assignment = { idx: item.idx, material_id: mid };
+          if (fallbackToAi && !mid) assignment.desc_prompt = item.desc_prompt;
+          return assignment;
+        }).filter(a => a.material_id || fallbackToAi),
+      };
+      if (!payload.assignments.length) payload = null;
+      else endpoint = '/api/step4_from_materials';
+    } else if (imageSource === 'web') {
+      endpoint = '/api/step4_web_search';
+      payload = {
+        task_id: taskId, ratio: image.ratio,
+        queries: missingImages.map(item => ({ idx: item.idx, query: item.desc_prompt })),
+      };
+    } else {
+      payload = {
+        prompts: missingImages.map(item => ({ idx: item.idx, desc_prompt: item.desc_prompt })),
+        ratio: image.ratio, resolution: image.resolution, concurrency: image.concurrency,
+        provider: externalProvider, retry: !!image.retry, task_id: taskId,
+      };
+    }
+    if (payload) {
+      const response = await call('images', endpoint, payload);
+      requireResults('images', response?.results, missingImages.length);
+      newImages = response.results;
+    } else {
+      // mine 模式无任何可用素材 → 视为 step4 已完成（让流程继续，后续 step6 拿不到 image 时会跳过）
+      newImages = missingImages.map(item => ({ idx: item.idx, ok: false, error: '未分配素材' }));
+    }
   }
   const imageByIdx = new Map([...savedImages.values(), ...newImages].map(item => [Number(item.idx), item]));
   const step4 = {results: shots.map(shot => imageByIdx.get(Number(shot.idx)))};

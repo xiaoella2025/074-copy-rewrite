@@ -377,3 +377,84 @@ test('双人播客 step5 失败时阻断，不继续出图', async () => {
   }), /火山 API Key 未填/);
   assert.deepEqual(calls.map(c => c.path), ['/api/generate', '/api/step5_tts']);
 });
+
+test('素材来源=mine 调 step4_from_materials 带 assignments + picks，未分配走 AI 兜底', async () => {
+  const calls = [];
+  const gen = {
+    task_id: 'task_m', line: 'story', level: 'standard',
+    steps: {
+      '0': { reviewed_text: '原文' },
+      '1': { text: '改写稿' },
+      meta: { title: '标题', characters: [] },
+      '2': { shots: [{ idx: 1, text: '第一镜' }, { idx: 2, text: '第二镜' }] },
+      '3': [],
+    },
+  };
+  const replies = [
+    gen,
+    {results:[{idx:1,ok:true,duration:2},{idx:2,ok:true,duration:2}]},
+    {steps:{'3':[{idx:1,desc_prompt:'p1'},{idx:2,desc_prompt:'p2'}]}},
+    {results:[
+      {idx:1,ok:true,url:'/api/material/m1.png',task_local:'/api/task_image/x/1.png',source:'material'},
+      {idx:2,ok:true,url:'/covers/fallback.png',task_local:'/api/task_image/x/2.png',source:'ai_fallback'},
+    ]},
+    {draft_dir:'draft'},
+  ];
+  await runImagePipeline({
+    request: async (path, body) => { calls.push({path,body}); return replies.shift(); },
+    generate:{reference:'原文'}, tts:{provider:'aura'},
+    image:{provider:'gpt_image',ratio:'9:16',resolution:'1k',concurrency:3,
+           source:'mine', materials:{picks:{1:'m1'}, fallback:'ai'}},
+  });
+  const mat = calls.find(c => c.path === '/api/step4_from_materials');
+  assert.ok(mat, 'should call step4_from_materials');
+  assert.equal(mat.body.fallback_to_ai, true);
+  const a1 = mat.body.assignments.find(a => a.idx === 1);
+  assert.equal(a1.material_id, 'm1');
+  assert.ok(!a1.desc_prompt, '已分配素材的不传 desc_prompt');
+  const a2 = mat.body.assignments.find(a => a.idx === 2);
+  assert.ok(!a2.material_id, '未分配的不带 material_id');
+  assert.equal(a2.desc_prompt, 'p2', '未分配时带 desc_prompt 用于 AI 兜底');
+  const draft = calls.find(c => c.path === '/api/step6_jianying_draft');
+  assert.equal(draft.body.images.length, 2);
+});
+
+test('素材来源=web 调 step4_web_search 把 desc_prompt 当 query', async () => {
+  const calls = [];
+  const replies = [
+    firstGeneration(),
+    {results:[{idx:1,ok:true,duration:2}]},
+    {steps:{'3':[{idx:1,desc_prompt:'古风 山水'}]}},
+    {results:[{idx:1,ok:true,url:'/api/task_image/x/1.jpg',task_local:'/api/task_image/x/1.jpg',source:'web'}]},
+    {draft_dir:'draft'},
+  ];
+  await runImagePipeline({
+    request: async (path, body) => { calls.push({path,body}); return replies.shift(); },
+    generate:{reference:'原文'}, tts:{provider:'aura'},
+    image:{provider:'gpt_image',ratio:'9:16',resolution:'1k',concurrency:3, source:'web'},
+  });
+  const web = calls.find(c => c.path === '/api/step4_web_search');
+  assert.ok(web, 'should call step4_web_search');
+  assert.equal(web.body.queries[0].query, '古风 山水');
+  assert.equal(web.body.ratio, '9:16');
+  // 不应该再调 step4_generate_images
+  assert.ok(!calls.some(c => c.path === '/api/step4_generate_images'));
+});
+
+test('素材来源=external 把 provider 强制成 custom', async () => {
+  const calls = [];
+  const replies = [
+    firstGeneration(),
+    {results:[{idx:1,ok:true,duration:2}]},
+    {steps:{'3':[{idx:1,desc_prompt:'p1'}]}},
+    {results:[{idx:1,ok:true,url:'/covers/x.png',task_local:'/api/task_image/x/1.png'}]},
+    {draft_dir:'draft'},
+  ];
+  await runImagePipeline({
+    request: async (path, body) => { calls.push({path,body}); return replies.shift(); },
+    generate:{reference:'原文'}, tts:{provider:'aura'},
+    image:{provider:'gpt_image',ratio:'9:16',source:'external'},
+  });
+  const gen = calls.find(c => c.path === '/api/step4_generate_images');
+  assert.equal(gen.body.provider, 'custom');
+});
