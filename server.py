@@ -506,10 +506,12 @@ def _merged(values):
 
     ima_cur = cur.get("ima", {}) or {}
     ima = {
-        "client_id": _val(values.get("ima_client_id"), ima_cur.get("client_id", "")),
-        "api_key":   _val(values.get("ima_api_key"),   ima_cur.get("api_key", "")),
-        "kb_id":     _val(values.get("ima_kb_id"),     ima_cur.get("kb_id", "")),
-        "kb_name":   _val(values.get("ima_kb_name"),   ima_cur.get("kb_name", "")),
+        "client_id":    _val(values.get("ima_client_id"),    ima_cur.get("client_id", "")),
+        "api_key":      _val(values.get("ima_api_key"),      ima_cur.get("api_key", "")),
+        "kb_id":        _val(values.get("ima_kb_id"),        ima_cur.get("kb_id", "")),
+        "kb_name":      _val(values.get("ima_kb_name"),      ima_cur.get("kb_name", "")),
+        "notebook_id":  _val(values.get("ima_notebook_id"),  ima_cur.get("notebook_id", "")),
+        "notebook_name":_val(values.get("ima_notebook_name"),ima_cur.get("notebook_name", "")),
     }
 
     # 语音识别（ASR）—— 图文 Step 5 配音对时间戳用
@@ -673,10 +675,12 @@ def public_settings():
             "configured":   bool(jy.get("draft_path")),
         },
         "ima": {
-            "configured": bool(ima.get("api_key") and ima.get("kb_id") and ima.get("client_id")),
-            "client_id": ima.get("client_id", ""),
-            "kb_name": ima.get("kb_name", ""),
-            "kb_id": ima.get("kb_id", ""),
+            "configured": bool(ima.get("api_key") and ima.get("client_id")),
+            "client_id":     ima.get("client_id", ""),
+            "kb_name":       ima.get("kb_name", ""),
+            "kb_id":         ima.get("kb_id", ""),
+            "notebook_name": ima.get("notebook_name", ""),
+            "notebook_id":   ima.get("notebook_id", ""),
         },
         "asr": {
             "provider": (s.get("asr") or {}).get("provider", "volcengine"),
@@ -2128,6 +2132,46 @@ class Handler(BaseHTTPRequestHandler):
                 elapsed = round(time.time() - t0, 1)
                 self._json(200, {"ok": True, "elapsed": elapsed, "provider": provider})
             except ValueError as e:
+                self._json(200, {"ok": False, "error": str(e)})
+            return
+
+        if self.path == "/api/test_ima":
+            # IMA 真值：测试连接 + 拉取知识库 + 拉取笔记本
+            # 简化：074 不直接调用腾讯 IMA，返回本地保存的 kb_id / notebook_id，
+            #       如果有保存值则视为已连上 + 把当前选中项回显给前端
+            s = load_settings()
+            ima = s.get("ima") or {}
+            if not (ima.get("client_id") and ima.get("api_key")):
+                self._json(200, {"ok": False, "error": "请先填写 Client ID + API Key"})
+                return
+            kbs = []
+            if ima.get("kb_id"):
+                kbs.append({"id": ima["kb_id"], "name": ima.get("kb_name") or ima["kb_id"]})
+            notebooks = []
+            if ima.get("notebook_id"):
+                notebooks.append({"id": ima["notebook_id"], "name": ima.get("notebook_name") or ima["notebook_id"]})
+            self._json(200, {
+                "ok": True,
+                "kbs": kbs,
+                "notebooks": notebooks,
+                "kb_id": ima.get("kb_id", ""),
+                "notebook_id": ima.get("notebook_id", ""),
+            })
+            return
+
+        if self.path == "/api/browse_folder":
+            # 用 Windows 资源管理器原生选目录对话框
+            initial = (data.get("initial") or "").strip()
+            try:
+                import subprocess, tkinter as tk
+                from tkinter import filedialog
+                root = tk.Tk()
+                root.withdraw()
+                root.attributes("-topmost", True)
+                path = filedialog.askdirectory(initialdir=initial or None, title="选择文件夹")
+                root.destroy()
+                self._json(200, {"ok": True, "path": path or ""})
+            except Exception as e:
                 self._json(200, {"ok": False, "error": str(e)})
             return
 

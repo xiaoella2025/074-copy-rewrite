@@ -802,14 +802,22 @@ code{background:var(--bg);padding:1px 5px;border-radius:3px;font-family:var(--fo
           </div>
         </div>
 
-        <div class="field-hd"><span class="label">Knowledge Base ID</span></div>
-        <input type="text" id="ima-kb-id" placeholder="kb_xxx">
-        <div class="field-hd"><span class="label">Knowledge Base 名称</span></div>
-        <input type="text" id="ima-kb-name" placeholder="可选">
-
         <div class="settings-card-footer">
           <button class="btn btn-primary" id="btn-ima-save">💾 保存</button>
           <button class="btn btn-ghost" id="btn-ima-test">🔌 测试连接 / 拉取知识库</button>
+        </div>
+
+        <!-- STORY 真值：测试连接后出现 知识库 + 笔记本 select -->
+        <div id="ima-kb-block" style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid var(--border-subtle)">
+          <div class="field-hd"><span class="label">选择知识库</span><span class="hint">AI 创作时从此知识库检索素材</span></div>
+          <select id="ima-kb-select">
+            <option value="">未选择</option>
+          </select>
+
+          <div class="field-hd" style="margin-top:12px"><span class="label">默认写入笔记本</span><span class="hint">可选 · 「存入 ima」的笔记归入该笔记本</span></div>
+          <select id="ima-notebook-select">
+            <option value="">未选择</option>
+          </select>
         </div>
       </div>
     </div>
@@ -1309,8 +1317,20 @@ async function refreshSettings() {
     // IMA
     $("ima-client-id").value = s.ima.client_id || "";
     $("ima-api-key").value = "";
-    $("ima-kb-id").value = s.ima.kb_id || "";
-    $("ima-kb-name").value = s.ima.kb_name || "";
+    // 选择知识库 / 默认写入笔记本：仅在已有保存值时显示
+    if (s.ima.kb_id || s.ima.notebook_id) {
+      const kbSel = $("ima-kb-select");
+      const nbSel = $("ima-notebook-select");
+      if (s.ima.kb_id) {
+        kbSel.innerHTML = `<option value="${s.ima.kb_id}">${escapeHtml(s.ima.kb_name || s.ima.kb_id)}</option>`;
+        kbSel.value = s.ima.kb_id;
+      }
+      if (s.ima.notebook_id) {
+        nbSel.innerHTML = `<option value="${s.ima.notebook_id}">${escapeHtml(s.ima.notebook_name || s.ima.notebook_id)}</option>`;
+        nbSel.value = s.ima.notebook_id;
+      }
+      $("ima-kb-block").style.display = "";
+    }
     setStatus("st-ai-creation", s.ima.configured ? "✓ 已配置" : "未配置", s.ima.configured);
     setDot("dot-ai-creation", s.ima.configured ? "ok" : "bad");
     // License
@@ -1672,8 +1692,21 @@ async function testIMA() {
   toast("⏳ 测试连接中...", true);
   try {
     const r = await api("/api/test_ima", "POST", {});
-    if (r.ok) toast("✓ 连接成功" + (r.kbs ? "，找到 " + r.kbs.length + " 个知识库" : ""), true);
-    else toast("❌ " + (r.error || "失败"), false);
+    if (r.ok) {
+      const block = $("ima-kb-block");
+      const kbSel = $("ima-kb-select");
+      const nbSel = $("ima-notebook-select");
+      if (r.kbs && r.kbs.length) {
+        kbSel.innerHTML = '<option value="">未选择</option>' + r.kbs.map(k => `<option value="${k.id}">${escapeHtml(k.name || k.id)}</option>`).join("");
+        kbSel.value = r.kb_id || "";
+      }
+      if (r.notebooks && r.notebooks.length) {
+        nbSel.innerHTML = '<option value="">未选择</option>' + r.notebooks.map(n => `<option value="${n.id}">${escapeHtml(n.name || n.id)}</option>`).join("");
+        nbSel.value = r.notebook_id || "";
+      }
+      block.style.display = r.kbs || r.notebooks ? "" : "none";
+      toast("✓ 连接成功" + (r.kbs ? "，找到 " + r.kbs.length + " 个知识库" : ""), true);
+    } else toast("❌ " + (r.error || "失败"), false);
   } catch (e) { toast("❌ " + e.message, false); }
 }
 
@@ -1690,8 +1723,8 @@ async function saveIMA() {
     await api("/api/settings", "POST", {
       ima_client_id: $("ima-client-id").value.trim() || KEEP,
       ima_api_key: $("ima-api-key").value.trim() || KEEP,
-      ima_kb_id: $("ima-kb-id").value.trim() || KEEP,
-      ima_kb_name: $("ima-kb-name").value.trim() || KEEP,
+      ima_kb_id: $("ima-kb-select").value || KEEP,
+      ima_notebook_id: $("ima-notebook-select").value || KEEP,
     });
     toast("✓ IMA 已保存", true);
     $("ima-api-key").value = "";
