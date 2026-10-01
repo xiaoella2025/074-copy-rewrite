@@ -347,7 +347,7 @@ code{background:var(--bg);padding:1px 5px;border-radius:3px;font-family:var(--fo
           <input type="text" id="llm-edit-name" placeholder="如：主力DeepSeek">
           <div class="field-hd"><span class="label">服务商</span></div>
           <div class="chips" id="llm-edit-providers"></div>
-          <div class="field-hd"><span class="label">协议（仅自定义）</span></div>
+          <div class="field-hd" id="llm-protocol-head"><span class="label">协议</span><span class="hint">必选</span></div>
           <div class="chips" id="llm-edit-protocols">
             <div class="chip" data-v="openai"><span class="chip-main">OpenAI 兼容</span></div>
             <div class="chip" data-v="anthropic"><span class="chip-main">Anthropic 兼容</span></div>
@@ -360,11 +360,12 @@ code{background:var(--bg);padding:1px 5px;border-radius:3px;font-family:var(--fo
               <button type="button" class="key-input-btn" data-paste-key="llm-edit-key" title="从剪贴板粘贴">📋</button>
             </div>
           </div>
-          <div class="field-hd"><span class="label">默认模型</span><span class="hint">点 chip 选中；列表里没有就点「+ 自定义」</span></div>
+          <div class="field-hd"><span class="label" id="llm-model-label">默认模型</span><span class="hint" id="llm-model-hint">点 chip 选中；列表里没有就点「+ 自定义」</span></div>
           <div class="chips" id="llm-edit-models"></div>
-          <div class="field-hd"><span class="label">备选模型</span><span class="hint">可选 · 点 chip 多选 toggle</span></div>
+          <div class="field-hd"><span class="label">备选模型</span><span class="hint" id="llm-fallback-hint">可选 · 点 chip 多选</span></div>
           <div class="chips" id="llm-edit-fallbacks"></div>
-          <div class="field-hd"><span class="label">Base URL</span><span class="hint">自定义服务商必填</span></div>
+          <div class="field-help">同一 Key / 地址下可用的其他模型，文案工作台会话可在这些模型间切换；流水线仍用默认模型。</div>
+          <div class="field-hd"><span class="label">Base URL</span><span class="hint" id="llm-baseurl-hint">自定义服务商必填</span></div>
           <input type="text" id="llm-edit-baseurl" placeholder="https://api.deepseek.com">
           <div class="field-hd"><span class="label">代理 URL（可选）</span><span class="hint">境外模型常用</span></div>
           <input type="text" id="llm-edit-proxy" placeholder="http://127.0.0.1:7890">
@@ -981,12 +982,28 @@ function renderProviderChips() {
   `).join("");
   bindChipGroup("llm-edit-providers", v => {
     const p = PROVIDERS.find(x => x.id === v);
-    if (p && p.baseUrl && !$("llm-edit-baseurl").value.trim()) {
-      $("llm-edit-baseurl").value = p.baseUrl;
+    const prof = profilesCache.find(x => x.id === editingProfileId);
+    if (prof && p && prof.provider !== v) {
+      // STORY Settings.js:650-667：换服务商时重置模型与地址。
+      prof.provider = v;
+      prof.model = p.models[0] || "";
+      prof.fallback = [];
+      prof.models = [];
+      if (v !== "custom") prof.protocol = "openai";
+      $("llm-edit-baseurl").value = p.baseUrl || "";
     }
+    renderProviderFields(v);
     renderModelChips(p ? p.models : []);
     scheduleAutoSaveEdit();
   });
+}
+
+function renderProviderFields(provider) {
+  const custom = provider === "custom";
+  $("llm-protocol-head").style.display = custom ? "" : "none";
+  $("llm-edit-protocols").style.display = custom ? "" : "none";
+  $("llm-baseurl-hint").textContent = custom ? "必填" : "可选";
+  if (!custom) setChipGroup("llm-edit-protocols", "openai");
 }
 
 // STORY 真值：默认模型 chips + 用户加的常驻自定义模型 + 「+ 自定义」入口
@@ -995,12 +1012,23 @@ function renderModelChips(predefined) {
   const wrap = $("llm-edit-models");
   const p = profilesCache.find(x => x.id === editingProfileId);
   const custom = (p && Array.isArray(p.models)) ? p.models : [];
-  // 自定义服务商：手动填模型名
+  // STORY Settings.js:826-834：没有预设模型的服务商直接填写 model id。
   if (!predefined || !predefined.length) {
-    wrap.innerHTML = `<div style="color:var(--text-faint);font-size:11px;padding:6px">自定义服务商：手动填模型名</div>`;
+    $("llm-model-label").textContent = "模型";
+    $("llm-model-hint").textContent = "必填";
+    wrap.innerHTML = `<input type="text" id="llm-edit-model-input" aria-label="模型" placeholder="例：gpt-4o-mini" value="${escapeHtml((p && p.model) || "")}">`;
+    $("llm-edit-model-input").addEventListener("input", e => {
+      const prof = profilesCache.find(x => x.id === editingProfileId);
+      if (!prof) return;
+      prof.model = e.target.value;
+      prof.fallback = (prof.fallback || []).filter(x => x !== prof.model.trim());
+      scheduleAutoSaveEdit();
+    });
     renderFallbackChips([], p);
     return;
   }
+  $("llm-model-label").textContent = "默认模型";
+  $("llm-model-hint").textContent = "点 chip 选中；列表里没有就点「+ 自定义」";
   // 合并预定义 + 用户自定义，去重
   const all = [...new Set([...predefined, ...custom])];
   const currentModel = (p && p.model) || "";
@@ -1044,8 +1072,8 @@ function renderModelChips(predefined) {
         // 备选 chip 列表里如果默认被勾选，去掉它（不能和默认重复）
         if (Array.isArray(prof.fallback) && prof.fallback.includes(v)) {
           prof.fallback = prof.fallback.filter(x => x !== v);
-          renderFallbackChips(predefined, prof);
         }
+        renderFallbackChips(predefined, prof);
       }
       scheduleAutoSaveEdit();
     });
@@ -1056,27 +1084,39 @@ function renderModelChips(predefined) {
 // STORY 真值：备选模型 chip 多选 toggle（Na 组件，Settings-XLgSTp15.js:840-848）
 function renderFallbackChips(predefined, profile) {
   const wrap = $("llm-edit-fallbacks");
+  if (!predefined || !predefined.length) {
+    $("llm-fallback-hint").textContent = "可选 · 每行一个 model id";
+    const fallbacks = (profile && Array.isArray(profile.fallback)) ? profile.fallback : [];
+    wrap.innerHTML = `<textarea id="llm-edit-fallback-input" aria-label="备选模型" rows="3" placeholder="每行一个 model id，例：&#10;claude-sonnet-4-6&#10;gpt-5.4"></textarea>`;
+    $("llm-edit-fallback-input").value = fallbacks.join("\n");
+    $("llm-edit-fallback-input").addEventListener("input", e => {
+      const prof = profilesCache.find(x => x.id === editingProfileId);
+      if (!prof) return;
+      const model = (prof.model || "").trim();
+      prof.fallback = [...new Set(e.target.value.split(/\r?\n/).map(x => x.trim()).filter(x => x && x !== model))];
+      scheduleAutoSaveEdit();
+    });
+    return;
+  }
+  $("llm-fallback-hint").textContent = "可选 · 点 chip 多选";
   const custom = (profile && Array.isArray(profile.models)) ? profile.models : [];
   const all = [...new Set([...(predefined || []), ...custom])];
   const fallbacks = (profile && Array.isArray(profile.fallback)) ? profile.fallback : [];
   const defaultModel = (profile && profile.model) || "";
-  wrap.innerHTML = all.map(m => {
-    // 默认模型不能在备选里
-    if (m === defaultModel) return "";
-    return `
-      <div class="chip ${fallbacks.includes(m) ? "active" : ""}" data-v="${escapeHtml(m)}">
-        <span class="chip-main">${escapeHtml(m)}</span>
-      </div>
-    `;
-  }).join("");
+  wrap.innerHTML = all.map(m => `
+    <div class="chip" data-v="${escapeHtml(m)}" data-active="${m === defaultModel || fallbacks.includes(m)}" ${m === defaultModel ? 'title="默认模型，已包含在可切换列表里" style="cursor:default;opacity:.75"' : ''}>
+      <span class="chip-main">${escapeHtml(m)}</span>
+      ${m === defaultModel ? '<span class="chip-hint">默认模型</span>' : ''}
+    </div>
+  `).join("");
   wrap.querySelectorAll(".chip").forEach(chip => {
     chip.addEventListener("click", () => {
       const v = chip.dataset.v;
       const prof = profilesCache.find(x => x.id === editingProfileId);
-      if (!prof) return;
+      if (!prof || v === prof.model) return;
       const fbs = Array.isArray(prof.fallback) ? prof.fallback : [];
       prof.fallback = fbs.includes(v) ? fbs.filter(x => x !== v) : [...fbs, v];
-      chip.classList.toggle("active");
+      chip.dataset.active = String(prof.fallback.includes(v));
       scheduleAutoSaveEdit();
     });
   });
@@ -1236,6 +1276,7 @@ function openEditProfile(id) {
     setChipGroup("llm-edit-providers", p.provider);
     setChipGroup("llm-edit-protocols", p.protocol || "openai");
     const prov = PROVIDERS.find(x => x.id === p.provider);
+    renderProviderFields(p.provider);
     renderModelChips(prov ? prov.models : []);
   }, 50);
   // 设置按钮状态
@@ -1282,6 +1323,7 @@ async function openNewProfile() {
   setTimeout(() => {
     setChipGroup("llm-edit-providers", newProfile.provider);
     setChipGroup("llm-edit-protocols", newProfile.protocol);
+    renderProviderFields(newProfile.provider);
     renderModelChips(PROVIDERS[0].models);
   }, 50);
   $("btn-llm-setactive").style.display = newProfile.enabled ? "none" : "";
