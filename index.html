@@ -143,7 +143,7 @@ body{padding-left:220px;}
 .sidebar .brand .logo{width:26px;height:26px;background:linear-gradient(135deg,#10b981,#059669);border-radius:6px;display:flex;align-items:center;justify-content:center;color:white;font-weight:700;font-size:12px;}
 .sidebar .brand .name{font-weight:600;font-size:13px;}
 .sidebar .brand .ver{font-size:10px;color:var(--muted);}
-.sidebar .new-btn{display:block;width:100%;padding:8px 12px;background:var(--accent);color:white;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:500;margin-bottom:14px;text-align:center;}
+.sidebar .new-btn{display:block;width:100%;padding:8px 12px;background:var(--accent);color:white;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:500;margin-bottom:14px;text-align:center;text-decoration:none;transition:background .12s;}
 .sidebar .new-btn:hover{background:var(--accent-2);}
 .sidebar .new-btn .kbd{float:right;background:rgba(255,255,255,.25);padding:1px 6px;border-radius:3px;font-size:10px;}
 .nav-item{display:flex;align-items:center;gap:8px;padding:6px 12px;font-size:12px;color:var(--text);cursor:pointer;border-radius:5px;margin:1px 0;text-decoration:none;}
@@ -297,47 +297,22 @@ body{padding-left:220px;}
       <div class="ver">v1.0.0 · 文案改写</div>
     </div>
   </div>
-  <button class="new-btn">+ 新建任务 <span class="kbd">Ctrl+K</span></button>
+  <a class="new-btn" href="/index.html">+ 新建任务 <span class="kbd">Ctrl+K</span></a>
 
   <div class="nav-group">
-    <div class="nav-item"><span class="ico">📋</span>任务队列</div>
-    <div class="nav-item"><span class="ico">🕐</span>历史任务</div>
-    <div class="nav-item"><span class="ico">🎨</span>画面实验室</div>
-    <div class="nav-item"><span class="ico">🎙️</span>配音实验室</div>
-    <div class="nav-item"><span class="ico">📦</span>素材库</div>
-  </div>
-
-  <div class="nav-group">
-    <div class="nav-item" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'':'none'">
-      <span class="ico">📝</span>文案工作台 <span style="margin-left:auto;color:var(--muted)">▾</span>
-    </div>
-    <div>
-      <div class="nav-sub">提示词模板</div>
-      <div class="nav-sub">草稿模板</div>
-    </div>
-  </div>
-
-  <div class="nav-group">
-    <div class="nav-item"><span class="ico">🛒</span>选品助手</div>
-    <div class="nav-item"><span class="ico">🎯</span>对标监控</div>
-    <div class="nav-item"><span class="ico">🏪</span>创作市场</div>
+    <a class="nav-item" href="/tasks.html"><span class="ico">📋</span>任务队列</a>
+    <a class="nav-item" href="/tasks.html"><span class="ico">🕐</span>历史任务</a>
   </div>
 
   <div class="nav-group">
     <a class="nav-item" href="/settings.html"><span class="ico">⚙️</span>系统设置</a>
-    <div class="nav-item"><span class="ico">👤</span>账号管理</div>
-    <div class="nav-item"><span class="ico">🔑</span>激活管理</div>
-    <div class="nav-item"><span class="ico">💎</span>积分管理</div>
   </div>
 
   <div class="sidebar-bottom">
     <div class="user-box">
-      <div class="name">半半·龙月</div>
-      <div>完成 23 小时前</div>
-      <div class="quota">150/150 已用完</div>
+      <div class="name">本机部署</div>
+      <div>独立运行 · 不依赖官方</div>
     </div>
-    <div class="nav-item" style="margin-top:6px"><span class="ico">💬</span>不能地图的部分</div>
-    <div class="nav-item"><span class="ico">📝</span>意见反馈</div>
   </div>
 </aside>
 
