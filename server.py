@@ -2529,6 +2529,8 @@ class Handler(BaseHTTPRequestHandler):
                 task_id = (data.get("task_id") or f"app074_{int(time.time())}").strip()
                 ratio = (data.get("ratio") or "9:16").strip()
                 bgm_path = (data.get("bgm_path") or jy.get("bgm_path") or "").strip()
+                bgm_volume = float(data.get("bgm_volume") or jy.get("bgm_volume") or 0.3)
+                bgm_fade_sec = float(data.get("bgm_fade_sec") or jy.get("bgm_fade_sec") or 1.5)
                 cover_title = data.get("cover_title") or {}
                 if not shots:
                     self._json(400, {"error": "shots 不能为空"})
@@ -2621,10 +2623,16 @@ class Handler(BaseHTTPRequestHandler):
                                 "start": round(cur_t * 1_000_000),
                                 "duration": round(dur * 1_000_000),
                             },
-                            "font_size": 12,
+                            # 字幕样式（参考 STORY 默认字幕风格：白字 + 黑描边 + 阴影，底部居中）
+                            "font_size": 18,
                             "font_color": "#FFFFFF",
+                            "stroke_color": "#000000",
+                            "stroke_width": 2,
+                            "shadow_enabled": True,
+                            "shadow_color": "#000000",
+                            "shadow_offset": {"x": 0, "y": 2},
                             "alignment": 1,  # 居中
-                            "position": {"x": 0.5, "y": 0.85},  # 偏下，不挡主体
+                            "position": {"x": 0.5, "y": 0.88},  # 偏下，不挡主体
                         })
                     cur_t += dur
                 tracks.append({
@@ -2641,8 +2649,10 @@ class Handler(BaseHTTPRequestHandler):
                     "flag": 0,
                     "segments": subtitle_segments,
                 })
-                # BGM 轨（全局铺底 30% 音量）
+                # BGM 轨（全局铺底 30% 音量 + 头尾 1.5s 淡入淡出）
                 if bgm_path and Path(bgm_path).exists():
+                    bgm_duration_us = round(max(total_dur, 1.0) * 1_000_000)
+                    fade_us = int(bgm_fade_sec * 1_000_000)
                     tracks.append({
                         "id": "bgm_track",
                         "type": "audio",
@@ -2655,10 +2665,17 @@ class Handler(BaseHTTPRequestHandler):
                             "material_path": bgm_path,
                             "target_timerange": {
                                 "start": 0,
-                                "duration": round(max(total_dur, 1.0) * 1_000_000),
+                                "duration": bgm_duration_us,
                             },
                             "speed": 1.0,
-                            "volume": 0.3,
+                            "volume": bgm_volume,
+                            # 音量关键帧：开头 0 → bgm_volume（淡入），结尾 bgm_volume → 0（淡出）
+                            "keyframes": [
+                                {"type": "volume", "time": 0, "value": 0.0},
+                                {"type": "volume", "time": min(fade_us, bgm_duration_us), "value": bgm_volume},
+                                {"type": "volume", "time": max(0, bgm_duration_us - fade_us), "value": bgm_volume},
+                                {"type": "volume", "time": bgm_duration_us, "value": 0.0},
+                            ],
                             "visible": True,
                         }],
                     })
