@@ -182,21 +182,33 @@ textarea{resize:vertical;min-height:60px;font-family:var(--font-mono);font-size:
 .token-row .del{cursor:pointer;opacity:.5;font-size:11px;line-height:1;padding:2px 6px;border-radius:4px;}
 .token-row .del:hover{opacity:1;background:color-mix(in oklch,var(--danger) 12%,transparent);color:var(--danger);}
 .profile-list{margin-top:14px;}
-.profile-row{display:grid;grid-template-columns:18px 1fr auto;gap:12px;align-items:center;padding:14px 16px;background:var(--bg-elevated);border:1px solid var(--border-subtle);border-radius:var(--radius-md);cursor:pointer;transition:all .12s;position:relative;}
+.profile-row{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;padding:14px 16px;background:var(--bg-elevated);border:1px solid var(--border-subtle);border-radius:var(--radius-md);cursor:pointer;transition:all .12s;position:relative;}
 .profile-row:hover{border-color:var(--border);background:var(--bg-hover);}
 .profile-row.active{border-color:var(--brand);background:color-mix(in oklch,var(--brand) 4%,var(--bg));box-shadow:0 0 0 1px var(--brand),0 1px 3px var(--brand-soft);}
 .profile-row.active::before{content:"";position:absolute;left:-1px;top:8px;bottom:8px;width:3px;background:var(--brand);border-radius:0 3px 3px 0;}
-.profile-row .radio{width:16px;height:16px;border-radius:50%;border:1.5px solid var(--border);background:var(--bg);display:grid;place-items:center;flex-shrink:0;}
-.profile-row.active .radio{border-color:var(--brand);background:var(--brand);}
-.profile-row.active .radio::after{content:"";width:6px;height:6px;border-radius:50%;background:#fff;box-shadow:0 0 0 .5px var(--bg);}
-.profile-row .body{display:flex;flex-direction:column;gap:5px;min-width:0;}
-.profile-row .titlerow{display:flex;align-items:center;gap:10px;min-width:0;}
-.profile-row .name{font-size:14px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;}
-.profile-row .active-label{font-size:10px;font-weight:700;color:var(--brand);background:var(--brand-soft);padding:1px 7px;border-radius:999px;letter-spacing:.03em;text-transform:uppercase;}
-.profile-row .meta{display:flex;align-items:center;gap:7px;flex-wrap:wrap;font-size:11.5px;color:var(--text-faint);}
-.profile-row .meta .sep{color:var(--border);}
-.profile-row .actions{display:flex;gap:4px;}
-.profile-row .actions button{font-size:11px;padding:4px 8px;}
+/* STORY 真值：profile-row-radio（Settings.js:1088-1094）— 左侧单选圈 */
+.profile-row-radio{width:18px;height:18px;border-radius:50%;border:1.5px solid var(--border);background:var(--bg);display:grid;place-items:center;flex-shrink:0;transition:all .12s;}
+.profile-row-radio-inner{width:8px;height:8px;border-radius:50%;background:transparent;transition:background .12s;}
+.profile-row.active .profile-row-radio{border-color:var(--brand);}
+.profile-row.active .profile-row-radio-inner{background:var(--brand);}
+.profile-row-body{display:flex;flex-direction:column;gap:5px;min-width:0;}
+.profile-row-titlerow{display:flex;align-items:center;gap:10px;min-width:0;}
+.profile-row-name{font-size:14px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;}
+.profile-row-activelabel{font-size:10px;font-weight:700;color:var(--brand);background:var(--brand-soft);padding:1px 7px;border-radius:999px;letter-spacing:.03em;text-transform:uppercase;flex-shrink:0;}
+.profile-row-meta{display:flex;align-items:center;gap:7px;flex-wrap:wrap;font-size:11.5px;color:var(--text-faint);}
+.profile-row-meta .sep{color:var(--border);}
+.profile-row-actions{display:flex;align-items:center;gap:4px;flex-shrink:0;}
+.profile-row-actions .profile-action-btn{padding:0 10px;width:auto;display:inline-flex;align-items:center;gap:4px;font-size:12px;height:28px;border-radius:var(--radius-sm);}
+.profile-row-actions .profile-action-btn.icon-only{width:28px;padding:0;justify-content:center;}
+.profile-list-head{display:flex;align-items:center;gap:8px;margin:14px 0 10px;}
+.profile-list-head-title{font-size:13px;color:var(--text-muted);}
+.profile-list-head-count{font-weight:600;color:var(--text);margin:0 2px;}
+.profile-list-head .flex-1{flex:1;}
+.profile-hint{display:flex;align-items:center;gap:6px;margin-top:14px;padding:10px 14px;background:var(--brand-soft);border-radius:var(--radius-sm);font-size:12px;color:var(--brand);}
+.profile-empty{padding:36px 20px;text-align:center;background:var(--bg-raised);border:1px dashed var(--border);border-radius:var(--radius-md);}
+.profile-empty-icon{width:44px;height:44px;border-radius:50%;background:var(--bg-elevated);display:grid;place-items:center;margin:0 auto 10px;color:var(--text-faint);}
+.profile-empty-title{font-size:14px;color:var(--text);margin-bottom:4px;}
+.profile-empty-sub{font-size:12px;color:var(--text-muted);margin-bottom:14px;}
 .profile-edit{padding:16px;background:var(--bg-raised);border-radius:var(--radius-md);border:1px dashed var(--border-strong);margin-top:8px;}
 .info-bar{margin-top:10px;padding:8px 12px;background:var(--brand-soft);color:var(--brand);border-radius:var(--radius-sm);font-size:12px;}
 .info-bar a{color:var(--brand);text-decoration:underline;}
@@ -274,15 +286,19 @@ code{background:var(--bg);padding:1px 5px;border-radius:3px;font-family:var(--fo
 
       <!-- LIST 视图（默认） -->
       <div id="llm-list-view">
-        <div style="display:flex;align-items:center;gap:8px;margin:14px 0">
-          <span style="color:var(--text-muted);font-size:13px">已保存 <strong id="llm-count" style="color:var(--text)">0</strong> 个配置</span>
-          <span class="flex-1" style="flex:1"></span>
+        <div class="profile-list-head">
+          <span class="profile-list-head-title">已保存 <span class="profile-list-head-count" id="llm-count">0</span> 个配置</span>
+          <span class="flex-1"></span>
           <button class="btn primary" id="btn-llm-new">＋ 新建配置</button>
         </div>
         <div id="llm-profile-list" class="profile-list"></div>
-        <div class="empty-state" id="llm-empty" style="display:none">
-          还没有配置<br><br><button class="btn primary" onclick="$('btn-llm-new').click()">添加第一个配置</button>
+        <div class="profile-empty" id="llm-empty" style="display:none">
+          <div class="profile-empty-icon">＋</div>
+          <div class="profile-empty-title">还没有配置</div>
+          <div class="profile-empty-sub">添加你的第一个 LLM 配置开始使用</div>
+          <button class="btn primary" onclick="$('btn-llm-new').click()">添加第一个配置</button>
         </div>
+        <div class="profile-hint">ⓘ 创建任务时可在「使用模型」下拉里秒切 · 不同配置可以用不同的代理、Base URL · API Key 安全存储在系统钥匙串</div>
       </div>
 
       <!-- EDIT 视图 -->
@@ -878,36 +894,40 @@ function renderProfileList(profiles) {
   }
   empty.style.display = "none";
   wrap.innerHTML = profilesCache.map(p => {
-    const active = p.enabled ? '<span class="active-label">使用中</span>' : "";
-    // STORY 真值：profile-status-empty / profile-status-untested
+    const active = p.enabled ? '<span class="profile-row-activelabel">使用中</span>' : "";
+    // STORY 真值：profile-status-{empty|untested|ok|fail}（Settings.js:163-164）
     const statusCls = p.has_key ? "profile-status-untested" : "profile-status-empty";
-    const statusTitle = p.has_key ? "已配置" : "待配置";
+    const statusTitle = p.has_key ? "已配置 · 待测试" : "待配置";
+    const maskedKey = p.masked_key ? `<span class="sep">·</span><span style="opacity:.7">${escapeHtml(p.masked_key)}</span>` : "";
     return `
       <div class="profile-row ${p.enabled ? "active" : ""}" data-id="${p.id}">
-        <span class="profile-status ${statusCls}" title="${statusTitle}"></span>
-        <div class="body">
-          <div class="titlerow">
-            <div class="name">${escapeHtml(p.name)}</div>
+        <div class="profile-row-radio"><span class="profile-row-radio-inner"></span></div>
+        <div class="profile-row-body">
+          <div class="profile-row-titlerow">
+            <span class="profile-row-name">${escapeHtml(p.name)}</span>
             ${active}
+            <span class="profile-status ${statusCls}" title="${statusTitle}"></span>
           </div>
-          <div class="meta">
+          <div class="profile-row-meta">
             <span>${escapeHtml(p.provider)}</span>
             <span class="sep">·</span>
             <span>${escapeHtml(p.model)}</span>
-            <span class="sep">·</span>
-            <span>${escapeHtml(p.masked_key)}</span>
+            ${maskedKey}
           </div>
         </div>
-        <div class="profile-action-wrap">
-          <button class="profile-action-btn" data-act="more" title="更多操作">⋯</button>
+        <div class="profile-row-actions">
+          <button class="profile-action-btn" data-act="edit" title="编辑">✎ 编辑</button>
+          <button class="profile-action-btn icon-only" data-act="more" title="更多操作">⋯</button>
         </div>
       </div>
     `;
   }).join("");
   wrap.querySelectorAll(".profile-row").forEach(row => {
     const id = row.dataset.id;
-    const moreBtn = row.querySelector(".profile-action-btn");
-    moreBtn.addEventListener("click", e => {
+    const editBtn = row.querySelector('[data-act="edit"]');
+    const moreBtn = row.querySelector('[data-act="more"]');
+    if (editBtn) editBtn.addEventListener("click", e => { e.stopPropagation(); openEditProfile(id); });
+    if (moreBtn) moreBtn.addEventListener("click", e => {
       e.stopPropagation();
       openProfileMenu(moreBtn, id, row);
     });
