@@ -498,8 +498,10 @@ def _merged(values):
 
     jy_cur = cur.get("jianying", {}) or {}
     jianying = {
-        "draft_path": _val(values.get("jianying_draft_path"), jy_cur.get("draft_path", "")),
-        "bgm_path":   _val(values.get("jianying_bgm_path"),   jy_cur.get("bgm_path", "")),
+        "draft_path":   _val(values.get("jianying_draft_path"),  jy_cur.get("draft_path", "")),
+        "bgm_path":     _val(values.get("jianying_bgm_path"),    jy_cur.get("bgm_path", "")),
+        "auto_continue": _val_bool(values.get("jianying_auto_continue"), jy_cur.get("auto_continue", False)),
+        "task_notify":   _val_bool(values.get("jianying_task_notify"),   jy_cur.get("task_notify", True)),
     }
 
     ima_cur = cur.get("ima", {}) or {}
@@ -655,9 +657,11 @@ def public_settings():
             "minimax_voice_id": tts_mx.get("voice_id", ""),
         },
         "jianying": {
-            "draft_path": jy.get("draft_path", ""),
-            "bgm_path": jy.get("bgm_path", ""),
-            "configured": bool(jy.get("draft_path")),
+            "draft_path":   jy.get("draft_path", ""),
+            "bgm_path":     jy.get("bgm_path", ""),
+            "auto_continue": jy.get("auto_continue", False),
+            "task_notify":   jy.get("task_notify", True),
+            "configured":   bool(jy.get("draft_path")),
         },
         "ima": {
             "configured": bool(ima.get("api_key") and ima.get("kb_id") and ima.get("client_id")),

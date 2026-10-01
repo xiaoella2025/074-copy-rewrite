@@ -625,16 +625,21 @@ code{background:var(--bg);padding:1px 5px;border-radius:3px;font-family:var(--fo
       <div class="card">
         <div class="card-hd"><span class="label">TTS provider</span></div>
         <div class="chips" id="tts-providers">
-          <div class="chip" data-v="volcengine"><span class="chip-main">火山引擎 TTS</span><span class="chip-hint">豆包 / seed-tts</span></div>
-          <div class="chip" data-v="minimax"><span class="chip-main">MiniMax TTS</span><span class="chip-hint">MiniMax API</span></div>
-          <div class="chip" data-v="custom"><span class="chip-main">自定义（占位）</span></div>
+          <div class="chip" data-v="volcengine"><span class="chip-main">火山引擎</span><span class="chip-hint">豆包语音 · 情感自然</span></div>
+          <div class="chip" data-v="minimax"><span class="chip-main">MiniMax</span><span class="chip-hint">支持声音克隆</span></div>
         </div>
       </div>
 
       <div class="card" id="tts-volc-block">
         <div class="card-hd"><span class="label">火山引擎 TTS</span><span class="hint">豆包语音 · Seed TTS</span></div>
         <div class="field-hd"><span class="label">API Key</span><span class="hint">控制台 → 访问控制 → API Key 管理</span></div>
-        <input type="password" id="tts-volc-key" placeholder="留空保留原值">
+        <div class="key-input">
+          <input type="password" id="tts-volc-key" class="key-input-field" placeholder="留空保留原值">
+          <div class="key-input-actions">
+            <button type="button" class="key-input-btn" data-toggle-key="tts-volc-key" title="显示/隐藏">👁</button>
+            <button type="button" class="key-input-btn" data-paste-key="tts-volc-key" title="从剪贴板粘贴">📋</button>
+          </div>
+        </div>
         <div class="field-hd"><span class="label">默认发音人（speaker id）</span><span class="hint">点下方胶囊快速选</span></div>
         <div class="chips" id="tts-speakers">
           <div class="chip" data-v="zh_male_dongfanghaoran_moon_bigtts"><span class="chip-main">东方浩然</span></div>
@@ -649,18 +654,25 @@ code{background:var(--bg);padding:1px 5px;border-radius:3px;font-family:var(--fo
       </div>
 
       <div class="card" id="tts-minimax-block" style="display:none">
-        <div class="card-hd"><span class="label">MiniMax TTS</span></div>
+        <div class="card-hd"><span class="label">MiniMax TTS</span><span class="hint">支持声音克隆（8 秒音频）</span></div>
         <div class="field-hd"><span class="label">API Key</span></div>
-        <input type="password" id="tts-minimax-key" placeholder="留空保留原值">
+        <div class="key-input">
+          <input type="password" id="tts-minimax-key" class="key-input-field" placeholder="留空保留原值">
+          <div class="key-input-actions">
+            <button type="button" class="key-input-btn" data-toggle-key="tts-minimax-key">👁</button>
+            <button type="button" class="key-input-btn" data-paste-key="tts-minimax-key">📋</button>
+          </div>
+        </div>
         <div class="field-hd"><span class="label">模型</span></div>
         <input type="text" id="tts-minimax-model" placeholder="speech-02-hd">
         <div class="field-hd"><span class="label">Voice ID（系统 / 克隆均可）</span></div>
         <input type="text" id="tts-minimax-voice" placeholder="如 male-qn-qingse">
+        <div class="field-help">价格为 MiniMax 平台官方价 · 按字符计费 · 用户自付</div>
       </div>
 
-      <div style="margin-top:14px">
+      <div class="settings-card-footer">
         <button class="btn primary" id="btn-tts-save">💾 保存</button>
-        <button class="btn" id="btn-tts-test">🔌 测试 TTS</button>
+        <button class="btn btn-ghost" id="btn-tts-test">🔌 测试 TTS</button>
       </div>
     </div>
 
@@ -670,20 +682,24 @@ code{background:var(--bg);padding:1px 5px;border-radius:3px;font-family:var(--fo
         <div class="settings-section-icon"><span class="icon">🎙</span></div>
         <div class="flex-1">
           <div class="settings-section-title">语音识别 · 字幕对齐</div>
-          <div class="settings-section-sub">用于 TTS 后返回时间戳对齐字幕（可选；不启用则按字数估算时长）。</div>
+          <div class="settings-section-sub">用于 TTS 后返回时间戳对齐字幕（云端火山引擎 ASR · 按调用付费）。</div>
         </div>
         <span class="settings-pip" id="st-asr"><span class="settings-pip-dot"></span>检测中…</span>
       </div>
       <div class="card">
-        <div class="card-hd"><span class="label">ASR provider</span></div>
-        <div class="chips" id="asr-providers">
-          <div class="chip" data-v="volcengine"><span class="chip-main">火山引擎 ASR</span><span class="chip-hint">字节跳动</span></div>
-          <div class="chip" data-v="bailian"><span class="chip-main">阿里百炼 ASR</span><span class="chip-hint">通义</span></div>
-          <div class="chip" data-v="funasr"><span class="chip-main">FunASR 本地</span><span class="chip-hint">离线</span></div>
+        <div class="card-hd"><span class="label">云端识别（火山引擎）</span><span class="hint">复用配音凭证</span></div>
+        <div class="field-hd"><span class="label">App ID</span></div>
+        <input type="text" id="asr-appid" placeholder="火山控制台 → 语音技术 → 应用管理">
+        <div class="field-hd"><span class="label">Access Token</span></div>
+        <div class="key-input">
+          <input type="password" id="asr-key" class="key-input-field" placeholder="留空保留原值">
+          <div class="key-input-actions">
+            <button type="button" class="key-input-btn" data-toggle-key="asr-key">👁</button>
+            <button type="button" class="key-input-btn" data-paste-key="asr-key">📋</button>
+          </div>
         </div>
-        <div class="field-hd"><span class="label">App ID / API Key</span></div>
-        <div class="row"><input type="text" id="asr-appid" placeholder="App ID"><input type="password" id="asr-key" placeholder="API Key"></div>
-        <div style="margin-top:14px"><button class="btn primary" id="btn-asr-save">💾 保存</button></div>
+        <div class="info-bar">控制台：<a href="https://console.volcengine.com/speech" target="_blank">console.volcengine.com/speech</a> → 开通「语音识别」→ 创建应用拿 App ID + Token</div>
+        <div class="settings-card-footer"><button class="btn primary" id="btn-asr-save">💾 保存</button></div>
       </div>
     </div>
 
@@ -692,17 +708,39 @@ code{background:var(--bg);padding:1px 5px;border-radius:3px;font-family:var(--fo
       <div class="settings-section-head">
         <div class="settings-section-icon"><span class="icon">📦</span></div>
         <div class="flex-1">
-          <div class="settings-section-title">剪映 · 草稿目录 · BGM</div>
-          <div class="settings-section-sub">配置剪映 JianyingPro Drafts 目录和 BGM 文件。</div>
+          <div class="settings-section-title">剪映 · 任务存储 · 草稿目录 · 背景音乐</div>
+          <div class="settings-section-sub">配置剪映草稿输出位置 + BGM 文件 + 自动化开关。</div>
         </div>
         <span class="settings-pip" id="st-draft"><span class="settings-pip-dot"></span>检测中…</span>
       </div>
-      <div class="card">
-        <div class="field-hd"><span class="label">剪映草稿目录</span><span class="hint">如 D:\JianyingPro Drafts</span></div>
-        <input type="text" id="jy-draft-path" placeholder="D:\JianyingPro Drafts">
+      <div class="settings-card">
+        <div class="field-hd"><span class="label">提示词兜底后自动继续</span></div>
+        <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;font-size:13px;color:var(--text-secondary);padding:10px;background:var(--bg-raised);border-radius:var(--radius-sm)">
+          <input type="checkbox" id="jy-auto-continue" style="margin-top:2px;flex-shrink:0">
+          <span>绘图提示词生成失败、用通用模板兜底时<b>不暂停，直接继续出图</b>（<span style="color:var(--warning)">兜底分镜的画面可能与文案不符</span>）。<br><span style="color:var(--text-muted);font-size:12px">适合无人值守批量跑、宁可要模板图也不要中断的场景。不勾（默认）= 兜底后暂停等你确认，出图前一分钱不花。</span></span>
+        </label>
+
+        <div class="field-hd"><span class="label">任务跑完提醒</span></div>
+        <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;font-size:13px;color:var(--text-secondary);padding:10px;background:var(--bg-raised);border-radius:var(--radius-sm)">
+          <input type="checkbox" id="jy-task-notify" style="margin-top:2px;flex-shrink:0">
+          <span>任务或批次跑完时，<b>任务栏图标闪一下 + 弹一条系统通知</b>（写明成功/失败几条）。<br><span style="color:var(--text-muted);font-size:12px">只在你切到别的窗口时提醒，盯着软件看时不打扰。</span></span>
+        </label>
+
+        <div class="field-hd"><span class="label">剪映草稿目录</span><span class="hint">必填</span></div>
+        <div class="row" style="margin-bottom:6px">
+          <input type="text" id="jy-draft-path" placeholder="D:\JianyingPro Drafts" style="flex:1;font-family:var(--font-mono);font-size:12px">
+          <button class="btn btn-secondary" id="btn-jy-browse" type="button">📁 浏览…</button>
+        </div>
+        <div class="field-help">任务完成后，剪映草稿会写入此目录；剪映下次打开就能看到</div>
+
         <div class="field-hd"><span class="label">BGM 文件路径（可选）</span><span class="hint">铺底音乐</span></div>
-        <input type="text" id="jy-bgm-path" placeholder="D:\Music\bgm.mp3">
-        <div style="margin-top:14px"><button class="btn primary" id="btn-jy-save">💾 保存</button></div>
+        <div class="row">
+          <input type="text" id="jy-bgm-path" placeholder="D:\Music\bgm.mp3" style="flex:1;font-family:var(--font-mono);font-size:12px">
+          <button class="btn btn-secondary" id="btn-jy-bgm-browse" type="button">📁 浏览…</button>
+        </div>
+        <div class="field-help">支持 mp3 / m4a / wav · 任务里会复制到应用数据目录，与原文件独立</div>
+
+        <div class="settings-card-footer"><button class="btn primary" id="btn-jy-save">💾 保存</button></div>
       </div>
     </div>
 
@@ -733,16 +771,34 @@ code{background:var(--bg);padding:1px 5px;border-radius:3px;font-family:var(--fo
         </div>
         <span class="settings-pip" id="st-ai-creation"><span class="settings-pip-dot"></span>检测中…</span>
       </div>
-      <div class="card">
-        <div class="field-hd"><span class="label">Client ID</span></div>
-        <input type="text" id="ima-client-id" placeholder="IMA client_id">
-        <div class="field-hd"><span class="label">API Key</span></div>
-        <input type="password" id="ima-api-key" placeholder="留空保留原值">
+      <div class="settings-card">
+        <div class="field-hd"><span class="label">Client ID</span><span class="hint">可选</span></div>
+        <div class="key-input">
+          <input type="text" id="ima-client-id" class="key-input-field" placeholder="粘贴 Client ID">
+          <div class="key-input-actions">
+            <button type="button" class="key-input-btn" data-paste-key="ima-client-id">📋</button>
+          </div>
+        </div>
+        <div class="field-help">腾讯 IMA 应用 Client ID（可在 ima.qq.com/agent-interface 获取）</div>
+
+        <div class="field-hd"><span class="label">API Key</span><span class="hint">可选</span></div>
+        <div class="key-input">
+          <input type="password" id="ima-api-key" class="key-input-field" placeholder="粘贴 API Key">
+          <div class="key-input-actions">
+            <button type="button" class="key-input-btn" data-toggle-key="ima-api-key">👁</button>
+            <button type="button" class="key-input-btn" data-paste-key="ima-api-key">📋</button>
+          </div>
+        </div>
+
         <div class="field-hd"><span class="label">Knowledge Base ID</span></div>
         <input type="text" id="ima-kb-id" placeholder="kb_xxx">
         <div class="field-hd"><span class="label">Knowledge Base 名称</span></div>
         <input type="text" id="ima-kb-name" placeholder="可选">
-        <div style="margin-top:14px"><button class="btn primary" id="btn-ima-save">💾 保存</button></div>
+
+        <div class="settings-card-footer">
+          <button class="btn btn-primary" id="btn-ima-save">💾 保存</button>
+          <button class="btn btn-ghost" id="btn-ima-test">🔌 测试连接 / 拉取知识库</button>
+        </div>
       </div>
     </div>
 
@@ -1222,6 +1278,8 @@ async function refreshSettings() {
     // 剪映
     $("jy-draft-path").value = s.jianying.draft_path || "";
     $("jy-bgm-path").value = s.jianying.bgm_path || "";
+    if ($("jy-auto-continue")) $("jy-auto-continue").checked = !!s.jianying.auto_continue;
+    if ($("jy-task-notify"))   $("jy-task-notify").checked   = s.jianying.task_notify !== false;
     setStatus("st-draft", s.jianying.configured ? "✓ 已配置" : "未配置", s.jianying.configured);
     setDot("dot-draft", s.jianying.configured ? "ok" : "bad");
     // IMA
@@ -1553,9 +1611,27 @@ async function saveJY() {
     await api("/api/settings", "POST", {
       jianying_draft_path: $("jy-draft-path").value.trim() || KEEP,
       jianying_bgm_path: $("jy-bgm-path").value.trim() || KEEP,
+      jianying_auto_continue: $("jy-auto-continue") ? $("jy-auto-continue").checked : KEEP,
+      jianying_task_notify: $("jy-task-notify") ? $("jy-task-notify").checked : KEEP,
     });
     toast("✓ 剪映已保存", true);
     await refreshSettings();
+  } catch (e) { toast("❌ " + e.message, false); }
+}
+
+async function browseFolder(targetId) {
+  try {
+    const r = await api("/api/browse_folder", "POST", { initial: $(targetId).value.trim() || "" });
+    if (r && r.path) $(targetId).value = r.path;
+  } catch (e) { toast("⚠ 无法打开文件夹选择：" + e.message, false); }
+}
+
+async function testIMA() {
+  toast("⏳ 测试连接中...", true);
+  try {
+    const r = await api("/api/test_ima", "POST", {});
+    if (r.ok) toast("✓ 连接成功" + (r.kbs ? "，找到 " + r.kbs.length + " 个知识库" : ""), true);
+    else toast("❌ " + (r.error || "失败"), false);
   } catch (e) { toast("❌ " + e.message, false); }
 }
 
@@ -1665,6 +1741,9 @@ $("btn-tts-save").onclick = saveTTS;
 $("btn-tts-test").onclick = testTTS;
 $("btn-asr-save").onclick = saveASR;
 $("btn-jy-save").onclick = saveJY;
+$("btn-jy-browse") && ($("btn-jy-browse").onclick = () => browseFolder("jy-draft-path"));
+$("btn-jy-bgm-browse") && ($("btn-jy-bgm-browse").onclick = () => browseFolder("jy-bgm-path"));
+$("btn-ima-test") && ($("btn-ima-test").onclick = testIMA);
 $("btn-license-save").onclick = saveLicense;
 $("btn-ima-save").onclick = saveIMA;
 $("btn-clear-tasks").onclick = clearTasks;
