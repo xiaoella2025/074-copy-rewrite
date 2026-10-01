@@ -25,6 +25,23 @@ def _synth_mp3(path: Path, length_seconds: float):
 
 
 class UploadVoiceSliceTests(unittest.TestCase):
+    def test_asr_alignment_and_partial_resume_use_full_script_timeline(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            task_dir = Path(tmp) / "task_asr"
+            task_dir.mkdir()
+            _synth_mp3(task_dir / "uploaded-voice.mp3", 6.0)
+            segments = [{"idx": 1, "text": "甲甲甲"}, {"idx": 2, "text": "乙乙乙"}]
+            asr = [{"text": "甲甲甲", "start": 0.0, "end": 2.0},
+                   {"text": "乙乙乙", "start": 2.0, "end": 6.0}]
+            results, _ = s.slice_uploaded_voice(
+                task_dir, segments, asr_segments=asr, only_indices=[2])
+            self.assertEqual(len(results), 1)
+            self.assertEqual(results[0]["index"], 2)
+            self.assertEqual(results[0]["duration_source"], "upload_asr_align")
+            self.assertAlmostEqual(results[0]["start_sec"], 2.0, delta=0.25)
+            self.assertGreater(results[0]["duration"], 3.5)
+            self.assertFalse((task_dir / "audio" / "seg_001.mp3").exists())
+
     def test_slice_distributes_by_character_weight(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)

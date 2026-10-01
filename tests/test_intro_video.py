@@ -99,6 +99,22 @@ class Step4IntroVideoEndpointTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(body["results"], [])
 
+    def test_intro_video_accepts_task_image_url_from_browser_pipeline(self):
+        task_dir = s.DATA_DIR / "tasks" / "t_url_image"
+        covers = task_dir / "covers"
+        covers.mkdir(parents=True, exist_ok=True)
+        image = covers / "1.png"
+        audio = task_dir / "seg_001.mp3"
+        _synth_png(image)
+        _synth_mp3(audio, 1.0)
+        status, body = self._post("/api/step4_intro_video", {
+            "task_id": "t_url_image", "mode": "3", "ratio": "9:16",
+            "shots": [{"idx": 1, "image_path": "/api/task_image/t_url_image/1.png",
+                       "audio_path": str(audio), "duration": 1.0}],
+        })
+        self.assertEqual(status, 200, body)
+        self.assertTrue(body["results"][0]["ok"], body)
+
     def test_intro_video_3_makes_first_n_videos(self):
         with tempfile.TemporaryDirectory() as inner:
             inner_p = Path(inner)
@@ -194,6 +210,29 @@ class Step4IntroVideoEndpointTests(unittest.TestCase):
             self.assertTrue(any(s.get("material_id", "").startswith("video_")
                               for s in video_segs),
                           f"video segment should be used: {video_segs}")
+
+    def test_step6_uses_task_local_for_material_library_image(self):
+        with tempfile.TemporaryDirectory() as inner:
+            draft_root = Path(inner) / "drafts"
+            draft_root.mkdir()
+            s.SETTINGS_PATH.write_text(json.dumps({
+                "jianying": {"draft_path": str(draft_root)},
+            }), encoding="utf-8")
+            cover_dir = s.DATA_DIR / "tasks" / "t_material_draft" / "covers"
+            cover_dir.mkdir(parents=True, exist_ok=True)
+            image = cover_dir / "1.png"
+            _synth_png(image)
+            status, body = self._post("/api/step6_jianying_draft", {
+                "task_id": "t_material_draft", "title": "素材路径测试",
+                "shots": [{"idx": 1, "text": "一"}],
+                "images": [{"idx": 1, "url": "/api/material/abc.png",
+                            "task_local": "/api/task_image/t_material_draft/1.png"}],
+                "segments": [{"idx": 1, "duration": 2.0, "path": "audio.mp3"}],
+            })
+            self.assertEqual(status, 200, body)
+            draft = json.loads((Path(body["draft_dir"]) / "draft_content.json").read_text(encoding="utf-8"))
+            video_track = next(track for track in draft["tracks"] if track["type"] == "video")
+            self.assertEqual(video_track["segments"][0]["material_path"], str(image))
 
 
 if __name__ == "__main__":

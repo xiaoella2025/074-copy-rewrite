@@ -1581,7 +1581,7 @@ function readImageDataUrl(file) {
 }
 
 async function runPipeline() {
-  const btns = [$("btn-run-full-pipeline"), $("btn-run-full-footer"), $("btn-run-full")].filter(Boolean);
+  const btns = [$("btn-run-full-pipeline"), $("btn-run-full-footer")].filter(Boolean);
   btns.forEach(btn => { btn.disabled = true; btn.dataset.orig = btn.innerHTML; });
   $("full-result").style.display = "";
   $("full-elapsed").textContent = "";
@@ -1589,30 +1589,32 @@ async function runPipeline() {
   try {
     const resumeId = new URLSearchParams(location.search).get("resume");
     const resume = resumeId ? await api(`/api/task/${encodeURIComponent(resumeId)}`) : null;
-    if (getActiveChip("tts-mode", "data-tts", "system") === "custom") {
+    const savedAudioCount = resume?.steps?.audios?.filter(item => /^seg_\d+\.mp3$/i.test(item.name || "")).length || 0;
+    const savedShotCount = resume?.info?.shot_count || 0;
+    if (getActiveChip("tts-mode", "data-tts", "system") === "custom"
+      && !(savedShotCount > 0 && savedAudioCount >= savedShotCount)
+      && !resume?.steps?.uploaded_voice) {
       const f = $("tts-upload-file").files?.[0];
       if (!f) throw new Error("上传配音模式需要先选一份音频");
-    }
-    if (getActiveChip("img-source", "data-img-src", "ai") !== "ai") {
-      // 已接入：web（DDG 图搜）/ mine（素材库）/ external（自定义绘图）
-    }
-    if (getActiveChip("video-form", "data-form", "narrator") !== "narrator") {
-      // 双人播客由 runImagePipeline 内部通过 script_format=podcast 路由
-    }
-    if (getActiveChip("dynamic-shots", "data-dynamic", "off") !== "off"
-      && !$("img-source")?.classList) {  /* placeholder so the script keeps shape */
-      /* 动态分镜已接入；调用 /api/step4_intro_video */
     }
     if ($("prod-file").files?.length) {
       throw new Error("产品参考图编辑尚未接入当前出图接口，请移除参考图后继续");
     }
-    const imageProvider = $("img-engine").value;
+    const imageSource = getActiveChip("img-source", "data-img-src", "ai");
+    const imageProvider = imageSource === "external" ? "custom" : $("img-engine").value;
     const imageSettings = imageProvider === "custom" ? settings.custom_image
       : imageProvider === "gpt_image" ? settings.image : settings[imageProvider];
-    if (!imageSettings?.configured) throw new Error("所选绘图引擎尚未配置，请先到系统设置保存凭据");
     const coverMode = getActiveChip("cover-mode", "data-cv", "ai");
+    const savedImageCount = resume?.steps?.images?.length || 0;
+    const needsMoreImages = !(savedShotCount > 0 && savedImageCount >= savedShotCount);
+    const needsImageApi = (needsMoreImages && (imageSource === "ai" || imageSource === "external"
+      || (imageSource === "mine" && getActiveChip("materials-fallback", "data-mfb", "ai") === "ai")))
+      || (!resume?.steps?.cover?.url && ["ai", "title", "blank"].includes(coverMode));
+    if (needsImageApi && !imageSettings?.configured) {
+      throw new Error("所选绘图引擎尚未配置，请先到系统设置保存凭据");
+    }
     let coverDataUrl = null;
-    if (coverMode === "upload") {
+    if (coverMode === "upload" && !resume?.steps?.cover?.url) {
       const file = $("cover-file").files?.[0];
       if (!file) throw new Error("请选择本地封面图片");
       if (!/^image\/(png|jpeg|webp)$/.test(file.type) || file.size > 10_000_000) {
@@ -1669,26 +1671,14 @@ async function runPipeline() {
       },
       image: {
         provider: imageProvider,
-        ratio: selectedRatio || imageSettings.ratio || "9:16",
-        resolution: imageSettings.resolution || "1k",
-        concurrency: imageSettings.concurrency || 3,
+        ratio: selectedRatio || imageSettings?.ratio || "9:16",
+        resolution: imageSettings?.resolution || "1k",
+        concurrency: imageSettings?.concurrency || 3,
         retry: $("toggle-retry").classList.contains("on"),
-        source: getActiveChip("img-source", "data-img-src", "ai"),
+        source: imageSource,
         materials: {
-          picks: (() => {
-            const selected = Object.keys(materialsState.assignments || {});
-            if (!selected.length) return {};
-            const raw = ($("materials-assign-idxs")?.value || "").trim();
-            const idxs = raw ? raw.split(",").map(s => Number(s.trim())).filter(n => Number.isFinite(n) && n > 0) : null;
-            const map = {};
-            if (idxs) {
-              idxs.forEach((idx, i) => { if (selected[i]) map[idx] = selected[i]; });
-            } else {
-              // 默认应用到全部——顺序对空选 → 给所有分镜一个素材轮询
-              return {};  // 由 image_pipeline 走 fallback_to_ai 处理
-            }
-            return map;
-          })(),
+          selected: Object.keys(materialsState.assignments || {}),
+          indices: ($("materials-assign-idxs")?.value || "").trim(),
           fallback: getActiveChip("materials-fallback", "data-mfb", "ai"),
         },
       },
@@ -1909,6 +1899,9 @@ document.querySelectorAll("#process-mode .chip").forEach(chip => {
   if (resumeId) {
     $("output").textContent = `已载入待续任务 ${resumeId}。点击「一键全链路」只补齐缺失阶段；已生成的配音和图片会复用。`;
     $("btn-run-full-footer").textContent = "▶ 继续未完成阶段";
+    $("btn-run-full-pipeline").textContent = "▶ 继续未完成阶段";
+    $("btn-run-full").disabled = true;
+    $("btn-run-full").title = "续跑任务请使用“继续未完成阶段”";
   }
 })();
 </script>

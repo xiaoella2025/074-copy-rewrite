@@ -150,6 +150,25 @@ class Step5PodcastEndpointTests(unittest.TestCase):
         self.assertEqual(body["speakers"]["A"], "overrideA")
         self.assertEqual(body["speakers"]["B"], "overrideB")
 
+    def test_podcast_resume_rebuilds_full_audio_from_saved_and_new_segments(self):
+        task_id = "t_podcast_resume"
+        first_status, _ = self._post("/api/step5_tts", {
+            "task_id": task_id, "mode": "podcast",
+            "segments": [{"idx": 1, "text": "第一段", "speaker": "A"}],
+        })
+        self.assertEqual(first_status, 200)
+        second_status, body = self._post("/api/step5_tts", {
+            "task_id": task_id, "mode": "podcast",
+            "segments": [{"idx": 2, "text": "第二段", "speaker": "B"}],
+        })
+        self.assertEqual(second_status, 200, body)
+        task_dir = s.DATA_DIR / "tasks" / task_id
+        meta = json.loads((task_dir / "05-podcast.json").read_text(encoding="utf-8"))
+        self.assertEqual([round_["index"] for round_ in meta["rounds"]], [1, 2])
+        self.assertGreater(s.probe_audio_duration(Path(body["podcast_path"])), 1.5)
+        detail = s.get_task_detail(task_id)
+        self.assertEqual(detail["steps"]["podcast"]["podcast_path"], body["podcast_path"])
+
 
 class Step2PodcastScriptFormatTests(unittest.TestCase):
     """step2_split 在 script_format=podcast 时切到 podcast_dialogue prompt，并打 speaker。"""

@@ -1,6 +1,61 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { runImagePipeline } = require('../assets/image_pipeline.js');
+const { runImagePipeline, assignMaterialsToShots } = require('../assets/image_pipeline.js');
+
+test('素材未填写镜头号时按已选素材循环分配到全部镜头', () => {
+  assert.deepEqual(assignMaterialsToShots(['m1', 'm2'], '', [1, 2, 3]),
+    {1:'m1', 2:'m2', 3:'m1'});
+  assert.deepEqual(assignMaterialsToShots(['m1', 'm2'], '2,4', [1, 2, 3, 4]),
+    {2:'m1', 4:'m2'});
+});
+
+test('编辑改写稿创建的新版本从元信息与分镜续跑，不再次改写', async () => {
+  const calls = [];
+  const resume = {info:{task_id:'task_revision'}, steps:{rewrite:'人工改好的文案'}};
+  const replies = [
+    {task_id:'task_revision', steps:{'1':{text:'人工改好的文案'},meta:{title:'标题'},
+      '2':{shots:[{idx:1,text:'一镜'}]}}},
+    {results:[{idx:1,ok:true,duration:2,path:'audio.mp3'}]},
+    {steps:{'3':[{idx:1,desc_prompt:'画面'}]}},
+    {results:[{idx:1,ok:true,url:'/covers/a.png'}]},
+    {draft_dir:'draft'},
+  ];
+  await runImagePipeline({
+    request: async (path, body) => { calls.push({path,body}); return replies.shift(); },
+    resume, generate:{reference:''}, tts:{provider:'aura'}, image:{provider:'gpt_image'},
+  });
+  assert.deepEqual(calls[0].body.run_steps, ['meta','2']);
+  assert.equal(calls[0].body.rewritten, '人工改好的文案');
+  assert.equal(calls[0].body.task_id, 'task_revision');
+});
+
+test('素材库未分配且禁止 AI 兜底时阻断草稿生成', async () => {
+  const calls = [];
+  const replies = [firstGeneration(),
+    {results:[{idx:1,ok:true,duration:2,path:'audio.mp3'}]},
+    {steps:{'3':[{idx:1,desc_prompt:'画面'}]}}];
+  await assert.rejects(runImagePipeline({
+    request: async (path) => { calls.push(path); return replies.shift(); },
+    generate:{reference:'原文'}, tts:{provider:'aura'},
+    image:{source:'mine', materials:{picks:{},fallback:'skip'}},
+  }), /未分配素材/);
+  assert.ok(!calls.includes('/api/step6_jianying_draft'));
+});
+
+test('动态分镜失败时阻断草稿生成并保留任务供续跑', async () => {
+  const calls = [];
+  const replies = [firstGeneration(),
+    {results:[{idx:1,ok:true,duration:2,path:'audio.mp3'}]},
+    {steps:{'3':[{idx:1,desc_prompt:'画面'}]}},
+    {results:[{idx:1,ok:true,url:'/covers/a.png',task_local:'/api/task_image/task_1/1.png'}]},
+    {results:[{idx:1,ok:false,error:'ffmpeg 找不到素材'}]}];
+  await assert.rejects(runImagePipeline({
+    request: async (path) => { calls.push(path); return replies.shift(); },
+    generate:{reference:'原文'}, tts:{provider:'aura'},
+    image:{provider:'gpt_image',ratio:'9:16'}, dynamic:{mode:'3'},
+  }), /ffmpeg 找不到素材/);
+  assert.ok(!calls.includes('/api/step6_jianying_draft'));
+});
 
 function firstGeneration() {
   return {
@@ -207,6 +262,28 @@ test('上传配音模式缺文件立即报错，不发起付费调用', async ()
   assert.deepEqual(calls, ['/api/generate']);  // generate 已调，但 upload_voice 没调
 });
 
+test('上传配音续跑按完整分镜时间轴只补缺失镜头', async () => {
+  const calls = [];
+  const resume = {info:{task_id:'task_upload',shot_count:2},steps:{
+    rewrite:'改写稿',meta:{title:'标题'},shots:[{idx:1,text:'甲甲甲'},{idx:2,text:'乙乙乙'}],
+    audios:[{name:'seg_001.mp3'}],
+    segments:[{index:1,path:'saved.mp3',duration:2,text:'甲甲甲'}],
+    uploaded_voice:true,
+    prompts:[{idx:1,desc_prompt:'画一'},{idx:2,desc_prompt:'画二'}],
+    images:[{name:'1.png',url:'/api/task_image/task_upload/1.png'},
+      {name:'2.png',url:'/api/task_image/task_upload/2.png'}],
+  }};
+  const replies = [{results:[{idx:2,ok:true,path:'new.mp3',duration:4,text:'乙乙乙'}]},
+    {draft_dir:'draft'}];
+  await runImagePipeline({
+    request: async (path, body) => { calls.push({path,body}); return replies.shift(); },
+    resume, generate:{}, tts:{mode:'upload'}, image:{provider:'gpt_image'},
+  });
+  assert.deepEqual(calls.map(item => item.path), ['/api/step5_tts','/api/step6_jianying_draft']);
+  assert.deepEqual(calls[0].body.segments.map(item => item.idx), [1,2]);
+  assert.deepEqual(calls[0].body.only_idxs, [2]);
+});
+
 test('动态分镜 off 时不调用 step4_intro_video，step6 拿不到 videos', async () => {
   const calls = [];
   const replies = [firstGeneration(),
@@ -376,6 +453,18 @@ test('双人播客 step5 失败时阻断，不继续出图', async () => {
     scriptFormat:'podcast',
   }), /火山 API Key 未填/);
   assert.deepEqual(calls.map(c => c.path), ['/api/generate', '/api/step5_tts']);
+});
+
+test('双人播客缺合成音频时不生成草稿', async () => {
+  const calls = [];
+  const replies = [firstGeneration(),
+    {results:[{idx:1,ok:true,path:'seg.mp3',duration:2}] }];
+  await assert.rejects(runImagePipeline({
+    request: async (path) => { calls.push(path); return replies.shift(); },
+    generate:{reference:'原文'}, tts:{provider:'volcengine'},
+    image:{provider:'gpt_image'}, scriptFormat:'podcast',
+  }), /合成音频缺失/);
+  assert.deepEqual(calls, ['/api/generate','/api/step5_tts']);
 });
 
 test('素材来源=mine 调 step4_from_materials 带 assignments + picks，未分配走 AI 兜底', async () => {

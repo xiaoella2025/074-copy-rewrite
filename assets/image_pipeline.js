@@ -1,3 +1,17 @@
+function assignMaterialsToShots(selectedIds, idxText, shotIndices) {
+  const ids = selectedIds.filter(Boolean);
+  const target = idxText.trim()
+    ? idxText.split(',').map(value => Number(value.trim())).filter(Number.isInteger)
+    : shotIndices;
+  const valid = new Set(shotIndices);
+  const picks = {};
+  if (!ids.length) return picks;
+  target.filter(idx => valid.has(idx) && idx > 0).forEach((idx, i) => {
+    picks[idx] = ids[i % ids.length];
+  });
+  return picks;
+}
+
 async function runImagePipeline({ request, generate, tts, image, cover, resume, dynamic, mode = 'full',
   scriptFormat = 'narrator',
   pauseMode = 'never', pauseStages = [], onPause = async () => true, onStage = () => {} }) {
@@ -12,7 +26,8 @@ async function runImagePipeline({ request, generate, tts, image, cover, resume, 
   };
   const prior = resume?.steps || {};
   const resumeReady = !!(resume?.info?.task_id && prior.rewrite && prior.meta && prior.shots?.length);
-  if (!resumeReady && mode !== 'full' && !generate.reference?.trim()) {
+  const resumeRewrite = !!(resume?.info?.task_id && prior.rewrite && !resumeReady);
+  if (!resumeReady && !resumeRewrite && mode !== 'full' && !generate.reference?.trim()) {
     throw new Error('半自动和直播出片模式需要先填写完整口播文案');
   }
   const call = async (stage, path, body) => {
@@ -49,9 +64,10 @@ async function runImagePipeline({ request, generate, tts, image, cover, resume, 
     steps: {'1': {text: prior.rewrite}, meta: prior.meta, '2': {shots: prior.shots}},
   } : await call('generate', '/api/generate', {
     ...generate, ...(resume?.info?.task_id ? {task_id: resume.info.task_id} : {}),
-    ...(mode === 'full' ? {} : { rewritten: generate.reference }),
+    ...(resumeRewrite ? {reference: '', rewritten: prior.rewrite}
+      : mode === 'full' ? {} : { rewritten: generate.reference }),
     ...(scriptFormat ? { script_format: scriptFormat } : {}),
-    run_steps: mode === 'full' ? ['0', '1', 'meta', '2'] : ['meta', '2'],
+    run_steps: resumeRewrite ? ['meta', '2'] : mode === 'full' ? ['0', '1', 'meta', '2'] : ['meta', '2'],
   });
   if (resumeReady) onStage('generate', 'done', gen);
   const taskId = gen?.task_id;
@@ -72,18 +88,26 @@ async function runImagePipeline({ request, generate, tts, image, cover, resume, 
       url: `/api/audio/${taskId}/seg_${String(item.index).padStart(3, '0')}.mp3`}]));
   const missingSpeech = shots.filter(shot => !savedSpeech.has(Number(shot.idx)));
   let newSpeech = [];
-  let podcastResult = null;
+  let podcastResult = prior.podcast?.podcast_path ? {
+    path: prior.podcast.podcast_path,
+    url: prior.podcast.podcast_url || '',
+    rounds: prior.podcast.rounds || [],
+    speakers: prior.podcast.speakers || {},
+  } : null;
   if (missingSpeech.length) {
     let response;
     if (tts.mode === 'upload') {
-      if (!tts.file) throw new Error('上传配音模式需要选择本地音频文件');
-      const uploaded = await request('/api/upload_voice', makeFormData({
-        task_id: taskId, file: tts.file,
-      }));
-      if (!uploaded?.ok) throw new Error('音频上传失败');
+      if (!tts.file && !prior.uploaded_voice) throw new Error('上传配音模式需要选择本地音频文件');
+      if (tts.file) {
+        const uploaded = await request('/api/upload_voice', makeFormData({
+          task_id: taskId, file: tts.file,
+        }));
+        if (!uploaded?.ok) throw new Error('音频上传失败');
+      }
       response = await call('tts', '/api/step5_tts', {
         task_id: taskId, mode: 'upload',
-        segments: missingSpeech.map(shot => ({ idx: shot.idx, text: shot.text })),
+        segments: shots.map(shot => ({ idx: shot.idx, text: shot.text })),
+        only_idxs: missingSpeech.map(shot => Number(shot.idx)),
       });
     } else if (scriptFormat === 'podcast') {
       response = await call('tts', '/api/step5_tts', {
@@ -113,6 +137,11 @@ async function runImagePipeline({ request, generate, tts, image, cover, resume, 
   const speechByIdx = new Map([...savedSpeech.values(), ...newSpeech].map(item => [Number(item.idx), item]));
   const step5 = {results: shots.map(shot => speechByIdx.get(Number(shot.idx)))};
   requireResults('tts', step5.results, shots.length);
+  if (scriptFormat === 'podcast' && !podcastResult?.path) {
+    const error = new Error('双人播客合成音频缺失，无法生成草稿');
+    onStage('tts', 'failed', error);
+    throw error;
+  }
   if (!missingSpeech.length) onStage('tts', 'done', step5);
   else await pauseAfter('tts', step5);
   const durations = new Map(step5.results.map(item => [item.idx, item.duration]));
@@ -145,8 +174,13 @@ async function runImagePipeline({ request, generate, tts, image, cover, resume, 
     let endpoint = '/api/step4_generate_images';
     let payload;
     if (imageSource === 'mine') {
-      const picked = (image.materials?.picks || {});
+      const picked = {...(image.materials?.picks || {}), ...assignMaterialsToShots(
+        image.materials?.selected || [], image.materials?.indices || '',
+        missingImages.map(item => Number(item.idx)))};
       const fallbackToAi = (image.materials?.fallback || 'ai') === 'ai';
+      if (!fallbackToAi && missingImages.some(item => !picked[item.idx])) {
+        throw new Error('有分镜未分配素材；请补选素材或开启 AI 兜底');
+      }
       payload = {
         task_id: taskId, ratio: image.ratio, resolution: image.resolution,
         fallback_to_ai: fallbackToAi, provider: externalProvider,
@@ -176,9 +210,6 @@ async function runImagePipeline({ request, generate, tts, image, cover, resume, 
       const response = await call('images', endpoint, payload);
       requireResults('images', response?.results, missingImages.length);
       newImages = response.results;
-    } else {
-      // mine 模式无任何可用素材 → 视为 step4 已完成（让流程继续，后续 step6 拿不到 image 时会跳过）
-      newImages = missingImages.map(item => ({ idx: item.idx, ok: false, error: '未分配素材' }));
     }
   }
   const imageByIdx = new Map([...savedImages.values(), ...newImages].map(item => [Number(item.idx), item]));
@@ -190,7 +221,16 @@ async function runImagePipeline({ request, generate, tts, image, cover, resume, 
   const dynamicMode = dynamic?.mode || 'off';
   const dynamicResults = prior.videos || [];
   let newVideos = [];
-  if (dynamicMode !== 'off' && taskId) {
+  const expectedVideos = dynamicMode === '3' ? Math.min(3, shots.length)
+    : dynamicMode === 'custom' ? shots.filter(shot => (dynamic.custom_idxs || []).includes(Number(shot.idx))).length
+    : shots.length;
+  const savedVideoIndices = new Set(dynamicResults.filter(item => item?.ok).map(item => Number(item.idx)));
+  const selectedVideoIndices = dynamicMode === '3' ? shots.slice(0, 3).map(shot => Number(shot.idx))
+    : dynamicMode === 'custom' ? (dynamic.custom_idxs || []).map(Number)
+    : shots.map(shot => Number(shot.idx));
+  const videosReady = dynamicMode !== 'off' && selectedVideoIndices.length === expectedVideos &&
+    selectedVideoIndices.every(idx => savedVideoIndices.has(idx));
+  if (dynamicMode !== 'off' && taskId && !videosReady) {
     const videoResp = await call('videos', '/api/step4_intro_video', {
       task_id: taskId, mode: dynamicMode,
       custom_idxs: dynamicMode === 'custom' ? (dynamic.custom_idxs || []) : [],
@@ -203,6 +243,7 @@ async function runImagePipeline({ request, generate, tts, image, cover, resume, 
       })).filter(item => item.image_path && item.audio_path && item.duration > 0),
     });
     newVideos = videoResp?.results || [];
+    requireResults('videos', newVideos, expectedVideos);
   }
   const videoByIdx = new Map(dynamicResults.concat(newVideos)
     .filter(item => item?.ok).map(item => [Number(item.idx), item]));
@@ -243,5 +284,5 @@ async function runImagePipeline({ request, generate, tts, image, cover, resume, 
 
 if (typeof window !== 'undefined') window.runImagePipeline = runImagePipeline;
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { runImagePipeline };
+  module.exports = { runImagePipeline, assignMaterialsToShots };
 }

@@ -14,6 +14,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import base64
+import difflib
 import shutil
 import subprocess
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -125,7 +126,7 @@ def _scan_task(task_dir):
     # 出图实际文件
     covers_dir = task_dir / "covers"
     if covers_dir.exists() and covers_dir.is_dir():
-        pngs = list(covers_dir.glob("*.png")) + list(covers_dir.glob("*.jpg"))
+        pngs = [p for p in covers_dir.iterdir() if p.suffix.lower() in (".png", ".jpg", ".jpeg", ".webp")]
         if pngs:
             info["completed_steps"].append(4)
             info["image_count"] = len(pngs)
@@ -189,7 +190,7 @@ def get_task_detail(task_id):
     if not info:
         return None
     # 加载具体产物
-    detail = {"info": info, "steps": {}}
+    detail = {"info": info, "steps": {"uploaded_voice": (task_dir / "uploaded-voice.mp3").is_file()}}
     p = task_dir / "01-review.json"
     if p.exists():
         try:
@@ -226,6 +227,18 @@ def get_task_detail(task_id):
             detail["steps"]["segments"] = json.loads(p.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             pass
+    p = task_dir / "05-podcast.json"
+    if p.exists():
+        try:
+            detail["steps"]["podcast"] = json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            pass
+    p = task_dir / "04-intro-videos.json"
+    if p.exists():
+        try:
+            detail["steps"]["videos"] = json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            pass
     p = task_dir / "cover-meta.json"
     if p.exists():
         try:
@@ -236,7 +249,7 @@ def get_task_detail(task_id):
     covers_dir = task_dir / "covers"
     if covers_dir.exists():
         imgs = []
-        for png in sorted(covers_dir.glob("*.png")) + sorted(covers_dir.glob("*.jpg")):
+        for png in sorted(p for p in covers_dir.iterdir() if p.suffix.lower() in (".png", ".jpg", ".jpeg", ".webp")):
             imgs.append({
                 "name": png.name,
                 "url": f"/api/task_image/{task_id}/{png.name}",
@@ -262,6 +275,97 @@ def get_task_detail(task_id):
         except (OSError, ValueError):
             pass
     return detail
+
+
+def fork_task_for_edit(task_id, field, value):
+    """从已保存的图文产物创建可续跑的新版本，保留原任务和原剪映草稿。"""
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,100}", str(task_id)):
+        raise ValueError("task_id 不合法")
+    if field not in ("rewrite", "shots", "prompts", "redraw"):
+        raise ValueError("不支持的编辑字段")
+    source = _tasks_root() / task_id
+    if not source.is_dir():
+        raise ValueError("原任务不存在")
+    if field == "rewrite":
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError("改写文案不能为空")
+    elif field in ("shots", "prompts"):
+        key = "text" if field == "shots" else "desc_prompt"
+        if not isinstance(value, list) or not value or any(
+            not isinstance(item, dict) or not isinstance(item.get("idx"), int)
+            or item["idx"] <= 0 or not isinstance(item.get(key), str)
+            or not item[key].strip() for item in value
+        ) or len({item["idx"] for item in value}) != len(value):
+            raise ValueError(f"{field} 必须包含不重复的镜头号和非空内容")
+    elif not isinstance(value, int) or value <= 0:
+        raise ValueError("重画镜头号不合法")
+
+    old_prompts = []
+    prompt_file = source / "04-prompts.json"
+    if prompt_file.exists():
+        old_prompts = json.loads(prompt_file.read_text(encoding="utf-8"))
+    if field == "redraw" and value not in {item.get("idx") for item in old_prompts}:
+        raise ValueError("重画镜头不存在")
+    changed_images = {value} if field == "redraw" else set()
+    if field == "prompts":
+        old_by_idx = {item.get("idx"): item.get("desc_prompt") for item in old_prompts}
+        changed_images = {item["idx"] for item in value
+                          if old_by_idx.get(item["idx"]) != item["desc_prompt"]}
+
+    new_id = f"task_{int(time.time())}_{uuid.uuid4().hex[:8]}"
+    target = _tasks_root() / new_id
+    target.mkdir(parents=True, exist_ok=False)
+    stage_files = ["01-review.json", "02-rewrite.txt"]
+    if field != "rewrite":
+        stage_files += ["02-meta.json", "03-shots.json"]
+    if field in ("prompts", "redraw"):
+        stage_files += ["04-prompts.json", "05-podcast.json", "cover-meta.json"]
+    for name in stage_files:
+        src = source / name
+        if src.is_file():
+            shutil.copy2(src, target / name)
+    if field == "rewrite":
+        (target / "02-rewrite.txt").write_text(value.strip(), encoding="utf-8")
+    elif field == "shots":
+        (target / "03-shots.json").write_text(
+            json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
+    elif field == "prompts":
+        (target / "04-prompts.json").write_text(
+            json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    if field in ("prompts", "redraw"):
+        audio_source = source / "audio"
+        if audio_source.is_dir():
+            shutil.copytree(audio_source, target / "audio")
+        segments_source = source / "05-tts-segments.json"
+        if segments_source.is_file():
+            segments = json.loads(segments_source.read_text(encoding="utf-8"))
+            for segment in segments:
+                segment["path"] = str(target / "audio" / f"seg_{segment['index']:03d}.mp3")
+            (target / "05-tts-segments.json").write_text(
+                json.dumps(segments, ensure_ascii=False, indent=2), encoding="utf-8")
+        podcast_audio = source / "podcast.mp3"
+        if podcast_audio.is_file():
+            shutil.copy2(podcast_audio, target / "podcast.mp3")
+            podcast_meta = target / "05-podcast.json"
+            if podcast_meta.is_file():
+                meta = json.loads(podcast_meta.read_text(encoding="utf-8"))
+                meta["podcast_path"] = str(target / "podcast.mp3")
+                meta["podcast_url"] = f"/api/audio/{new_id}/podcast.mp3"
+                podcast_meta.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+        covers_source = source / "covers"
+        if covers_source.is_dir():
+            (target / "covers").mkdir(exist_ok=True)
+            for image in covers_source.iterdir():
+                if image.is_file() and image.suffix.lower() in (".png", ".jpg", ".jpeg", ".webp"):
+                    match = re.fullmatch(r"(\d+)\.(?:png|jpe?g|webp)", image.name, re.I)
+                    if match and int(match.group(1)) not in changed_images:
+                        shutil.copy2(image, target / "covers" / image.name)
+    (target / "fork.json").write_text(json.dumps({
+        "source_task_id": task_id, "field": field,
+        "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+    }, ensure_ascii=False, indent=2), encoding="utf-8")
+    return new_id
 
 
 # ============================================================
@@ -1536,10 +1640,74 @@ def make_intro_video(image_path, audio_path, output_path, duration, ratio="9:16"
     return Path(output_path)
 
 
-def slice_uploaded_voice(task_dir, segments):
-    """把 task_dir/uploaded-voice.mp3 按 segments 字符权重切到 audio/seg_XXX.mp3。
-    返回 [{index, path, duration, text, duration_source="upload_slice"}]。
-    需要 ffmpeg；总时长读不到时抛 RuntimeError。"""
+def _uploaded_voice_boundaries(segments, total_duration, asr_segments=None):
+    """用 ASR 字符时间轴定位分镜边界；识别文本差异过大时按文案字数回退。"""
+    def clean(text):
+        return "".join(ch.lower() for ch in str(text or "") if ch.isalnum())
+    script_parts = [clean(seg.get("text")) for seg in segments]
+    weights = [max(1, len(part)) for part in script_parts]
+    total_weight = sum(weights)
+    weighted = [0.0]
+    cumulative = 0
+    for weight in weights[:-1]:
+        cumulative += weight
+        weighted.append(total_duration * cumulative / total_weight)
+    weighted.append(total_duration)
+    if not asr_segments:
+        return weighted, "upload_slice"
+    heard = []
+    char_spans = []
+    for utterance in asr_segments:
+        chars = clean(utterance.get("text"))
+        start = max(0.0, float(utterance.get("start") or 0))
+        end = min(total_duration, float(utterance.get("end") or 0))
+        if not chars or end <= start:
+            continue
+        for i, ch in enumerate(chars):
+            heard.append(ch)
+            char_spans.append((start + (end-start)*i/len(chars),
+                               start + (end-start)*(i+1)/len(chars)))
+    script = "".join(script_parts)
+    recognized = "".join(heard)
+    if not script or not recognized:
+        return weighted, "upload_slice"
+    matcher = difflib.SequenceMatcher(None, script, recognized, autojunk=False)
+    if matcher.ratio() < 0.55:
+        return weighted, "upload_slice"
+    anchors = [(0, 0), (len(script), len(recognized))]
+    for block in matcher.get_matching_blocks():
+        if block.size:
+            anchors.extend(((block.a, block.b), (block.a + block.size, block.b + block.size)))
+    anchors = sorted(set(anchors))
+    script_boundaries = []
+    cursor = 0
+    for part in script_parts[:-1]:
+        cursor += len(part)
+        script_boundaries.append(cursor)
+    aligned = [0.0]
+    for position in script_boundaries:
+        left = max((p for p in anchors if p[0] <= position), key=lambda p: p[0])
+        right = min((p for p in anchors if p[0] >= position), key=lambda p: p[0])
+        if right[0] == left[0]:
+            audio_position = left[1]
+        else:
+            audio_position = left[1] + (right[1]-left[1]) * (position-left[0])/(right[0]-left[0])
+        index = max(0, min(len(char_spans), round(audio_position)))
+        if index == 0:
+            boundary = char_spans[0][0]
+        elif index == len(char_spans):
+            boundary = char_spans[-1][1]
+        else:
+            boundary = (char_spans[index-1][1] + char_spans[index][0]) / 2
+        aligned.append(max(aligned[-1] + 0.05, min(total_duration, boundary)))
+    aligned.append(total_duration)
+    if any(aligned[i+1] - aligned[i] < 0.05 for i in range(len(segments))):
+        return weighted, "upload_slice"
+    return aligned, "upload_asr_align"
+
+
+def slice_uploaded_voice(task_dir, segments, asr_segments=None, only_indices=None):
+    """把上传的整段配音按 ASR 时间轴或字数回退切成分镜音频。"""
     uploaded = Path(task_dir) / "uploaded-voice.mp3"
     if not uploaded.exists():
         raise RuntimeError("未找到 uploaded-voice.mp3，请先调用 /api/upload_voice")
@@ -1551,35 +1719,33 @@ def slice_uploaded_voice(task_dir, segments):
         raise RuntimeError("无法读取上传音频时长，ffprobe 可能失败")
     audio_dir = Path(task_dir) / "audio"
     audio_dir.mkdir(parents=True, exist_ok=True)
-    chars = [max(1, len((seg.get("text") or "").strip())) for seg in segments]
-    total_chars = sum(chars)
+    boundaries, source = _uploaded_voice_boundaries(segments, total_duration, asr_segments)
+    selected = set(only_indices) if only_indices is not None else None
     results = []
-    cursor = 0.0
-    for i, (seg, c) in enumerate(zip(segments, chars)):
-        share = c / total_chars
-        seg_dur = total_duration * share
-        seg_end = total_duration if i == len(segments) - 1 else cursor + seg_dur
-        out = audio_dir / f"seg_{seg.get('idx', i+1):03d}.mp3"
-        cmd = [ffmpeg_bin, "-y", "-ss", f"{cursor:.3f}", "-to", f"{seg_end:.3f}",
-               "-i", str(uploaded), "-c", "copy", str(out)]
+    for i, seg in enumerate(segments):
+        idx = int(seg.get("idx", i+1))
+        if selected is not None and idx not in selected:
+            continue
+        start, end = boundaries[i], boundaries[i+1]
+        out = audio_dir / f"seg_{idx:03d}.mp3"
+        cmd = [ffmpeg_bin, "-y", "-ss", f"{start:.3f}", "-t", f"{end-start:.3f}",
+               "-i", str(uploaded), "-c:a", "libmp3lame", "-b:a", "128k", str(out)]
         try:
             r = subprocess.run(cmd, capture_output=True, timeout=30, check=False)
             if r.returncode != 0:
-                # copy 在跨帧时可能失败；回退到重新编码
-                cmd2 = [ffmpeg_bin, "-y", "-ss", f"{cursor:.3f}", "-to", f"{seg_end:.3f}",
-                        "-i", str(uploaded), "-c:a", "libmp3lame", "-b:a", "128k", str(out)]
-                subprocess.run(cmd2, capture_output=True, timeout=60, check=False)
+                raise RuntimeError(f"ffmpeg 切片失败：{r.stderr.decode('utf-8', 'replace')[:200]}")
         except (OSError, subprocess.TimeoutExpired) as e:
             raise RuntimeError(f"ffmpeg 切片失败：{e}") from e
-        actual_dur = probe_audio_duration(out) or seg_dur
+        actual_dur = probe_audio_duration(out) or (end-start)
         results.append({
-            "index": int(seg.get("idx", i+1)),
+            "index": idx,
             "path": str(out),
             "duration": round(float(actual_dur), 2),
             "text": seg.get("text", ""),
-            "duration_source": "upload_slice",
+            "duration_source": source,
+            "start_sec": round(start, 3),
+            "end_sec": round(end, 3),
         })
-        cursor = seg_end
     return results, round(total_duration, 2)
 
 
@@ -2254,6 +2420,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def _handle_upload_voice(self, form, files):
         task_id = (form.get("task_id") or "").strip() or f"task_{int(time.time())}"
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,100}", task_id):
+            raise ValueError("task_id 不合法")
         content = files.get("file")
         if not content:
             raise ValueError("缺少 file 字段")
@@ -2329,6 +2497,8 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
+        # 浏览器续跑链接携带 ?resume=<task_id>；路由只按 URL path 匹配。
+        self.path = urllib.parse.urlsplit(self.path).path
         if self.path == "/" or self.path == "/index.html":
             self._file(ROOT / "index.html", "text/html; charset=utf-8")
             return
@@ -2340,8 +2510,15 @@ class Handler(BaseHTTPRequestHandler):
             return
         if self.path.startswith("/assets/"):
             # /assets/<sub>/<file> — 静态资源（CSS / JS / 图标）
-            rel = self.path.lstrip("/")
-            f = ROOT / rel
+            rel = self.path[len("/assets/"):]
+            parts = rel.split("/")
+            if "\\" in rel or not parts or any(part in ("", ".", "..") for part in parts):
+                self._json(404, {"error": "非法资源路径"})
+                return
+            f = (ROOT / "assets" / rel).resolve()
+            if not f.is_relative_to((ROOT / "assets").resolve()):
+                self._json(404, {"error": "非法资源路径"})
+                return
             if f.exists() and f.is_file():
                 ext = f.suffix.lower()
                 mime = {
@@ -2359,14 +2536,25 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(404, {"error": f"资源不存在: {rel}"})
             return
         if self.path.startswith("/covers/"):
-            self._file(DATA_DIR / self.path.lstrip("/"), "image/png")
+            filename = self.path[len("/covers/"):]
+            if not re.fullmatch(r"[A-Za-z0-9_-]+\.(?:png|jpe?g|webp)", filename, re.I):
+                self._json(404, {"error": "非法封面路径"})
+                return
+            mime = "image/webp" if filename.lower().endswith(".webp") else \
+                   "image/jpeg" if filename.lower().endswith((".jpg", ".jpeg")) else "image/png"
+            self._file(DATA_DIR / "covers" / filename, mime)
             return
         if self.path.startswith("/api/task_image/"):
             # /api/task_image/<task_id>/<filename> → data/tasks/<task_id>/covers/<filename>
             rel = self.path[len("/api/task_image/"):]
-            img_path = DATA_DIR / "tasks" / rel
+            match = re.fullmatch(r"([A-Za-z0-9_-]{1,100})/(\d+\.(?:png|jpe?g|webp))", rel, re.I)
+            if not match:
+                self._json(404, {"error": "非法图片路径"})
+                return
+            img_path = _tasks_root() / match.group(1) / "covers" / match.group(2)
             if img_path.exists() and img_path.is_file():
-                mime = "image/jpeg" if img_path.suffix.lower() in (".jpg", ".jpeg") else "image/png"
+                mime = {".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+                        ".webp": "image/webp"}.get(img_path.suffix.lower(), "image/png")
                 self._file(img_path, mime)
             else:
                 self._json(404, {"error": "图片不存在"})
@@ -2374,7 +2562,13 @@ class Handler(BaseHTTPRequestHandler):
         if self.path.startswith("/api/audio/"):
             # /api/audio/<task_id>/<file>.mp3 → data/tasks/<task_id>/audio/<file>
             rel = self.path[len("/api/audio/"):]
-            audio_path = DATA_DIR / "tasks" / rel
+            match = re.fullmatch(r"([A-Za-z0-9_-]{1,100})/(seg_\d+|podcast)\.mp3", rel)
+            if not match:
+                self._json(404, {"error": "非法音频路径"})
+                return
+            audio_path = _tasks_root() / match.group(1)
+            audio_path = audio_path / "podcast.mp3" if match.group(2) == "podcast" else \
+                         audio_path / "audio" / f"{match.group(2)}.mp3"
             if audio_path.exists() and audio_path.is_file():
                 self._file(audio_path, "audio/mpeg")
             else:
@@ -2383,17 +2577,15 @@ class Handler(BaseHTTPRequestHandler):
         if self.path.startswith("/api/task_video/"):
             # /api/task_video/<task_id>/<file>.mp4 → data/tasks/<task_id>/videos/<file>
             rel = self.path[len("/api/task_video/"):]
-            if rel.endswith(".mp4"):
-                if rel.count("/") > 1:
-                    self._json(404, {"error": "path 不合法"})
-                    return
-                vid_path = DATA_DIR / "tasks" / rel
-                if vid_path.exists() and vid_path.is_file():
-                    self._file(vid_path, "video/mp4")
-                else:
-                    self._json(404, {"error": "视频不存在"})
+            match = re.fullmatch(r"([A-Za-z0-9_-]{1,100})/(seg_\d+\.mp4)", rel)
+            if not match:
+                self._json(404, {"error": "非法视频路径"})
                 return
-            self._json(404, {"error": "仅支持 .mp4"})
+            vid_path = _tasks_root() / match.group(1) / "videos" / match.group(2)
+            if vid_path.exists() and vid_path.is_file():
+                self._file(vid_path, "video/mp4")
+            else:
+                self._json(404, {"error": "视频不存在"})
             return
         if self.path.startswith("/api/material/"):
             # /api/material/<filename> → 直接放文件（路径校验：仅 uuid12.ext）
@@ -2427,8 +2619,12 @@ class Handler(BaseHTTPRequestHandler):
             return
         if self.path.startswith("/tasks/"):
             # /tasks/<task_id>/<filename> — 让前端能 fetch 任务产物 JSON / 文本
-            rel = self.path.lstrip("/")
-            f = DATA_DIR / rel
+            rel = self.path[len("/tasks/"):]
+            match = re.fullmatch(r"([A-Za-z0-9_-]{1,100})/([A-Za-z0-9_.-]+\.(?:json|txt|md))", rel)
+            if not match or ".." in match.group(2):
+                self._json(404, {"error": "非法任务文件路径"})
+                return
+            f = _tasks_root() / match.group(1) / match.group(2)
             if f.exists() and f.is_file():
                 self._file(f, "application/json; charset=utf-8" if f.suffix == ".json" else "text/plain; charset=utf-8")
             else:
@@ -2461,8 +2657,8 @@ class Handler(BaseHTTPRequestHandler):
         if self.path.startswith("/api/task/"):
             # /api/task/<task_id>
             task_id = self.path[len("/api/task/"):].strip("/")
-            if not task_id:
-                self._json(400, {"error": "task_id 不能为空"})
+            if not re.fullmatch(r"[A-Za-z0-9_-]{1,100}", task_id):
+                self._json(400, {"error": "task_id 不合法"})
                 return
             detail = get_task_detail(task_id)
             if not detail:
@@ -2503,6 +2699,13 @@ class Handler(BaseHTTPRequestHandler):
             data = json.loads(self.rfile.read(length).decode("utf-8")) if length else {}
         except ValueError:
             self._json(400, {"error": "请求体不是合法 JSON"})
+            return
+        if not isinstance(data, dict):
+            self._json(400, {"error": "请求体必须是 JSON 对象"})
+            return
+        requested_task_id = data.get("task_id")
+        if requested_task_id not in (None, "") and not re.fullmatch(r"[A-Za-z0-9_-]{1,100}", str(requested_task_id)):
+            self._json(400, {"error": "task_id 不合法"})
             return
 
         if self.path == "/api/settings":
@@ -2978,6 +3181,14 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, load_tasks())
             return
 
+        if self.path == "/api/task/fork":
+            try:
+                new_id = fork_task_for_edit(data.get("task_id"), data.get("field"), data.get("value"))
+                self._json(200, {"task_id": new_id, "source_task_id": data.get("task_id")})
+            except (ValueError, OSError, KeyError, TypeError) as e:
+                self._json(400, {"error": str(e)})
+            return
+
         # ============================================================
         # Step 4 出图（批量调出图 API，参考 M_ 函数并发 3 路 + 失败兜底）
         #   body: {"prompts": [{"idx":1,"desc_prompt":"..."}], "ratio":"9:16", "resolution":"1k", "concurrency":3}
@@ -3319,7 +3530,18 @@ class Handler(BaseHTTPRequestHandler):
                 audio_dir.mkdir(parents=True, exist_ok=True)
 
                 if mode == "upload":
-                    seg_records, total_dur = slice_uploaded_voice(task_dir, segments)
+                    asr_cfg = s.get("asr") or {}
+                    asr_segments = None
+                    asr_error = ""
+                    if asr_cfg.get("provider", "volcengine") == "volcengine" and asr_cfg.get("access_key"):
+                        try:
+                            asr_segments = _volc_asr_transcribe(
+                                asr_cfg["access_key"], task_dir / "uploaded-voice.mp3")
+                        except RuntimeError as exc:
+                            asr_error = str(exc)
+                    seg_records, total_dur = slice_uploaded_voice(
+                        task_dir, segments, asr_segments=asr_segments,
+                        only_indices=data.get("only_idxs"))
                     segment_file = task_dir / "05-tts-segments.json"
                     previous_segments = []
                     if segment_file.exists():
@@ -3344,6 +3566,8 @@ class Handler(BaseHTTPRequestHandler):
                             "duration": segment["duration"],
                             "text": segment["text"],
                             "duration_source": segment["duration_source"],
+                            "start_sec": segment["start_sec"],
+                            "end_sec": segment["end_sec"],
                         })
                     self._json(200, {
                         "results": results,
@@ -3354,6 +3578,8 @@ class Handler(BaseHTTPRequestHandler):
                         "ok_count": len(results),
                         "total": len(results),
                         "total_duration": total_dur,
+                        "alignment": seg_records[0]["duration_source"] if seg_records else "",
+                        "asr_error": asr_error,
                         "elapsed": 0.0,
                     })
                     return
@@ -3418,30 +3644,7 @@ class Handler(BaseHTTPRequestHandler):
                             err = r.get("error") if r else "未知错误"
                             seg_results.append({"idx": idx, "ok": False, "error": err, "speaker": speaker})
 
-                    # ffmpeg concat → podcast.mp3
-                    podcast_path = task_dir / "podcast.mp3"
-                    seg_inputs = [r for r in seg_results if r.get("ok")]
-                    ffmpeg_bin = shutil.which("ffmpeg")
-                    if ffmpeg_bin and seg_inputs:
-                        list_file = task_dir / "podcast_concat.txt"
-                        list_file.write_text(
-                            "\n".join(f"file '{Path(r['path']).as_posix()}'" for r in seg_inputs),
-                            encoding="utf-8"
-                        )
-                        cmd = [ffmpeg_bin, "-y", "-f", "concat", "-safe", "0",
-                               "-i", str(list_file), "-c", "copy", str(podcast_path)]
-                        subprocess.run(cmd, capture_output=True, timeout=60, check=False)
-
-                    # 落 05-podcast.json + 05-tts-segments.json
-                    (task_dir / "05-podcast.json").write_text(
-                        json.dumps({"rounds": rounds,
-                                    "speakers": {"A": speaker_a, "B": speaker_b},
-                                    "podcast_path": str(podcast_path),
-                                    "podcast_url": f"/api/audio/{task_id}/podcast.mp3"
-                                            if podcast_path.exists() else ""},
-                                   ensure_ascii=False, indent=2),
-                        encoding="utf-8"
-                    )
+                    # 续跑时把既有分段和本次分段按镜头号合并，再生成完整播客音频。
                     segment_file = task_dir / "05-tts-segments.json"
                     previous_segments = []
                     if segment_file.exists():
@@ -3463,6 +3666,39 @@ class Handler(BaseHTTPRequestHandler):
                         json.dumps([by_index[idx] for idx in sorted(by_index)], ensure_ascii=False, indent=2),
                         encoding="utf-8"
                     )
+                    seg_inputs = [by_index[idx] for idx in sorted(by_index)
+                                  if Path(by_index[idx].get("path") or "").is_file()]
+                    rounds = []
+                    cur_t = 0.0
+                    for item in seg_inputs:
+                        dur = float(item.get("duration") or 0)
+                        rounds.append({"index": item["index"], "speaker": item.get("speaker", "A"),
+                                       "text": item.get("text", ""), "start": round(cur_t, 2),
+                                       "end": round(cur_t + dur, 2), "duration": dur})
+                        cur_t += dur
+                    podcast_path = task_dir / "podcast.mp3"
+                    podcast_ready = False
+                    ffmpeg_bin = shutil.which("ffmpeg")
+                    if ffmpeg_bin and seg_inputs:
+                        list_file = task_dir / "podcast_concat.txt"
+                        list_file.write_text(
+                            "\n".join(f"file '{Path(r['path']).as_posix()}'" for r in seg_inputs),
+                            encoding="utf-8"
+                        )
+                        temporary_podcast = task_dir / "podcast-building.mp3"
+                        cmd = [ffmpeg_bin, "-y", "-f", "concat", "-safe", "0",
+                               "-i", str(list_file), "-c", "copy", str(temporary_podcast)]
+                        result = subprocess.run(cmd, capture_output=True, timeout=60, check=False)
+                        if result.returncode == 0 and temporary_podcast.is_file() and temporary_podcast.stat().st_size:
+                            os.replace(temporary_podcast, podcast_path)
+                            podcast_ready = True
+                    (task_dir / "05-podcast.json").write_text(
+                        json.dumps({"rounds": rounds,
+                                    "speakers": {"A": speaker_a, "B": speaker_b},
+                                    "podcast_path": str(podcast_path) if podcast_ready else "",
+                                    "podcast_url": f"/api/audio/{task_id}/podcast.mp3" if podcast_ready else ""},
+                                   ensure_ascii=False, indent=2), encoding="utf-8"
+                    )
                     ok_count = sum(1 for r in seg_results if r.get("ok"))
                     self._json(200, {
                         "results": seg_results,
@@ -3472,9 +3708,9 @@ class Handler(BaseHTTPRequestHandler):
                         "mode": "podcast",
                         "speakers": {"A": speaker_a, "B": speaker_b},
                         "rounds": rounds,
-                        "podcast_path": str(podcast_path) if podcast_path.exists() else "",
+                        "podcast_path": str(podcast_path) if podcast_ready else "",
                         "podcast_url": f"/api/audio/{task_id}/podcast.mp3"
-                                       if podcast_path.exists() else "",
+                                       if podcast_ready else "",
                         "ok_count": ok_count,
                         "total": len(segments),
                         "elapsed": round(time.time() - t0, 1),
@@ -3629,6 +3865,9 @@ class Handler(BaseHTTPRequestHandler):
                 if not task_id:
                     self._json(400, {"error": "task_id 必填"})
                     return
+                if not re.fullmatch(r"[A-Za-z0-9_-]{1,100}", task_id):
+                    self._json(400, {"error": "task_id 不合法"})
+                    return
                 if mode == "off" or not shots:
                     self._json(200, {"results": [], "mode": mode, "task_id": task_id})
                     return
@@ -3652,6 +3891,14 @@ class Handler(BaseHTTPRequestHandler):
                     image_path = shot.get("image_path") or ""
                     audio_path = shot.get("audio_path") or ""
                     duration = float(shot.get("duration") or 0)
+                    if image_path.startswith("/api/task_image/"):
+                        prefix = f"/api/task_image/{task_id}/"
+                        filename = image_path[len(prefix):] if image_path.startswith(prefix) else ""
+                        if not re.fullmatch(r"[0-9]+\.(?:png|jpe?g|webp)", filename, re.I):
+                            results.append({"idx": idx, "ok": False,
+                                            "error": "图片地址不属于当前任务"})
+                            continue
+                        image_path = str(task_dir / "covers" / filename)
                     if not idx or not image_path or not audio_path or duration <= 0:
                         results.append({"idx": idx, "ok": False,
                                         "error": "image_path / audio_path / duration 缺失"})
@@ -3754,12 +4001,13 @@ class Handler(BaseHTTPRequestHandler):
                         seg_type = "video"
                     else:
                         img_url = img.get("url") or ""
+                        local_url = img.get("task_local") or img_url
                         material_id = f"img_{idx}"
                         seg_type = "video"
-                        if img_url.startswith("/covers/"):
-                            material_path = str(DATA_DIR / img_url.lstrip("/"))
-                        elif img_url.startswith(f"/api/task_image/{task_id}/"):
-                            material_path = str(_tasks_root() / task_id / "covers" / Path(img_url).name)
+                        if local_url.startswith("/covers/"):
+                            material_path = str(DATA_DIR / local_url.lstrip("/"))
+                        elif local_url.startswith(f"/api/task_image/{task_id}/"):
+                            material_path = str(_tasks_root() / task_id / "covers" / Path(local_url).name)
                         else:
                             material_path = ""
                         material_url = img_url

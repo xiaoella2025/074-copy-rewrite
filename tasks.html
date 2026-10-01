@@ -88,6 +88,10 @@ body{font-family:var(--font-sans);background:var(--bg);color:var(--text);padding
 .meta-k{color:var(--muted);font-size:11px;margin-bottom:2px;}
 .meta-v{color:var(--text);font-size:13px;word-break:break-all;line-height:1.5;background:var(--bg-raised);padding:6px 10px;border-radius:var(--radius-sm);border:1px solid var(--border-subtle);}
 .json-block{background:var(--bg-sunken);padding:12px 14px;border-radius:var(--radius-md);font-family:var(--font-mono);font-size:11.5px;max-height:240px;overflow:auto;white-space:pre-wrap;word-break:break-all;border:1px solid var(--border-subtle);color:var(--text-muted);}
+.edit-panel{margin-top:9px;background:var(--bg-raised);border:1px solid var(--border-subtle);border-radius:var(--radius-md);padding:10px;}
+.edit-panel summary{cursor:pointer;color:var(--brand);font-size:12px;margin-bottom:8px;}
+.edit-panel textarea{display:block;width:100%;min-height:74px;margin:7px 0 10px;padding:9px;background:var(--bg-sunken);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-sm);font:12px/1.6 var(--font-sans);resize:vertical;}
+.edit-panel .edit-caption{font-size:11px;color:var(--muted);margin-top:6px;}
 .refresh-icon{animation:spin 1s linear infinite;display:inline-block;}
 @keyframes spin{to{transform:rotate(360deg)}}
 /* === STORY 真值：settings-section-head + settings-pip === */
@@ -221,6 +225,11 @@ function renderDetail(d) {
     html.push(`<div class="section">
       <h3>📝 Step 1 改写后文案（${steps.rewrite.length} 字）</h3>
       <div class="json-block">${escapeHtml(steps.rewrite)}</div>
+      <details class="edit-panel"><summary>人工修改文案</summary>
+        <textarea id="edit-rewrite">${escapeHtml(steps.rewrite)}</textarea>
+        <button type="button" class="btn" id="save-rewrite">保存为新版本并续跑</button>
+        <div class="edit-caption">会重新生成元信息和分镜；原任务保留。</div>
+      </details>
     </div>`);
   }
   // 元信息
@@ -243,6 +252,11 @@ function renderDetail(d) {
     html.push(`<div class="section">
       <h3>🎬 Step 2 分镜（${steps.shots.length} 镜）</h3>
       ${steps.shots.map(s => `<div class="shot-item"><div class="idx">${s.idx}</div><div class="txt">${escapeHtml(s.text || "")}</div></div>`).join("")}
+      <details class="edit-panel"><summary>人工修改分镜</summary>
+        ${steps.shots.map((s, i) => `<div class="edit-caption">第 ${s.idx} 镜</div><textarea data-edit-shot="${i}">${escapeHtml(s.text || "")}</textarea>`).join("")}
+        <button type="button" class="btn" id="save-shots">保存为新版本并续跑</button>
+        <div class="edit-caption">会重新配音和出图；原任务保留。</div>
+      </details>
     </div>`);
   }
   // 出图 prompt
@@ -250,6 +264,11 @@ function renderDetail(d) {
     html.push(`<div class="section">
       <h3>🎨 Step 3 出图 Prompt（${steps.prompts.length} 个）</h3>
       ${steps.prompts.map(p => `<div class="shot-item"><div class="idx">${p.idx}</div><div class="txt">${escapeHtml(p.desc_prompt || "")}</div></div>`).join("")}
+      <details class="edit-panel"><summary>人工修改绘图提示词</summary>
+        ${steps.prompts.map((p, i) => `<div class="edit-caption">第 ${p.idx} 镜</div><textarea data-edit-prompt="${i}">${escapeHtml(p.desc_prompt || "")}</textarea>`).join("")}
+        <button type="button" class="btn" id="save-prompts">保存为新版本并续跑</button>
+        <div class="edit-caption">只重画提示词变更的镜头；原任务保留。</div>
+      </details>
     </div>`);
   }
   // 出图图片
@@ -257,7 +276,7 @@ function renderDetail(d) {
     html.push(`<div class="section">
       <h3>🖼 Step 4 出图（${steps.images.length} 张）</h3>
       <div class="image-grid">
-        ${steps.images.map(img => `<div class="item"><img src="${escapeHtml(img.url)}" loading="lazy"><div class="label">${escapeHtml(img.name)} · ${(img.size/1024).toFixed(1)}KB</div></div>`).join("")}
+        ${steps.images.map(img => `<div class="item"><img src="${escapeHtml(img.url)}" loading="lazy"><div class="label">${escapeHtml(img.name)} · ${(img.size/1024).toFixed(1)}KB</div>${/^\d+\.(png|jpe?g|webp)$/i.test(img.name) ? `<button type="button" class="btn" data-redraw-idx="${Number(img.name.split('.')[0])}" style="margin-top:6px">重画本镜</button>` : ''}</div>`).join("")}
       </div>
     </div>`);
   }
@@ -295,6 +314,22 @@ function renderDetail(d) {
   if (resumeButton) resumeButton.onclick = () => {
     location.href = "/index.html?resume=" + encodeURIComponent(info.task_id);
   };
+  const fork = async (field, value) => {
+    try {
+      const r = await api("/api/task/fork", "POST", {task_id: info.task_id, field, value});
+      location.href = "/index.html?resume=" + encodeURIComponent(r.task_id);
+    } catch (e) { alert("保存新版本失败：" + e.message); }
+  };
+  $("save-rewrite")?.addEventListener("click", () => fork("rewrite", $("edit-rewrite").value));
+  $("save-shots")?.addEventListener("click", () => fork("shots", steps.shots.map((shot, i) => ({
+    ...shot, text: document.querySelector(`[data-edit-shot="${i}"]`).value.trim(),
+  }))));
+  $("save-prompts")?.addEventListener("click", () => fork("prompts", steps.prompts.map((prompt, i) => ({
+    ...prompt, desc_prompt: document.querySelector(`[data-edit-prompt="${i}"]`).value.trim(),
+  }))));
+  $("detail-panel").querySelectorAll("[data-redraw-idx]").forEach(button => {
+    button.onclick = () => fork("redraw", Number(button.dataset.redrawIdx));
+  });
 }
 
 // 主题切换（与 settings.html 同步）
