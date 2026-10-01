@@ -1232,6 +1232,101 @@ def _minimax_tts_synthesize(api_key, text, voice_id, idx, speed=1.0, mx_cfg=None
     return {"idx": idx, "ok": True, "text": text, "audio_bytes": audio}
 
 
+# ============================================================
+# 火山 ASR — 真值函数（参考 STORY H6 40002-L40002.js + index-CXUXw7CE.js:39983-40068）
+#   submit: POST .../auc/bigmodel/submit → 20000000 立即成功 / 否则错误
+#   query:  POST .../auc/bigmodel/query  → 20000000 完成 / 20000001|002 处理中
+#   响应：result.utterances[]=[{text, start_time(ms), end_time(ms), words[]}]
+# ============================================================
+VOLC_ASR_SUBMIT_URL = "https://openspeech.bytedance.com/api/v3/auc/bigmodel/submit"
+VOLC_ASR_QUERY_URL = "https://openspeech.bytedance.com/api/v3/auc/bigmodel/query"
+VOLC_ASR_RESOURCE_ID = "volc.seedasr.auc"
+
+def _volc_asr_transcribe(api_key, audio_path, timeout_sec=60):
+    """调火山录音文件识别（bigmodel），返回 segments[{text, start, end}] 秒。
+    失败抛 RuntimeError，调用方回退到 chars/sec 估算。"""
+    if not api_key:
+        raise RuntimeError("缺少火山 API Key（设置 → TTS 配音 → 火山引擎）")
+    p = Path(audio_path)
+    if not p.exists():
+        raise RuntimeError(f"音频文件不存在: {audio_path}")
+    audio_bytes = p.read_bytes()
+    ext = p.suffix.lstrip(".").lower() or "mp3"
+    if ext not in ("mp3", "wav", "ogg", "raw"):
+        ext = "mp3"
+    audio_b64 = base64.b64encode(audio_bytes).decode("ascii")
+    req_id = str(uuid.uuid4())
+    submit_headers = {
+        "Content-Type": "application/json",
+        "X-Api-Key": api_key,
+        "X-Api-Resource-Id": VOLC_ASR_RESOURCE_ID,
+        "X-Api-Request-Id": req_id,
+        "X-Api-Sequence": "-1",
+    }
+    submit_body = json.dumps({
+        "user": {"uid": "app074"},
+        "audio": {"data": audio_b64, "format": ext},
+        "request": {
+            "model_name": "bigmodel",
+            "show_utterances": True,
+            "enable_punc": False,
+            "enable_itn": False,
+        },
+    }).encode("utf-8")
+    req = urllib.request.Request(VOLC_ASR_SUBMIT_URL, data=submit_body, method="POST", headers=submit_headers)
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            submit_status_code = next((v for k, v in resp.headers.items()
+                                      if k.lower() == "x-api-status-code"), "")
+            submit_body_resp = resp.read().decode("utf-8", errors="replace")
+    except urllib.error.HTTPError as e:
+        raise RuntimeError(f"火山 ASR submit HTTP {e.code}: {e.read().decode('utf-8', errors='replace')[:200]}")
+    except Exception as e:
+        raise RuntimeError(f"火山 ASR submit 网络错误: {e}")
+    if submit_status_code != "20000000":
+        raise RuntimeError(f"火山 ASR submit 失败（status={submit_status_code}）：{submit_body_resp[:200]}")
+    # 轮询
+    poll_headers = {
+        "Content-Type": "application/json",
+        "X-Api-Key": api_key,
+        "X-Api-Resource-Id": VOLC_ASR_RESOURCE_ID,
+        "X-Api-Request-Id": req_id,
+    }
+    deadline = time.time() + timeout_sec
+    while time.time() < deadline:
+        time.sleep(2)
+        try:
+            poll_req = urllib.request.Request(VOLC_ASR_QUERY_URL, data=b"{}", method="POST", headers=poll_headers)
+            with urllib.request.urlopen(poll_req, timeout=30) as resp:
+                poll_code = next((v for k, v in resp.headers.items()
+                                  if k.lower() == "x-api-status-code"), "")
+                poll_body = resp.read().decode("utf-8", errors="replace")
+        except urllib.error.HTTPError as e:
+            raise RuntimeError(f"火山 ASR query HTTP {e.code}")
+        except Exception as e:
+            raise RuntimeError(f"火山 ASR query 网络错误: {e}")
+        if poll_code in ("20000001", "20000002"):
+            continue
+        if poll_code == "20000000":
+            try:
+                obj = json.loads(poll_body)
+            except json.JSONDecodeError:
+                raise RuntimeError(f"火山 ASR 返回非 JSON: {poll_body[:200]}")
+            utterances = ((obj.get("result") or {}).get("utterances") or [])
+            if not utterances:
+                raise RuntimeError("火山 ASR 未返回任何句子")
+            return [
+                {
+                    "text": (u.get("text") or "").strip(),
+                    "start": float(u.get("start_time", 0)) / 1000.0,
+                    "end": float(u.get("end_time", 0)) / 1000.0,
+                }
+                for u in utterances if (u.get("text") or "").strip()
+            ]
+        raise RuntimeError(f"火山 ASR query 失败（status={poll_code}）：{poll_body[:200]}")
+    raise RuntimeError("火山 ASR 轮询超时")
+
+
 def parse_llm_json(text):
     """从 LLM 文本里抠出 JSON 对象/数组（即使带了 ``` 或前后说明）。"""
     text = text.strip()
@@ -1483,10 +1578,11 @@ def step2_split(llm_settings, content, target_shots=None, target_words=None):
     return {"shots": shots, "notes": notes}
 
 
-def step3_image_prompts(llm_settings, shots, track, style_label, story_context=""):
+def step3_image_prompts(llm_settings, shots, track, style_label, story_context="", character_card=None):
     """Step 3 出图 prompt：mS 风格的简化版。
     真值：分批并发 + 风格前后缀 + 角色档案 + 敏感词字典。
-    简化：串行分批 + 风格前缀/后缀（STYLE_TOKENS）+ 无角色档案 + 无敏感词字典。
+    简化：串行分批 + 风格前缀/后缀（STYLE_TOKENS）+ 角色档案（c$ 格式化）+ SENSITIVE_DICT。
+    character_card（dict）来自 Step 1 meta.characters[0]，含 identity + ageStages[stage/appearance/eraVisuals]。
     返回 [{idx, text, desc_prompt}]，desc_prompt 是中文视觉描述。"""
     if not shots:
         return []
@@ -1497,6 +1593,15 @@ def step3_image_prompts(llm_settings, shots, track, style_label, story_context="
     style_suffix = style["suffix"]
     allow_color = style["allow_color"]
 
+    # c$ 格式化角色档案（Storybound index-CXUXw7CE.js:902189 真值复制）
+    char_block = ""
+    if character_card and character_card.get("identity") and isinstance(character_card.get("ageStages"), list):
+        try:
+            from prompts.step3_image_prompt import format_character_card
+            char_block = format_character_card(character_card)
+        except Exception:
+            char_block = ""
+
     BATCH = 4  # 简化版每批 4 个（STORY yi 估计是 5-8，这里保守点）
     all_results = {}
     for i in range(0, len(shots), BATCH):
@@ -1505,12 +1610,14 @@ def step3_image_prompts(llm_settings, shots, track, style_label, story_context="
             [{"id": s["idx"], "cap": s["text"][:200]} for s in batch],
             ensure_ascii=False,
         )
+        char_section = f"\n## character_card\n{char_block}\n\n" if char_block else ""
         user_p = (
             f"## Track\n{track or '通用故事'}\n\n"
             f"## style_prefix\n{style_prefix}\n\n"
             f"## style_suffix\n{style_suffix or '(空)'}\n\n"
             f"## style_allow_color\n{'true' if allow_color else 'false'}\n\n"
             f"## story_context\n{story_context or '通用'}\n\n"
+            f"{char_section}"
             f"## shots\n{shots_json}\n\n"
             f"返回 JSON 数组（长度 {len(batch)}），每项含 id/cap/desc_prompt。"
         )
@@ -2090,7 +2197,10 @@ class Handler(BaseHTTPRequestHandler):
                 if "3" in run_steps and shots:
                     meta_for_ctx = out["steps"]["meta"] or {}
                     story_ctx = (title_in + " / " + (meta_for_ctx.get("title") or "")).strip(" /")
-                    out["steps"]["3"] = step3_image_prompts(settings, shots, track, style_label, story_ctx)
+                    # 角色档案（来自 Step 1 meta.characters[0]）注入 Step 3
+                    chars = meta_for_ctx.get("characters") or []
+                    character_card = chars[0] if isinstance(chars, list) and chars and isinstance(chars[0], dict) else None
+                    out["steps"]["3"] = step3_image_prompts(settings, shots, track, style_label, story_ctx, character_card)
                 else:
                     out["steps"]["3"] = data.get("image_prompts") or []
 
@@ -2332,12 +2442,28 @@ class Handler(BaseHTTPRequestHandler):
                         audio_path.write_bytes(r["audio_bytes"])
                         r["url"] = f"/api/audio/{task_id}/seg_{r['idx']:03d}.mp3"
                         r["path"] = str(audio_path)
-                        # 时长估算：按字数 * 0.18s/字 + 0.5s 静默兜底（无 ASR 时的近似值）
+                        # 时长估算：先用 chars*0.18 占位，再用火山 ASR（若已配置且 key 一致）替换为真实时间戳
                         text_chars = sum(1 for ch in (r.get("text") or "") if ch.strip())
                         r["duration"] = round(max(1.0, text_chars * 0.18), 2)
+                        r["duration_source"] = "chars_est"
+                        # 火山 ASR 对齐（仅当 TTS provider = volcengine 且有 key 时启用；其他 provider 跳过）
+                        if provider == "volcengine" and api_key:
+                            try:
+                                asr_segs = _volc_asr_transcribe(api_key, audio_path, timeout_sec=45)
+                                # 取最后一个 utterance 的 end_time 作为该段总时长（utils 真实音频长度）
+                                if asr_segs:
+                                    last_end = max(s["end"] for s in asr_segs)
+                                    if last_end > 0.5:
+                                        r["duration"] = round(last_end, 2)
+                                        r["duration_source"] = "volc_asr"
+                                        r["asr_segments"] = asr_segs
+                            except Exception as asr_e:
+                                r["asr_error"] = str(asr_e)
                         seg_json.append({
                             "index": r["idx"], "path": r["path"],
-                            "duration": r["duration"], "text": r.get("text", "")
+                            "duration": r["duration"], "text": r.get("text", ""),
+                            "duration_source": r.get("duration_source", "chars_est"),
+                            "asr_segments": r.get("asr_segments", []),
                         })
                         r.pop("audio_bytes", None)
                     else:

@@ -5,9 +5,12 @@ STORY 真值算法：
   K 变量（line 120-199）：完整敏感词字典 + 替换词映射（政治/军事/医疗/身体 4 大类）
   N/A 变量：角色档案（从 Step 1 元信息抽取，含 appearance + ageStages）
 
-074 完整版（保留 mS 全部核心，含完整 K 字典）：
+074 完整版（保留 mS 全部核心，含完整 K 字典 + c$ formatter）：
   - K 字典逐字复制自 STORY L30653-mS.js:120-199
-  - 角色档案段（S/A 分支）保留接口位（依赖 Step 1 meta.characters[0]）
+  - c$ 格式化函数逐字复制自 STORY index-CXUXw7CE.js:902189
+  - 角色档案段（A 分支）注入「身份 + 时间轴 N 个阶段」Markdown
+  - 时间轴提醒：当 ageStages > 1 时追加「每个分镜根据 cap 内容判断阶段」
+  - 骨架兜底：shot[i] 末尾追加对应 stage 的 appearance + eraVisuals
   - 视觉参考 seeds / 上文锚点 / 复活机制本 session 暂留 stub
 """
 
@@ -137,6 +140,19 @@ TEXT = """你是短视频分镜出图 prompt 工程师。任务：为每个分�
 - `style_suffix`：风格后缀 token（一般是空字符串）
 - `style_allow_color`：true/false；false 时禁用所有颜色词（黑白系）
 - `prev_caps`：上文 2-3 镜的 cap 列表（用于场景衔接；可忽略明显冲突）
+- `character_card`（可选）：角色档案对象，含 identity + ageStages[]，见下方角色档案注入规则
+
+## 角色档案注入规则（Storybound mS + c$ 真值）
+
+如果输入包含 `character_card`（含 `identity` + `ageStages[]`）：
+- 该档案贯穿**所有**分镜描述，人物国籍 / 性别 / 职业**不得切换**
+- 每个分镜根据 cap 内容判断属于哪个阶段（童年 / 青年 / 中年 / ...），用对应阶段的 appearance 描述人物外貌 + eraVisuals 描述环境视觉
+- 故事横跨多阶段时尤其关键：童年场景不能画成成年人，民国场景不能画现代服饰
+- 严禁所有分镜用同一阶段的人物形象（LLM 偷懒模式）
+
+如果 `character_card` 缺失：
+- 人物身份从 cap 自行识别，主角用「一位中年男性 / 一位少女」等泛称
+- 服饰 / 场景从 cap 推断的年代取默认
 
 ## 不要做
 
@@ -144,6 +160,23 @@ TEXT = """你是短视频分镜出图 prompt 工程师。任务：为每个分�
 - 不要在 desc_prompt 末尾拼接 cap 原文
 - 不要输出"Sure" / "Here is" / "Below" 等前缀
 """
+
+
+# ============================================================
+# c$ 函数 — Storybound index-CXUXw7CE.js:902189 真值复制
+# 把 character 对象格式化成 Markdown 段落，注入到 Step 3 prompt
+# ============================================================
+def format_character_card(card: dict) -> str:
+    if not card or not isinstance(card.get("ageStages"), list) or not card.get("identity"):
+        return ""
+    stages = card["ageStages"]
+    lines = [f"### 阶段 {i+1}：{s.get('stage', '?')}\n- **外貌**：{s.get('appearance', '?')}\n- **年代视觉**：{s.get('eraVisuals', '?')}"
+             for i, s in enumerate(stages)]
+    return (
+        f"**身份**：{card['identity']}\n\n"
+        f"**时间轴**（共 {len(stages)} 个阶段）：\n\n"
+        + "\n\n".join(lines)
+    )
 
 
 def get() -> str:
