@@ -153,6 +153,34 @@ textarea{resize:vertical;min-height:60px;font-family:var(--font-mono);font-size:
 .chip[data-active=true] .chip-hint{color:rgba(0,0,0,.5);}
 .chip .chip-main{font-weight:500;}
 .chip .chip-hint{font-size:10.5px;color:var(--text-faint);}
+/* === STORY 真值：image-provider-tabs（Settings.js:1620-1637）— 5 个 provider 横向切换 === */
+.image-provider-tabs{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;}
+.image-provider-tab{padding:8px 14px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:13px;font-weight:500;color:var(--text-muted);cursor:pointer;display:inline-flex;align-items:center;gap:8px;transition:all .12s;position:relative;}
+.image-provider-tab:hover{border-color:var(--border-strong);color:var(--text);}
+.image-provider-tab.active{background:var(--brand-soft);color:var(--brand);border-color:var(--brand);font-weight:600;}
+.image-provider-tab-badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;background:var(--brand);color:var(--brand-fg);border-radius:999px;font-size:10.5px;font-weight:600;line-height:1.3;}
+/* === STORY 真值：custom-platform-banner（Settings.js:1804 等）— provider 提示横幅 === */
+.custom-platform-banner{padding:12px 14px;background:var(--brand-soft);border-radius:var(--radius-md);font-size:12.5px;line-height:1.6;color:var(--text);margin-bottom:14px;}
+.custom-platform-banner a{color:var(--brand);text-decoration:underline;cursor:pointer;}
+/* === STORY 真值：credits-balance-row（Settings.js:1744 等）— 积分余额条 === */
+.credits-balance-row{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--brand-soft);border-radius:var(--radius-md);margin-bottom:10px;}
+.credits-balance-label{font-size:12.5px;color:var(--text-muted);font-weight:500;}
+.credits-balance-value{font-size:18px;font-weight:700;color:var(--brand);font-variant-numeric:tabular-nums;}
+.credits-balance-unit{font-size:12px;color:var(--text-muted);}
+.credits-balance-est{font-size:11.5px;color:var(--text-muted);}
+/* === STORY 真值：slider-row（Settings.js:1705 等）— 滑动条 === */
+.slider-row{display:flex;align-items:center;gap:10px;}
+.slider{flex:1;height:6px;-webkit-appearance:none;appearance:none;background:var(--bg-raised);border-radius:999px;outline:none;border:1px solid var(--border-subtle);cursor:pointer;}
+.slider::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:16px;height:16px;background:var(--brand);border-radius:50%;cursor:pointer;border:2px solid var(--bg);box-shadow:0 0 0 1px var(--brand);}
+.slider::-moz-range-thumb{width:16px;height:16px;background:var(--brand);border-radius:50%;cursor:pointer;border:2px solid var(--bg);}
+.slider-value{min-width:32px;text-align:right;font-size:13px;font-weight:600;color:var(--brand);font-variant-numeric:tabular-nums;}
+/* === STORY 真值：multi-token / multi-model 列表 === */
+.token-list{display:flex;flex-direction:column;gap:4px;margin-bottom:6px;}
+.token-row{display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--bg-raised);border:1px solid var(--border-subtle);border-radius:var(--radius-sm);font-size:12.5px;font-family:var(--font-mono);color:var(--text-secondary);}
+.token-row .idx{opacity:.6;min-width:18px;}
+.token-row .val{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.token-row .del{cursor:pointer;opacity:.5;font-size:11px;line-height:1;padding:2px 6px;border-radius:4px;}
+.token-row .del:hover{opacity:1;background:color-mix(in oklch,var(--danger) 12%,transparent);color:var(--danger);}
 .profile-list{margin-top:14px;}
 .profile-row{display:grid;grid-template-columns:18px 1fr auto;gap:12px;align-items:center;padding:14px 16px;background:var(--bg-elevated);border:1px solid var(--border-subtle);border-radius:var(--radius-md);cursor:pointer;transition:all .12s;position:relative;}
 .profile-row:hover{border-color:var(--border);background:var(--bg-hover);}
@@ -306,62 +334,264 @@ code{background:var(--bg);padding:1px 5px;border-radius:3px;font-family:var(--fo
         <div class="settings-section-icon"><span class="icon">🎨</span></div>
         <div class="flex-1">
           <div class="settings-section-title">AI 绘图 · 分镜图片</div>
-          <div class="settings-section-sub">配置出图 API（OpenAI 兼容通道 / 即梦 / RunningHub / ModelScope）。</div>
+          <div class="settings-section-sub" id="image-sub">5 个 provider 各有独立通道与计费方式 · 点 tab 切换</div>
         </div>
         <span class="settings-pip" id="st-image"><span class="settings-pip-dot"></span>检测中…</span>
       </div>
 
-      <div class="card">
-        <div class="card-hd"><span class="label">主出图 provider</span><span class="hint">决定默认走哪条通道</span></div>
-        <div class="chips" id="image-providers">
-          <div class="chip" data-v="gpt_image"><span class="chip-main">GPT Image</span><span class="chip-hint">gpt-image-1</span></div>
-          <div class="chip" data-v="modelscope"><span class="chip-main">ModelScope</span><span class="chip-hint">阿里魔搭</span></div>
-          <div class="chip" data-v="jimeng"><span class="chip-main">即梦 CV</span><span class="chip-hint">jimeng-4.5</span></div>
-          <div class="chip" data-v="runninghub"><span class="chip-main">RunningHub</span><span class="chip-hint">ComfyUI 云</span></div>
-          <div class="chip" data-v="custom_image"><span class="chip-main">自定义 OpenAI 兼容</span><span class="chip-hint">自填 base_url</span></div>
-        </div>
-        <div class="field-hd"><span class="label">模型</span></div>
-        <input type="text" id="image-model" placeholder="gpt-image-1">
-        <div class="field-hd"><span class="label">API Key</span></div>
-        <input type="password" id="image-key" placeholder="留空保留原值">
-        <div class="field-hd"><span class="label">Base URL</span></div>
-        <input type="text" id="image-baseurl" placeholder="https://api.openai.com">
-        <div class="field-help">默认按 <code>provider=gpt_image</code>，调用 OpenAI Images API。</div>
-        <div class="field-hd"><span class="label">比例 / 分辨率</span></div>
-        <div class="chips" id="image-ratio">
-          <div class="chip" data-v="9:16"><span class="chip-main">9:16</span></div>
-          <div class="chip" data-v="16:9"><span class="chip-main">16:9</span></div>
-          <div class="chip" data-v="1:1"><span class="chip-main">1:1</span></div>
-        </div>
-        <div class="chips" id="image-resolution" style="margin-top:6px">
-          <div class="chip" data-v="1k"><span class="chip-main">1K</span></div>
-          <div class="chip" data-v="2k"><span class="chip-main">2K</span></div>
-          <div class="chip" data-v="4k"><span class="chip-main">4K</span></div>
-        </div>
-        <div class="field-hd"><span class="label">自定义尺寸（宽 × 高）</span></div>
-        <div class="row"><input type="text" id="image-width" placeholder="1024"><input type="text" id="image-height" placeholder="1792"></div>
-        <div style="margin-top:14px"><button class="btn primary" id="btn-image-save">💾 保存</button></div>
+      <div class="image-provider-tabs" id="image-provider-tabs">
+        <button class="image-provider-tab" data-p="jimeng" type="button">即梦<span class="image-provider-tab-badge" id="img-badge-jimeng" style="display:none">使用中</span></button>
+        <button class="image-provider-tab" data-p="gpt_image" type="button">全能绘图<span class="image-provider-tab-badge" id="img-badge-gpt_image" style="display:none">使用中</span></button>
+        <button class="image-provider-tab" data-p="modelscope" type="button">魔搭社区<span class="image-provider-tab-badge" id="img-badge-modelscope" style="display:none">使用中</span></button>
+        <button class="image-provider-tab" data-p="runninghub" type="button">RunningHub<span class="image-provider-tab-badge" id="img-badge-runninghub" style="display:none">使用中</span></button>
+        <button class="image-provider-tab" data-p="custom" type="button">自定义平台<span class="image-provider-tab-badge" id="img-badge-custom" style="display:none">使用中</span></button>
       </div>
 
-      <div class="card">
-        <div class="card-hd"><span class="label">即梦 CV（火山引擎）</span><span class="hint">access_key + secret_key V4 签名</span></div>
-        <div class="field-hd"><span class="label">Access Key (AK)</span></div>
-        <input type="password" id="jimeng-ak" placeholder="留空保留原值">
-        <div class="field-hd"><span class="label">Secret Key (SK)</span></div>
-        <input type="password" id="jimeng-sk" placeholder="留空保留原值">
+      <!-- ========== 即梦 ========== -->
+      <div class="settings-card" id="img-card-jimeng" style="display:none">
+        <div class="field-hd"><span class="label">Session ID</span><span class="hint">必填</span></div>
+        <div class="key-input">
+          <input type="password" id="jimeng-session" class="key-input-field" placeholder="粘贴即梦 Session ID">
+          <div class="key-input-actions">
+            <button type="button" class="key-input-btn" data-toggle-key="jimeng-session" title="显示/隐藏">👁</button>
+            <button type="button" class="key-input-btn" data-paste-key="jimeng-session" title="从剪贴板粘贴">📋</button>
+          </div>
+        </div>
+        <div class="field-help">登录即梦 Web 端后，从 Cookie 中取得 <code>sessionid</code> 值</div>
+
         <div class="field-hd"><span class="label">模型</span></div>
-        <input type="text" id="jimeng-model" placeholder="jimeng-4.5">
-        <div class="info-bar">控制台：<a href="https://console.volcengine.com/" target="_blank">console.volcengine.com</a> → 访问控制 → 创建 AK / SK → 开通即梦 CV 服务</div>
+        <select id="jimeng-model-sel" class="input">
+          <option value="jimeng-4.0">jimeng-4.0 · 基础</option>
+          <option value="jimeng-4.1">jimeng-4.1 · 增强</option>
+          <option value="jimeng-4.5" selected>jimeng-4.5 · 推荐 · 默认</option>
+          <option value="jimeng-4.6">jimeng-4.6 · 人像一致性好</option>
+          <option value="jimeng-4.7">jimeng-4.7 · 画质优化</option>
+          <option value="jimeng-5.0">jimeng-5.0 Lite · 指令响应更准</option>
+          <option value="jimeng-5.0-pro">jimeng-5.0 Pro · 最新 · 商业级</option>
+        </select>
+
+        <div class="field-hd"><span class="label">画面比例</span></div>
+        <select id="jimeng-ratio" class="input">
+          <option value="9:16" selected>9:16 · 竖屏</option>
+          <option value="16:9">16:9 · 横屏</option>
+          <option value="1:1">1:1 · 方形</option>
+          <option value="3:4">3:4 · 竖版</option>
+          <option value="4:3">4:3 · 横版</option>
+        </select>
+        <div class="field-help">仅作缺省兜底——创建任务时选的比例优先</div>
+
+        <div class="field-hd"><span class="label">分辨率</span></div>
+        <select id="jimeng-resolution" class="input">
+          <option value="1k" selected>1K · 1024px</option>
+          <option value="2k">2K · 2048px</option>
+          <option value="4k">4K · 4096px</option>
+        </select>
+
+        <div class="field-hd"><span class="label">并发数</span><span class="hint">1–10</span></div>
+        <input type="number" id="jimeng-concurrency" class="input" min="1" max="10" value="3" style="max-width:100px">
+        <div class="field-help">建议 3–5，太高容易触发限流</div>
+
+        <div class="settings-card-footer">
+          <button type="button" class="btn btn-primary" id="btn-jimeng-save">💾 保存</button>
+          <button type="button" class="btn btn-ghost" id="btn-jimeng-test">🔌 测试连接</button>
+        </div>
       </div>
 
-      <div class="card">
-        <div class="card-hd"><span class="label">RunningHub（ComfyUI 云端）</span><span class="hint">工作流 ID 出图</span></div>
-        <div class="field-hd"><span class="label">API Key</span></div>
-        <input type="password" id="rh-key" placeholder="留空保留原值">
-        <div class="field-hd"><span class="label">Workflow ID</span></div>
-        <input type="text" id="rh-workflow" placeholder="数字 workflow id">
-        <div class="field-hd"><span class="label">Base URL</span></div>
-        <input type="text" id="rh-baseurl" placeholder="https://www.runninghub.cn">
+      <!-- ========== 全能绘图 ========== -->
+      <div class="settings-card" id="img-card-gpt_image" style="display:none">
+        <div class="credits-balance-row">
+          <span class="credits-balance-label">积分余额</span>
+          <span class="credits-balance-value" id="gpt-credits">--</span>
+          <span class="credits-balance-unit">积分</span>
+          <span class="credits-balance-est" id="gpt-credits-est"></span>
+          <div style="flex:1"></div>
+          <button type="button" class="btn btn-primary btn-sm" id="btn-gpt-recharge">充值 / 交易记录 →</button>
+        </div>
+        <div class="field-help" style="margin-bottom:14px">
+          全能绘图消耗的是<b>软件内充值的积分</b>（1 积分 = 1 元）。魔搭 / RunningHub / 即梦走各自平台的额度，不扣这里的积分。
+        </div>
+
+        <div class="field-hd"><span class="label">画面比例</span></div>
+        <select id="gpt-ratio" class="input">
+          <option value="9:16" selected>9:16 · 竖屏</option>
+          <option value="16:9">16:9 · 横屏</option>
+          <option value="1:1">1:1 · 方形</option>
+          <option value="3:4">3:4 · 竖版</option>
+          <option value="4:3">4:3 · 横版</option>
+        </select>
+
+        <div class="field-hd"><span class="label">并发数</span><span class="hint" id="gpt-conc-hint">默认 6</span></div>
+        <div class="slider-row">
+          <input type="range" class="slider" id="gpt-concurrency" min="1" max="20" value="6">
+          <span class="slider-value" id="gpt-conc-val">6</span>
+        </div>
+        <div class="field-help">上限 20，并发越高越可能触发平台限流</div>
+
+        <div class="field-hd"><span class="label">代理地址（可选）</span></div>
+        <input type="text" id="gpt-proxy" class="input" placeholder="http://127.0.0.1:你的代理端口">
+        <div class="field-help">如果你所在地区连接全能绘图失败，可填入本地代理（clash / v2ray / shadowsocks 各家默认端口不同）；留空 = 直连</div>
+
+        <div class="settings-card-footer">
+          <button type="button" class="btn btn-primary" id="btn-gpt-save">💾 保存</button>
+          <button type="button" class="btn btn-ghost" id="btn-gpt-test">🔌 测试连接</button>
+        </div>
+      </div>
+
+      <!-- ========== 魔搭 ========== -->
+      <div class="settings-card" id="img-card-modelscope" style="display:none">
+        <div class="custom-platform-banner">
+          ⓘ 魔搭已改「魔粒」计费：注册并每日登录送 200 魔粒，绑定阿里云账号（需实名认证）每日再送 50，合计每天 250。生图按模型扣魔粒（下方已标注）：用 1 魔粒的模型每天可免费画约 250 张，2 魔粒的约 125 张。可添加多个魔搭账号的 Token：几个号就几路并发，每个号单独计魔粒，某个号用完自动换其他号继续。
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+          <button type="button" class="btn btn-primary btn-sm" id="btn-ms-token">获取 Token →</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-ms-register">注册魔搭账号 →</button>
+        </div>
+
+        <div class="field-hd"><span class="label">Access Token</span><span class="hint" id="ms-token-hint">必填</span></div>
+        <div class="token-list" id="ms-token-list"></div>
+        <div id="ms-token-add-wrap" style="display:none">
+          <div class="key-input" style="margin-bottom:6px">
+            <input type="password" id="ms-token-input" class="key-input-field" placeholder="ms-xxxxxxxxxxxx">
+            <div class="key-input-actions">
+              <button type="button" class="key-input-btn" data-toggle-key="ms-token-input">👁</button>
+              <button type="button" class="key-input-btn" data-paste-key="ms-token-input">📋</button>
+            </div>
+          </div>
+          <div style="display:flex;gap:6px">
+            <button type="button" class="btn btn-primary btn-sm" id="btn-ms-token-add-confirm">添加</button>
+            <button type="button" class="btn btn-ghost btn-sm" id="btn-ms-token-cancel">取消</button>
+          </div>
+        </div>
+        <button type="button" class="btn btn-ghost btn-sm" id="btn-ms-token-add-show" style="font-size:12px">＋ 添加 Token</button>
+        <div class="field-help">走系统钥匙串保存。在魔搭「我的 > Access Token」页面获取；多个账号各加一条</div>
+
+        <div class="field-hd"><span class="label">模型选择</span></div>
+        <select id="ms-model" class="input"></select>
+        <div style="margin-top:8px;display:none" id="ms-model-add-wrap">
+          <input type="text" id="ms-model-id" class="input" placeholder="模型 ID，例如 org/model-name" style="font-family:var(--font-mono);font-size:13px;margin-bottom:6px">
+          <input type="text" id="ms-model-name" class="input" placeholder="显示名称（可选）" style="font-size:13px;margin-bottom:6px">
+          <div style="display:flex;gap:6px">
+            <button type="button" class="btn btn-primary btn-sm" id="btn-ms-model-add-confirm">添加</button>
+            <button type="button" class="btn btn-ghost btn-sm" id="btn-ms-model-cancel">取消</button>
+          </div>
+        </div>
+        <button type="button" class="btn btn-ghost btn-sm" id="btn-ms-model-add-show" style="margin-top:6px;font-size:12px">＋ 新增模型</button>
+        <div class="field-help">以下模型用于文生图；图像编辑自动使用 Qwen-Image-Edit 模型</div>
+
+        <div class="field-hd"><span class="label">画面比例</span></div>
+        <select id="ms-ratio" class="input">
+          <option value="9:16" selected>9:16 · 竖屏</option>
+          <option value="16:9">16:9 · 横屏</option>
+          <option value="1:1">1:1 · 方形</option>
+        </select>
+
+        <div class="field-hd"><span class="label">额度用完自动切换</span></div>
+        <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;font-size:13px;color:var(--text-secondary);padding:10px;background:var(--bg-raised);border-radius:var(--radius-sm)">
+          <input type="checkbox" id="ms-auto-fallback" style="margin-top:2px;flex-shrink:0">
+          <span>魔粒用完后自动改用<b>全能绘图</b>（<span style="color:var(--warning)">消耗积分</span>），任务不中断。<br><span style="color:var(--text-muted);font-size:12px">需可使用全能绘图且积分充足，否则会提示去配置。不勾则魔粒用完即停。</span></span>
+        </label>
+
+        <div class="settings-card-footer">
+          <button type="button" class="btn btn-primary" id="btn-ms-save">💾 保存</button>
+          <button type="button" class="btn btn-ghost" id="btn-ms-test">🔌 测试连接</button>
+        </div>
+      </div>
+
+      <!-- ========== RunningHub ========== -->
+      <div class="settings-card" id="img-card-runninghub" style="display:none">
+        <div class="custom-platform-banner" style="background:var(--brand-soft);display:flex;flex-direction:column;gap:10px;align-items:flex-start">
+          <span>ⓘ 此引擎需要去 RunningHub 国际站（runninghub.ai）注册账号 + 充值钱包余额（按张扣费，自付费，不扣软件积分）。<b>原国内站（runninghub.cn）API 已于 2026-07-30 停用</b>——老用户请先用<a id="rh-migrate-link">官方迁移工具</a>把密钥和余额同步到国际站（密钥不变，无需改配置），或在国际站重新生成 Key 填到下方。</span>
+          <button type="button" class="btn btn-primary btn-sm" id="btn-rh-register" style="padding:6px 14px">前往 RunningHub 注册 →</button>
+        </div>
+
+        <div class="field-hd"><span class="label">API Key</span><span class="hint">必填</span></div>
+        <div class="key-input">
+          <input type="password" id="rh-key" class="key-input-field" placeholder="rh_xxxxxxxxxxxx">
+          <div class="key-input-actions">
+            <button type="button" class="key-input-btn" data-toggle-key="rh-key">👁</button>
+            <button type="button" class="key-input-btn" data-paste-key="rh-key">📋</button>
+          </div>
+        </div>
+        <div class="field-help">走系统钥匙串保存。在国际站 runninghub.ai「企业级共享 API Key」页面（enterprise-api/sharedApi）拿到 32 位 Key</div>
+
+        <div class="field-hd"><span class="label">模型选择</span></div>
+        <div style="display:flex;flex-direction:column;gap:8px" id="rh-models"></div>
+
+        <div class="field-hd"><span class="label">画面比例</span></div>
+        <select id="rh-ratio" class="input">
+          <option value="9:16" selected>9:16 · 竖屏</option>
+          <option value="16:9">16:9 · 横屏</option>
+          <option value="1:1">1:1 · 方形</option>
+        </select>
+
+        <div class="field-hd"><span class="label">分辨率</span></div>
+        <select id="rh-resolution" class="input">
+          <option value="1k" selected>1K · 最稳定</option>
+          <option value="2k">2K · 4K 加价</option>
+          <option value="4k">4K · X 模型不支持</option>
+        </select>
+        <div class="field-help">X 模型忽略此选项 / V2 必填（4K 加价）/ G-2 可选，默认 1K 最稳定</div>
+
+        <div class="field-hd"><span class="label">并发数</span><span class="hint">1–20</span></div>
+        <input type="number" id="rh-concurrency" class="input" min="1" max="20" value="3" style="max-width:100px">
+        <div class="field-help">RunningHub 平台支持最高 100，但建议 3-5：提示词错误时能 fail-fast 取消</div>
+
+        <div class="settings-card-footer">
+          <button type="button" class="btn btn-primary" id="btn-rh-save">💾 保存</button>
+          <button type="button" class="btn btn-ghost" id="btn-rh-test">🔌 测试 API Key</button>
+        </div>
+      </div>
+
+      <!-- ========== 自定义平台 ========== -->
+      <div class="settings-card" id="img-card-custom" style="display:none">
+        <div class="custom-platform-banner">★ 永久会员特权 · 你可以接入任意 OpenAI 兼容协议的图片生成 API</div>
+
+        <div class="field-hd"><span class="label">显示名称</span></div>
+        <input type="text" id="custom-display-name" class="input" placeholder="例如：我的 OpenAI 中转站">
+        <div class="field-help">用于设置页/任务进度展示，可选</div>
+
+        <div class="field-hd"><span class="label">Base URL</span><span class="hint">必填</span></div>
+        <input type="text" id="custom-base-url" class="input" placeholder="例如 https://api.openai.com">
+        <div class="field-help">平台根地址，不要带 /v1/ 后缀</div>
+
+        <div class="field-hd"><span class="label">API Key</span><span class="hint">必填</span></div>
+        <div class="key-input">
+          <input type="password" id="custom-api-key" class="key-input-field" placeholder="sk-...">
+          <div class="key-input-actions">
+            <button type="button" class="key-input-btn" data-toggle-key="custom-api-key">👁</button>
+            <button type="button" class="key-input-btn" data-paste-key="custom-api-key">📋</button>
+          </div>
+        </div>
+        <div class="field-help">走系统钥匙串保存，不会写入 config.json</div>
+
+        <div class="field-hd"><span class="label">模型</span><span class="hint">必填</span></div>
+        <input type="text" id="custom-model" class="input" placeholder="gpt-image-1">
+        <div class="field-help">平台支持的图片模型 ID，例如 gpt-image-1 / dall-e-3</div>
+
+        <div class="field-hd"><span class="label">协议模式</span></div>
+        <select id="custom-protocol" class="input">
+          <option value="sync" selected>同步 · 大多数平台</option>
+          <option value="async">异步 · comfly 等 task_id 轮询平台</option>
+        </select>
+
+        <div class="field-hd"><span class="label">画面比例</span></div>
+        <select id="custom-ratio" class="input">
+          <option value="9:16" selected>9:16 · 竖屏</option>
+          <option value="16:9">16:9 · 横屏</option>
+          <option value="1:1">1:1 · 方形</option>
+        </select>
+
+        <div class="field-hd"><span class="label">并发数</span><span class="hint">1–10</span></div>
+        <input type="number" id="custom-concurrency" class="input" min="1" max="10" value="5" style="max-width:100px">
+
+        <div class="field-hd"><span class="label">尺寸映射 (高级)</span></div>
+        <input type="text" id="custom-ratio-mapping" class="input" placeholder='{"9:16":"1024x1792","1:1":"1024x1024"}' style="font-family:var(--font-mono)">
+        <div class="field-help">可选。JSON 格式，留空走默认</div>
+
+        <div class="settings-card-footer">
+          <button type="button" class="btn btn-primary" id="btn-custom-save">💾 保存</button>
+          <button type="button" class="btn btn-ghost" id="btn-custom-test">🔌 测试连接</button>
+        </div>
       </div>
     </div>
 
@@ -898,25 +1128,58 @@ function setStatus(id, txt, ok) {
 async function refreshSettings() {
   try {
     const s = await api("/api/settings");
-    // Image
+
+    // ---- AI 绘图（5 个 tab） ----
     const img = s.image || {};
-    setChip("image-providers", img.provider);
-    setChip("image-ratio", img.ratio);
-    setChip("image-resolution", img.resolution);
-    $("image-model").value = img.model || "";
-    $("image-baseurl").value = img.baseurl || "";
-    $("image-width").value = img.width || "";
-    $("image-height").value = img.height || "";
-    setStatus("st-image", s.image.configured ? "✓ 已配置" : "未配置", s.image.configured);
-    setDot("dot-image", s.image.configured ? "ok" : "bad");
-    // Jimeng
-    const jm = s.jimeng || {};
-    $("jimeng-model").value = jm.model || "";
-    setDot("dot-image", (s.image.configured || jm.configured) ? "ok" : "bad");
+    const jm  = s.jimeng || {};
+    const rh  = s.runninghub || {};
+    const ms  = s.modelscope || {};
+    const cu  = s.custom_image || {};
+
+    // 即梦
+    if ($("jimeng-model-sel")) $("jimeng-model-sel").value = jm.model || "jimeng-4.5";
+    if ($("jimeng-ratio"))     $("jimeng-ratio").value     = jm.ratio || "9:16";
+    if ($("jimeng-resolution"))$("jimeng-resolution").value= jm.resolution || "1k";
+    if ($("jimeng-concurrency"))$("jimeng-concurrency").value= jm.concurrency || 3;
+
+    // 全能绘图
+    if ($("gpt-ratio"))        $("gpt-ratio").value        = img.ratio || "9:16";
+    const gptConc = img.concurrency || 6;
+    if ($("gpt-concurrency"))  { $("gpt-concurrency").value = gptConc; $("gpt-conc-val").textContent = gptConc; }
+    if ($("gpt-proxy"))        $("gpt-proxy").value        = img.proxy_url || "";
+
+    // 魔搭
+    msTokens = ms.tokens || [];
+    msCustomModels = ms.custom_models || [];
+    buildMSTokens();
+    buildMSModels(ms.model || "Tongyi-MAI/Z-Image-Turbo");
+    if ($("ms-ratio"))         $("ms-ratio").value         = ms.ratio || "9:16";
+    if ($("ms-auto-fallback")) $("ms-auto-fallback").checked= !!ms.auto_fallback_gpt;
+
     // RunningHub
-    const rh = s.runninghub || {};
-    $("rh-workflow").value = rh.workflow_id || "";
-    $("rh-baseurl").value = rh.base_url || "";
+    buildRHModels(rh.model || "rh-image-g2");
+    if ($("rh-ratio"))         $("rh-ratio").value         = rh.ratio || "9:16";
+    if ($("rh-resolution"))    $("rh-resolution").value    = rh.resolution || "1k";
+    if ($("rh-concurrency"))   $("rh-concurrency").value   = rh.concurrency || 3;
+
+    // 自定义
+    if ($("custom-display-name")) $("custom-display-name").value = cu.display_name || "";
+    if ($("custom-base-url"))     $("custom-base-url").value     = cu.base_url || "";
+    if ($("custom-model"))        $("custom-model").value        = cu.model || "";
+    if ($("custom-protocol"))     $("custom-protocol").value     = cu.async_mode ? "async" : "sync";
+    if ($("custom-ratio"))        $("custom-ratio").value        = cu.ratio || "9:16";
+    if ($("custom-concurrency"))  $("custom-concurrency").value  = cu.concurrency || 5;
+    if ($("custom-ratio-mapping"))$("custom-ratio-mapping").value= cu.ratio_mapping_json || "";
+
+    // Tab + 使用中 badge
+    const activeProvider = img.provider || "jimeng";
+    switchImageProvider(activeProvider);
+    updateImgBadges(activeProvider);
+
+    const imageOk = !!(img.configured || jm.configured || rh.configured || ms.configured || cu.configured);
+    setStatus("st-image", imageOk ? "✓ 已配置（" + activeProvider + "）" : "未配置", imageOk);
+    setDot("dot-image", imageOk ? "ok" : "bad");
+
     // TTS
     setChip("tts-providers", s.tts.provider);
     setChip("tts-speakers", s.tts.volcengine_speaker);
@@ -973,12 +1236,250 @@ function syncTTSBlocks() {
   $("tts-minimax-block").style.display = v === "minimax" ? "" : "none";
 }
 
-bindChipGroup("image-providers", () => {});
-bindChipGroup("image-ratio", () => {});
-bindChipGroup("image-resolution", () => {});
 bindChipGroup("tts-providers", () => syncTTSBlocks());
 bindChipGroup("tts-speakers", (v) => { $("tts-volc-speaker").value = v; });
 bindChipGroup("asr-providers", () => {});
+
+// ============ AI 绘图 tab 切换（STORY 真值 Settings.js:1620-2280） ============
+const RH_MODELS = [
+  { id: "rh-image-g2", displayName: "全能图片 G-2.0", desc: "精准文字 · 任意比例", price: "$0.015/张", note: "" },
+  { id: "rh-image-x",  displayName: "全能图片 X",     desc: "写实快出 · 社媒电影感", price: "$0.02/张",  note: "" },
+  { id: "rh-image-v2", displayName: "全能图片 V2",    desc: "反复精修 · 角色一致",   price: "$0.027/张", note: "4K $0.043" },
+];
+const MS_BUILTIN_MODELS = [
+  { id: "Tongyi-MAI/Z-Image-Turbo", name: "造相 Z-Image-Turbo", sub: "推荐 · 快速 · 1 魔粒/张" },
+  { id: "Tongyi-MAI/Z-Image",        name: "造相 Z-Image",        sub: "高质量 · 1 魔粒/张" },
+  { id: "Qwen/Qwen-Image-2512",      name: "通义 Qwen-Image-2512",sub: "28.8B · 2 魔粒/张" },
+];
+let msCustomModels = [];
+let msTokens = [];
+let currentImgProvider = "jimeng";
+
+function switchImageProvider(p) {
+  currentImgProvider = p;
+  document.querySelectorAll("#image-provider-tabs .image-provider-tab").forEach(t => {
+    t.classList.toggle("active", t.dataset.p === p);
+  });
+  ["jimeng","gpt_image","modelscope","runninghub","custom"].forEach(x => {
+    const c = $("img-card-" + x);
+    if (c) c.style.display = (x === p) ? "" : "none";
+  });
+}
+
+function buildRHModels(selectedId) {
+  const wrap = $("rh-models");
+  wrap.innerHTML = RH_MODELS.map(m => {
+    const active = m.id === selectedId;
+    return `<button type="button" class="image-provider-tab ${active?'active':''}" data-rh-model="${m.id}" style="text-align:left;padding:10px 14px;display:flex;flex-direction:column;align-items:flex-start;gap:2px">
+      <div style="display:flex;align-items:center;gap:8px;width:100%">
+        <strong style="font-size:14px">${m.displayName}</strong>
+        <span style="color:var(--brand);font-size:12px;font-weight:700;padding:2px 8px;background:var(--brand-soft);border-radius:4px;line-height:1.4">${m.price}</span>
+        ${m.note ? `<span style="color:var(--warning);font-size:11px;font-weight:600;padding:2px 6px;border:1px solid var(--warning);border-radius:4px;line-height:1.4">${m.note}</span>` : ""}
+        ${active ? `<span class="image-provider-tab-badge" style="margin-left:auto">使用中</span>` : ""}
+      </div>
+      <span style="color:var(--text-muted);font-size:12px">${m.desc}</span>
+    </button>`;
+  }).join("");
+}
+
+function getRHSelectedModel() {
+  const el = document.querySelector("#rh-models .image-provider-tab.active");
+  return el ? el.dataset.rhModel : "rh-image-g2";
+}
+
+function buildMSModels(selectedId) {
+  const all = [...MS_BUILTIN_MODELS, ...msCustomModels.map(x => ({ id: x.id, name: x.name, sub: "自定义" }))];
+  const sel = $("ms-model");
+  sel.innerHTML = all.map(m =>
+    `<option value="${m.id}" ${m.id === selectedId ? "selected" : ""}>${m.name} · ${m.sub}</option>`
+  ).join("");
+}
+
+function buildMSTokens() {
+  const list = $("ms-token-list");
+  list.innerHTML = msTokens.map((tk, i) =>
+    `<div class="token-row"><span class="idx">${i+1}.</span><span class="val">${escapeHtml(tk)}</span><span class="del" data-ms-del="${i}" title="删除此 Token">✕</span></div>`
+  ).join("");
+  $("ms-token-hint").textContent = msTokens.length > 0 ? `已配置 ${msTokens.length} 个 · 出图并发 ${msTokens.length}` : "必填";
+}
+
+function updateImgBadges(activeProvider) {
+  ["jimeng","gpt_image","modelscope","runninghub","custom"].forEach(x => {
+    const b = $("img-badge-" + x);
+    if (b) b.style.display = (x === activeProvider) ? "" : "none";
+  });
+}
+
+async function saveImageJimeng() {
+  try {
+    await api("/api/settings", "POST", {
+      jimeng_session_id: $("jimeng-session").value.trim() || KEEP,
+      jimeng_model: $("jimeng-model-sel").value || KEEP,
+      jimeng_ratio: $("jimeng-ratio").value || KEEP,
+      jimeng_resolution: $("jimeng-resolution").value || KEEP,
+      jimeng_concurrency: parseInt($("jimeng-concurrency").value) || KEEP,
+    });
+    toast("✓ 即梦配置已保存", true);
+    $("jimeng-session").value = "";
+    await refreshSettings();
+  } catch (e) { toast("❌ " + e.message, false); }
+}
+
+async function saveImageGPT() {
+  try {
+    const c = parseInt($("gpt-concurrency").value) || 6;
+    await api("/api/settings", "POST", {
+      image_provider: "gpt_image",
+      gpt_image_ratio: $("gpt-ratio").value || KEEP,
+      gpt_image_concurrency: c,
+      gpt_image_proxy_url: $("gpt-proxy").value.trim() || KEEP,
+    });
+    toast("✓ 全能绘图已保存", true);
+    await refreshSettings();
+  } catch (e) { toast("❌ " + e.message, false); }
+}
+
+async function saveImageModelScope() {
+  try {
+    await api("/api/settings", "POST", {
+      image_provider: "modelscope",
+      modelscope_tokens: msTokens.length ? msTokens : KEEP,
+      modelscope_model: $("ms-model").value || KEEP,
+      modelscope_ratio: $("ms-ratio").value || KEEP,
+      modelscope_auto_fallback_gpt: $("ms-auto-fallback").checked,
+      modelscope_custom_models: msCustomModels.length ? msCustomModels : KEEP,
+    });
+    toast("✓ 魔搭已保存", true);
+    await refreshSettings();
+  } catch (e) { toast("❌ " + e.message, false); }
+}
+
+async function saveImageRunningHub() {
+  try {
+    await api("/api/settings", "POST", {
+      rh_key: $("rh-key").value.trim() || KEEP,
+      rh_model: getRHSelectedModel(),
+      rh_ratio: $("rh-ratio").value || KEEP,
+      rh_resolution: $("rh-resolution").value || KEEP,
+      rh_concurrency: parseInt($("rh-concurrency").value) || KEEP,
+    });
+    toast("✓ RunningHub 已保存", true);
+    $("rh-key").value = "";
+    await refreshSettings();
+  } catch (e) { toast("❌ " + e.message, false); }
+}
+
+async function saveImageCustom() {
+  try {
+    await api("/api/settings", "POST", {
+      image_provider: "custom",
+      custom_display_name: $("custom-display-name").value.trim() || KEEP,
+      custom_base_url: $("custom-base-url").value.trim() || KEEP,
+      custom_api_key: $("custom-api-key").value.trim() || KEEP,
+      custom_model: $("custom-model").value.trim() || KEEP,
+      custom_protocol: $("custom-protocol").value || KEEP,
+      custom_ratio: $("custom-ratio").value || KEEP,
+      custom_concurrency: parseInt($("custom-concurrency").value) || KEEP,
+      custom_ratio_mapping_json: $("custom-ratio-mapping").value.trim() || KEEP,
+    });
+    toast("✓ 自定义平台已保存", true);
+    $("custom-api-key").value = "";
+    await refreshSettings();
+  } catch (e) { toast("❌ " + e.message, false); }
+}
+
+async function testImageConn(p) {
+  toast("⏳ 测试连接中...", true);
+  try {
+    const r = await api("/api/test_image", "POST", { provider: p });
+    if (r.ok) toast("✓ 连接成功（" + (r.elapsed || 0) + "s）", true);
+    else toast("❌ " + (r.error || "失败"), false);
+  } catch (e) { toast("❌ " + e.message, false); }
+}
+
+function initImageProviderTabs() {
+  document.querySelectorAll("#image-provider-tabs .image-provider-tab").forEach(t => {
+    t.addEventListener("click", () => {
+      switchImageProvider(t.dataset.p);
+      updateImgBadges(currentImgProvider);
+    });
+  });
+  // GPT concurrency slider live update
+  const s = $("gpt-concurrency"), sv = $("gpt-conc-val");
+  if (s && sv) s.addEventListener("input", () => sv.textContent = s.value);
+
+  // ModelScope token add/cancel
+  $("btn-ms-token-add-show").onclick = () => {
+    $("ms-token-add-wrap").style.display = "";
+    $("ms-token-input").focus();
+  };
+  $("btn-ms-token-cancel").onclick = () => {
+    $("ms-token-add-wrap").style.display = "none";
+    $("ms-token-input").value = "";
+  };
+  $("btn-ms-token-add-confirm").onclick = () => {
+    const v = $("ms-token-input").value.trim();
+    if (!v) { toast("⚠ 请填写 Token", false); return; }
+    msTokens.push(v);
+    $("ms-token-input").value = "";
+    $("ms-token-add-wrap").style.display = "none";
+    buildMSTokens();
+  };
+  document.addEventListener("click", e => {
+    const del = e.target.closest("[data-ms-del]");
+    if (!del) return;
+    msTokens.splice(parseInt(del.dataset.msDel), 1);
+    buildMSTokens();
+  });
+
+  // ModelScope custom model add
+  $("btn-ms-model-add-show").onclick = () => {
+    $("ms-model-add-wrap").style.display = "";
+    $("ms-model-id").focus();
+  };
+  $("btn-ms-model-cancel").onclick = () => {
+    $("ms-model-add-wrap").style.display = "none";
+    $("ms-model-id").value = "";
+    $("ms-model-name").value = "";
+  };
+  $("btn-ms-model-add-confirm").onclick = () => {
+    const id = $("ms-model-id").value.trim();
+    if (!id) { toast("⚠ 请填写模型 ID", false); return; }
+    msCustomModels.push({ id, name: $("ms-model-name").value.trim() || id });
+    $("ms-model-id").value = ""; $("ms-model-name").value = "";
+    $("ms-model-add-wrap").style.display = "none";
+    buildMSModels($("ms-model").value);
+  };
+
+  // RunningHub model select
+  document.addEventListener("click", e => {
+    const tab = e.target.closest("#rh-models .image-provider-tab");
+    if (!tab) return;
+    document.querySelectorAll("#rh-models .image-provider-tab").forEach(x => x.classList.remove("active"));
+    tab.classList.add("active");
+    // Refresh "使用中" badge
+    buildRHModels(tab.dataset.rhModel);
+  });
+
+  // Banner link buttons
+  $("btn-rh-register").onclick = () => window.open("https://www.runninghub.ai?inviteCode=rh-v1093", "_blank");
+  $("rh-migrate-link") && ($("rh-migrate-link").onclick = () => window.open("https://www.runninghub.cn/wallet-migrate", "_blank"));
+  $("btn-ms-token").onclick = () => window.open("https://modelscope.cn/my/myaccesstoken", "_blank");
+  $("btn-ms-register").onclick = () => window.open("https://www.modelscope.cn/register", "_blank");
+  $("btn-gpt-recharge").onclick = () => toast("ⓘ 前往积分管理页（导航栏）", true);
+
+  // Save buttons
+  $("btn-jimeng-save").onclick = saveImageJimeng;
+  $("btn-jimeng-test").onclick = () => testImageConn("jimeng");
+  $("btn-gpt-save").onclick = saveImageGPT;
+  $("btn-gpt-test").onclick = () => testImageConn("gpt_image");
+  $("btn-ms-save").onclick = saveImageModelScope;
+  $("btn-ms-test").onclick = () => testImageConn("modelscope");
+  $("btn-rh-save").onclick = saveImageRunningHub;
+  $("btn-rh-test").onclick = () => testImageConn("runninghub");
+  $("btn-custom-save").onclick = saveImageCustom;
+  $("btn-custom-test").onclick = () => testImageConn("custom");
+}
 
 // ============ key-input 组件（STORY 真值 Settings.js:256-296） ============
 // 显示/隐藏 + 剪贴板粘贴（事件委托，动态 input 也生效）
@@ -997,30 +1498,6 @@ document.addEventListener("click", e => {
       .catch(() => toast("⚠ 无法读取剪贴板", false));
   }
 });
-
-async function saveImage() {
-  try {
-    await api("/api/settings", "POST", {
-      image_provider: getChip("image-providers") || KEEP,
-      image_model: $("image-model").value.trim() || KEEP,
-      image_key: $("image-key").value.trim() || KEEP,
-      image_baseurl: $("image-baseurl").value.trim() || KEEP,
-      image_ratio: getChip("image-ratio") || KEEP,
-      image_resolution: getChip("image-resolution") || KEEP,
-      image_width: $("image-width").value.trim() || KEEP,
-      image_height: $("image-height").value.trim() || KEEP,
-      jimeng_ak: $("jimeng-ak").value.trim() || KEEP,
-      jimeng_sk: $("jimeng-sk").value.trim() || KEEP,
-      jimeng_model: $("jimeng-model").value.trim() || KEEP,
-      rh_key: $("rh-key").value.trim() || KEEP,
-      rh_workflow: $("rh-workflow").value.trim() || KEEP,
-      rh_baseurl: $("rh-baseurl").value.trim() || KEEP,
-    });
-    toast("✓ 绘图配置已保存", true);
-    $("image-key").value = ""; $("jimeng-ak").value = ""; $("jimeng-sk").value = ""; $("rh-key").value = "";
-    await refreshSettings();
-  } catch (e) { toast("❌ " + e.message, false); }
-}
 
 async function saveTTS() {
   try {
@@ -1164,7 +1641,6 @@ $("btn-llm-setactive").onclick = () => editingProfileId && setActiveProfile(edit
 $("btn-llm-delete").onclick = () => editingProfileId && deleteProfile(editingProfileId);
 $("btn-llm-test").onclick = testLLM;
 $("btn-llm-test-tool").onclick = () => toast("工具调用测试：同测试连接", true);
-$("btn-image-save").onclick = saveImage;
 $("btn-tts-save").onclick = saveTTS;
 $("btn-tts-test").onclick = testTTS;
 $("btn-asr-save").onclick = saveASR;
@@ -1177,6 +1653,7 @@ $("btn-copy-diag").onclick = copyDiag;
 $("btn-toggle-theme").onclick = toggleTheme;
 
 renderProviderChips();
+initImageProviderTabs();
 (async () => {
   // 恢复主题
   try {

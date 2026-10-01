@@ -346,6 +346,31 @@ def _val(v, default=""):
         return default
     return s.strip() or default
 
+def _val_int(v, default=0):
+    """整数字段；KEEP 保留 default。"""
+    if v is None:
+        return default
+    s = str(v)
+    if s == KEEP:
+        return default
+    try:
+        return int(s)
+    except (ValueError, TypeError):
+        return default
+
+def _val_bool(v, default=False):
+    """布尔字段；KEEP 保留 default。"""
+    if v is None:
+        return default
+    s = str(v)
+    if s == KEEP:
+        return default
+    if s.lower() in ("true", "1", "yes", "on", "async"):
+        return True
+    if s.lower() in ("false", "0", "no", "off", "sync"):
+        return False
+    return default
+
 
 def _merged(values):
     """把新提交的值和现有 settings 合并；__KEEP__ 表示保留现有值。"""
@@ -391,36 +416,67 @@ def _merged(values):
             if not (out_provider and out_protocol and out_base_url and out_model and out_key):
                 raise ValueError("首次必须先配齐 LLM：provider / protocol / base_url / model / api_key")
 
-    # 通用出图块（OpenAI 兼容通道：gpt_image / modelscope / custom_image / openai）
+    # 通用出图块（OpenAI 兼容通道：gpt_image / modelscope / custom_image）
     img_cur = cur.get("image", {}) or {}
     image = {
-        "provider": _val(values.get("image_provider"), img_cur.get("provider", "gpt_image")),
-        "base_url": _val(values.get("image_base_url"), img_cur.get("base_url", "https://api.openai.com")),
-        "api_key":  _val(values.get("image_api_key"),  img_cur.get("api_key", "")) or "",
-        "model":    _val(values.get("image_model"),    img_cur.get("model", "gpt-image-1")),
-        "size":     _val(values.get("image_size"),     img_cur.get("size", "1024x1792")),
-        "ratio":    _val(values.get("image_ratio"),    img_cur.get("ratio", "9:16")),
-        "resolution": _val(values.get("image_resolution"), img_cur.get("resolution", "1k")),
+        "provider":    _val(values.get("image_provider"), img_cur.get("provider", "gpt_image")),
+        "base_url":    _val(values.get("image_base_url"), img_cur.get("base_url", "https://api.openai.com")),
+        "api_key":     _val(values.get("image_api_key"),  img_cur.get("api_key", "")) or "",
+        "model":       _val(values.get("image_model"),    img_cur.get("model", "gpt-image-1")),
+        "ratio":       _val(values.get("image_ratio"),    img_cur.get("ratio", "9:16")),
+        "resolution":  _val(values.get("image_resolution"), img_cur.get("resolution", "1k")),
+        "proxy_url":   _val(values.get("image_proxy_url"), img_cur.get("proxy_url", "")) or "",
+        "concurrency": _val_int(values.get("image_concurrency"), img_cur.get("concurrency", 6)),
     }
 
-    # jimeng 块（火山引擎即梦）
+    # jimeng 块（Session ID + 模型 + 比例 + 分辨率 + 并发数）
     jm_cur = cur.get("jimeng", {}) or {}
     jimeng = {
-        "ak":       _val(values.get("jimeng_ak"),       jm_cur.get("ak", "")),
-        "sk":       _val(values.get("jimeng_sk"),       jm_cur.get("sk", "")) or "",
-        "model":    _val(values.get("jimeng_model"),    jm_cur.get("model", "jimeng-4.5")),
-        "ratio":    _val(values.get("jimeng_ratio"),    jm_cur.get("ratio", "9:16")),
-        "resolution": _val(values.get("jimeng_resolution"), jm_cur.get("resolution", "1k")),
+        "session_id":  _val(values.get("jimeng_session_id"), jm_cur.get("session_id", "")),
+        "ak":          _val(values.get("jimeng_ak"),         jm_cur.get("ak", "")),    # 兼容旧 schema
+        "sk":          _val(values.get("jimeng_sk"),         jm_cur.get("sk", "")) or "",
+        "model":       _val(values.get("jimeng_model"),      jm_cur.get("model", "jimeng-4.5")),
+        "ratio":       _val(values.get("jimeng_ratio"),      jm_cur.get("ratio", "9:16")),
+        "resolution":  _val(values.get("jimeng_resolution"), jm_cur.get("resolution", "1k")),
+        "concurrency": _val_int(values.get("jimeng_concurrency"), jm_cur.get("concurrency", 3)),
     }
 
-    # runninghub 块
+    # modelscope 块（多 Token + 模型 + 比例 + 自动切积分 + 自定义模型）
+    ms_cur = cur.get("modelscope", {}) or {}
+    ms_tokens_in = values.get("modelscope_tokens")
+    ms_cust_in   = values.get("modelscope_custom_models")
+    modelscope = {
+        "tokens":             ms_tokens_in if isinstance(ms_tokens_in, list) else ms_cur.get("tokens", []),
+        "model":              _val(values.get("modelscope_model"),     ms_cur.get("model", "Tongyi-MAI/Z-Image-Turbo")),
+        "ratio":              _val(values.get("modelscope_ratio"),     ms_cur.get("ratio", "9:16")),
+        "auto_fallback_gpt":  _val_bool(values.get("modelscope_auto_fallback_gpt"), ms_cur.get("auto_fallback_gpt", False)),
+        "custom_models":      ms_cust_in if isinstance(ms_cust_in, list) else ms_cur.get("custom_models", []),
+    }
+
+    # runninghub 块（Key + 3 个模型 + 比例 + 分辨率 + 并发数）
     rh_cur = cur.get("runninghub", {}) or {}
     runninghub = {
-        "api_key":     _val(values.get("rh_api_key"),     rh_cur.get("api_key", "")) or "",
-        "base_url":    _val(values.get("rh_base_url"),    rh_cur.get("base_url", "https://www.runninghub.cn")),
+        "api_key":     _val(values.get("rh_api_key"),  rh_cur.get("api_key", "")) or "",
+        "model":       _val(values.get("rh_model"),    rh_cur.get("model", "rh-image-g2")),
+        "ratio":       _val(values.get("rh_ratio"),    rh_cur.get("ratio", "9:16")),
+        "resolution":  _val(values.get("rh_resolution"), rh_cur.get("resolution", "1k")),
+        "concurrency": _val_int(values.get("rh_concurrency"), rh_cur.get("concurrency", 3)),
+        # 兼容旧 schema
+        "base_url":    _val(values.get("rh_base_url"),    rh_cur.get("base_url", "https://www.runninghub.ai")),
         "workflow_id": _val(values.get("rh_workflow_id"), rh_cur.get("workflow_id", "")) or "",
-        "ratio":       _val(values.get("rh_ratio"),       rh_cur.get("ratio", "9:16")),
-        "resolution":  _val(values.get("rh_resolution"),  rh_cur.get("resolution", "1k")),
+    }
+
+    # custom_image 块（自定义 OpenAI 兼容）
+    cu_cur = cur.get("custom_image", {}) or {}
+    custom_image = {
+        "display_name":        _val(values.get("custom_display_name"), cu_cur.get("display_name", "")),
+        "base_url":            _val(values.get("custom_base_url"),     cu_cur.get("base_url", "")),
+        "api_key":             _val(values.get("custom_api_key"),      cu_cur.get("api_key", "")) or "",
+        "model":               _val(values.get("custom_model"),        cu_cur.get("model", "")),
+        "async_mode":          _val_bool(values.get("custom_protocol"), cu_cur.get("async_mode", False)) if isinstance(values.get("custom_protocol"), str) else cu_cur.get("async_mode", False),
+        "ratio":               _val(values.get("custom_ratio"),        cu_cur.get("ratio", "9:16")),
+        "concurrency":         _val_int(values.get("custom_concurrency"), cu_cur.get("concurrency", 5)),
+        "ratio_mapping_json":  _val(values.get("custom_ratio_mapping_json"), cu_cur.get("ratio_mapping_json", "")),
     }
 
     tts_cur = cur.get("tts", {}) or {}
@@ -477,6 +533,8 @@ def _merged(values):
         "image":    image,
         "jimeng":   jimeng,
         "runninghub": runninghub,
+        "modelscope":   modelscope,
+        "custom_image": custom_image,
         "tts":      tts,
         "jianying": jianying,
         "ima":      ima,
@@ -543,24 +601,49 @@ def public_settings():
             "provider": img_provider,
             "base_url": img.get("base_url", "https://api.openai.com"),
             "model": img.get("model", ""),
-            "size": img.get("size", "1024x1792"),
             "ratio": img.get("ratio", "9:16"),
             "resolution": img.get("resolution", "1k"),
+            "proxy_url": img.get("proxy_url", ""),
+            "concurrency": img.get("concurrency", 6),
         },
         "jimeng": {
-            "configured": bool((s.get("jimeng") or {}).get("ak") and (s.get("jimeng") or {}).get("sk") and (s.get("jimeng") or {}).get("model")),
+            "configured": bool((s.get("jimeng") or {}).get("session_id") or ((s.get("jimeng") or {}).get("ak") and (s.get("jimeng") or {}).get("sk"))),
+            "session_id": (s.get("jimeng") or {}).get("session_id", ""),
             "ak": (s.get("jimeng") or {}).get("ak", ""),
+            "sk": (s.get("jimeng") or {}).get("sk", ""),
             "model": (s.get("jimeng") or {}).get("model", "jimeng-4.5"),
             "ratio": (s.get("jimeng") or {}).get("ratio", "9:16"),
             "resolution": (s.get("jimeng") or {}).get("resolution", "1k"),
+            "concurrency": (s.get("jimeng") or {}).get("concurrency", 3),
+        },
+        "modelscope": {
+            "configured": bool((s.get("modelscope") or {}).get("tokens")),
+            "tokens": (s.get("modelscope") or {}).get("tokens", []),
+            "model": (s.get("modelscope") or {}).get("model", "Tongyi-MAI/Z-Image-Turbo"),
+            "ratio": (s.get("modelscope") or {}).get("ratio", "9:16"),
+            "auto_fallback_gpt": (s.get("modelscope") or {}).get("auto_fallback_gpt", False),
+            "custom_models": (s.get("modelscope") or {}).get("custom_models", []),
         },
         "runninghub": {
-            "configured": bool((s.get("runninghub") or {}).get("api_key") and (s.get("runninghub") or {}).get("workflow_id") and (s.get("runninghub") or {}).get("base_url")),
+            "configured": bool((s.get("runninghub") or {}).get("api_key")),
             "api_key": (s.get("runninghub") or {}).get("api_key", ""),
-            "base_url": (s.get("runninghub") or {}).get("base_url", ""),
-            "workflow_id": (s.get("runninghub") or {}).get("workflow_id", ""),
+            "model": (s.get("runninghub") or {}).get("model", "rh-image-g2"),
             "ratio": (s.get("runninghub") or {}).get("ratio", "9:16"),
             "resolution": (s.get("runninghub") or {}).get("resolution", "1k"),
+            "concurrency": (s.get("runninghub") or {}).get("concurrency", 3),
+            "base_url": (s.get("runninghub") or {}).get("base_url", ""),
+            "workflow_id": (s.get("runninghub") or {}).get("workflow_id", ""),
+        },
+        "custom_image": {
+            "configured": bool((s.get("custom_image") or {}).get("base_url") and (s.get("custom_image") or {}).get("api_key") and (s.get("custom_image") or {}).get("model")),
+            "display_name": (s.get("custom_image") or {}).get("display_name", ""),
+            "base_url": (s.get("custom_image") or {}).get("base_url", ""),
+            "api_key": (s.get("custom_image") or {}).get("api_key", ""),
+            "model": (s.get("custom_image") or {}).get("model", ""),
+            "async_mode": (s.get("custom_image") or {}).get("async_mode", False),
+            "ratio": (s.get("custom_image") or {}).get("ratio", "9:16"),
+            "concurrency": (s.get("custom_image") or {}).get("concurrency", 5),
+            "ratio_mapping_json": (s.get("custom_image") or {}).get("ratio_mapping_json", ""),
         },
         "tts": {
             "provider": tts.get("provider", "volcengine"),
@@ -1992,6 +2075,40 @@ class Handler(BaseHTTPRequestHandler):
                 elapsed = round(time.time() - t0, 1)
                 self._json(200, {"ok": True, "text": text.strip(), "elapsed": elapsed})
             except (ValueError, RuntimeError) as e:
+                self._json(200, {"ok": False, "error": str(e)})
+            return
+
+        if self.path == "/api/test_image":
+            # 仅做字段完整性检查 + ping 阶段占位（真正出图测试在创建任务时再验）
+            provider = (data.get("provider") or "").strip()
+            s = load_settings()
+            t0 = time.time()
+            try:
+                if provider == "jimeng":
+                    jm = s.get("jimeng") or {}
+                    if not (jm.get("session_id") or (jm.get("ak") and jm.get("sk"))):
+                        raise ValueError("即梦 Session ID 未配置")
+                elif provider == "gpt_image":
+                    img = s.get("image") or {}
+                    if not (img.get("api_key") and img.get("model") and img.get("base_url")):
+                        raise ValueError("全能绘图 API Key / 模型 / Base URL 未配齐")
+                elif provider == "modelscope":
+                    ms = s.get("modelscope") or {}
+                    if not ms.get("tokens"):
+                        raise ValueError("魔搭 Access Token 未配置")
+                elif provider == "runninghub":
+                    rh = s.get("runninghub") or {}
+                    if not rh.get("api_key"):
+                        raise ValueError("RunningHub API Key 未配置")
+                elif provider == "custom":
+                    cu = s.get("custom_image") or {}
+                    if not (cu.get("api_key") and cu.get("model") and cu.get("base_url")):
+                        raise ValueError("自定义平台 Base URL / API Key / 模型 未配齐")
+                else:
+                    raise ValueError(f"未知 provider: {provider}")
+                elapsed = round(time.time() - t0, 1)
+                self._json(200, {"ok": True, "elapsed": elapsed, "provider": provider})
+            except ValueError as e:
                 self._json(200, {"ok": False, "error": str(e)})
             return
 
