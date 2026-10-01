@@ -161,6 +161,8 @@ textarea{resize:vertical;min-height:60px;font-family:var(--font-mono);font-size:
 .chip[data-active=true] .chip-hint{color:rgba(0,0,0,.5);}
 .chip .chip-main{font-weight:500;}
 .chip .chip-hint{font-size:10.5px;color:var(--text-faint);}
+.chip-add{border-style:dashed;color:var(--brand);background:var(--brand-soft);}
+.chip-add:hover{border-color:var(--brand);}
 /* === STORY 真值：image-provider-tabs（Settings.js:1620-1637）— 5 个 provider 横向切换 === */
 .image-provider-tabs{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;}
 .image-provider-tab{padding:8px 14px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:13px;font-weight:500;color:var(--text-muted);cursor:pointer;display:inline-flex;align-items:center;gap:8px;transition:all .12s;position:relative;}
@@ -369,10 +371,10 @@ code{background:var(--bg);padding:1px 5px;border-radius:3px;font-family:var(--fo
               <button type="button" class="key-input-btn" data-paste-key="llm-edit-key" title="从剪贴板粘贴">📋</button>
             </div>
           </div>
-          <div class="field-hd"><span class="label">默认模型</span></div>
+          <div class="field-hd"><span class="label">默认模型</span><span class="hint">点 chip 选中；列表里没有就点「+ 自定义」</span></div>
           <div class="chips" id="llm-edit-models"></div>
-          <div class="field-hd"><span class="label">备选模型（一个一行，fallback）</span></div>
-          <textarea id="llm-edit-fallbacks" placeholder="deepseek-v4-flash&#10;qwen3.7-flash"></textarea>
+          <div class="field-hd"><span class="label">备选模型</span><span class="hint">可选 · 点 chip 多选 toggle</span></div>
+          <div class="chips" id="llm-edit-fallbacks"></div>
           <div class="field-hd"><span class="label">Base URL</span><span class="hint">自定义服务商必填</span></div>
           <input type="text" id="llm-edit-baseurl" placeholder="https://api.deepseek.com">
           <div class="field-hd"><span class="label">代理 URL（可选）</span><span class="hint">境外模型常用</span></div>
@@ -1014,27 +1016,105 @@ function renderProviderChips() {
   });
 }
 
-function renderModelChips(models) {
+// STORY 真值：默认模型 chips + 用户加的常驻自定义模型 + 「+ 自定义」入口
+// 参考 Settings-XLgSTp15.js:739-823（j.models.length > 0 分支）
+function renderModelChips(predefined) {
   const wrap = $("llm-edit-models");
-  if (!models || !models.length) {
+  const p = profilesCache.find(x => x.id === editingProfileId);
+  const custom = (p && Array.isArray(p.models)) ? p.models : [];
+  // 自定义服务商：手动填模型名
+  if (!predefined || !predefined.length) {
     wrap.innerHTML = `<div style="color:var(--text-faint);font-size:11px;padding:6px">自定义服务商：手动填模型名</div>`;
+    renderFallbackChips([], p);
     return;
   }
-  wrap.innerHTML = models.map(m => `
-    <div class="chip" data-v="${m}">
-      <span class="chip-main">${m}</span>
-      ${MODEL_HINTS[m] ? `<span class="chip-hint">${MODEL_HINTS[m]}</span>` : ""}
+  // 合并预定义 + 用户自定义，去重
+  const all = [...new Set([...predefined, ...custom])];
+  const currentModel = (p && p.model) || "";
+  wrap.innerHTML = all.map(m => `
+    <div class="chip" data-v="${escapeHtml(m)}">
+      <span class="chip-main">${escapeHtml(m)}</span>
+      ${MODEL_HINTS[m] ? `<span class="chip-hint">${escapeHtml(MODEL_HINTS[m])}</span>` : ""}
     </div>
-  `).join("");
-  bindChipGroup("llm-edit-models", () => scheduleAutoSaveEdit());
+  `).join("") + `
+    <div class="chip chip-add" data-v="__add__" title="填一个 model id，会常驻在此配置的 chip 列表里">
+      <span class="chip-main">+ 自定义</span>
+    </div>
+  `;
+  // 当前选中
+  setChipGroup("llm-edit-models", currentModel);
+  // 绑事件
+  wrap.querySelectorAll(".chip").forEach(chip => {
+    chip.addEventListener("click", () => {
+      const v = chip.dataset.v;
+      if (v === "__add__") {
+        const id = prompt("填 API 里的 model 参数（如 my-custom-v1）", "");
+        const tid = (id || "").trim();
+        if (!tid) return;
+        const prof = profilesCache.find(x => x.id === editingProfileId);
+        if (!prof) return;
+        prof.models = Array.isArray(prof.models) ? prof.models : [];
+        if (!prof.models.includes(tid) && !all.includes(tid)) {
+          prof.models.push(tid);
+        }
+        prof.model = tid;
+        renderModelChips(predefined);
+        renderFallbackChips(predefined, prof);
+        scheduleAutoSaveEdit();
+        return;
+      }
+      // 普通 chip：选中为默认模型
+      setChipGroup("llm-edit-models", v);
+      const prof = profilesCache.find(x => x.id === editingProfileId);
+      if (prof) {
+        prof.model = v;
+        // 备选 chip 列表里如果默认被勾选，去掉它（不能和默认重复）
+        if (Array.isArray(prof.fallback) && prof.fallback.includes(v)) {
+          prof.fallback = prof.fallback.filter(x => x !== v);
+          renderFallbackChips(predefined, prof);
+        }
+      }
+      scheduleAutoSaveEdit();
+    });
+  });
+  renderFallbackChips(predefined, p);
+}
+
+// STORY 真值：备选模型 chip 多选 toggle（Na 组件，Settings-XLgSTp15.js:840-848）
+function renderFallbackChips(predefined, profile) {
+  const wrap = $("llm-edit-fallbacks");
+  const custom = (profile && Array.isArray(profile.models)) ? profile.models : [];
+  const all = [...new Set([...(predefined || []), ...custom])];
+  const fallbacks = (profile && Array.isArray(profile.fallback)) ? profile.fallback : [];
+  const defaultModel = (profile && profile.model) || "";
+  wrap.innerHTML = all.map(m => {
+    // 默认模型不能在备选里
+    if (m === defaultModel) return "";
+    return `
+      <div class="chip ${fallbacks.includes(m) ? "active" : ""}" data-v="${escapeHtml(m)}">
+        <span class="chip-main">${escapeHtml(m)}</span>
+      </div>
+    `;
+  }).join("");
+  wrap.querySelectorAll(".chip").forEach(chip => {
+    chip.addEventListener("click", () => {
+      const v = chip.dataset.v;
+      const prof = profilesCache.find(x => x.id === editingProfileId);
+      if (!prof) return;
+      const fbs = Array.isArray(prof.fallback) ? prof.fallback : [];
+      prof.fallback = fbs.includes(v) ? fbs.filter(x => x !== v) : [...fbs, v];
+      chip.classList.toggle("active");
+      scheduleAutoSaveEdit();
+    });
+  });
 }
 
 // 协议 chip 是静态 markup（不是 renderModelChips 动态生成），单独绑一次
 bindChipGroup("llm-edit-protocols", () => scheduleAutoSaveEdit());
 
-// 5 个 input/textarea 的 input 事件 → 触发自动保存
+// 4 个 input 的 input 事件 → 触发自动保存（fallbacks 已改为 chip，无 input 事件）
 function bindEditInputsAutoSave() {
-  ["llm-edit-name", "llm-edit-key", "llm-edit-baseurl", "llm-edit-proxy", "llm-edit-fallbacks"].forEach(id => {
+  ["llm-edit-name", "llm-edit-key", "llm-edit-baseurl", "llm-edit-proxy"].forEach(id => {
     const el = $(id);
     if (el && !el.dataset.autoSaveBound) {
       el.addEventListener("input", scheduleAutoSaveEdit);
@@ -1153,6 +1233,9 @@ async function duplicateProfile(id) {
   if (!p) return;
   const newId = "p_" + Date.now();
   const copy = { ...p, id: newId, name: p.name + " (副本)", enabled: false, apiKey: "" };
+  // 复制时把用户的自定义模型、备选模型也带上（字段名和 server 端 public_profiles 对齐）
+  copy.models = Array.isArray(p.models) ? p.models.slice() : [];
+  copy.fallback = Array.isArray(p.fallback) ? p.fallback.slice() : [];
   // 不复制 API Key，安全起见
   const profiles = profilesCache.concat([copy]);
   try {
@@ -1175,14 +1258,12 @@ function openEditProfile(id) {
   $("llm-edit-name").value = p.name || "";
   $("llm-edit-key").value = "";
   $("llm-edit-baseurl").value = p.baseUrl || "";
-  $("llm-edit-proxy").value = p.proxy || "";
-  $("llm-edit-fallbacks").value = (p.fallbacks || []).join("\n");
+  $("llm-edit-proxy").value = p.proxyUrl || "";
   setTimeout(() => {
     setChipGroup("llm-edit-providers", p.provider);
     setChipGroup("llm-edit-protocols", p.protocol || "openai");
     const prov = PROVIDERS.find(x => x.id === p.provider);
     renderModelChips(prov ? prov.models : []);
-    setTimeout(() => setChipGroup("llm-edit-models", p.model), 30);
   }, 50);
   // 设置按钮状态
   $("btn-llm-setactive").style.display = p.enabled ? "none" : "";
@@ -1199,10 +1280,11 @@ async function openNewProfile() {
     protocol: "openai",
     model: PROVIDERS[0].models[0] || "",
     baseUrl: PROVIDERS[0].baseUrl || "",
-    proxy: "",
-    fallbacks: [],
+    proxyUrl: "",
+    models: [],       // 用户在「+ 自定义」加的常驻模型 id（Settings-XLgSTp15.js:810）
+    fallback: [],     // 备选模型 chip 多选（Settings-XLgSTp15.js:840-848）
     apiKey: "",
-    // 新配置默认不激活：避免空 Key 触发 server 端"当前激活的 profile 必须填写 API Key"校验。
+    // 新配置默认不激活：server 校验只在启用态要求 Key，草稿允许空。
     // 用户填好 Key 后点编辑头部的「设为当前」即可激活。
     enabled: false,
   };
@@ -1222,12 +1304,10 @@ async function openNewProfile() {
   $("llm-edit-key").value = "";
   $("llm-edit-baseurl").value = newProfile.baseUrl;
   $("llm-edit-proxy").value = "";
-  $("llm-edit-fallbacks").value = "";
   setTimeout(() => {
     setChipGroup("llm-edit-providers", newProfile.provider);
     setChipGroup("llm-edit-protocols", newProfile.protocol);
     renderModelChips(PROVIDERS[0].models);
-    setTimeout(() => setChipGroup("llm-edit-models", newProfile.model), 30);
   }, 50);
   // 新配置未激活 → 显示「设为当前」按钮
   $("btn-llm-setactive").style.display = "";
@@ -1280,14 +1360,14 @@ async function persistEditProfile() {
   if (!p) return;
   const provider = getChip("llm-edit-providers") || p.provider;
   const protocol = getChip("llm-edit-protocols") || p.protocol || "openai";
-  const model = getChip("llm-edit-models") || p.model;
+  // 默认模型：从 chip 读（renderModelChips 会同步写到 p.model）；fallback chip toggle 也直接改 p.fallback
   const name = $("llm-edit-name").value.trim() || p.name || "未命名配置";
   const apiKey = $("llm-edit-key").value;
   const baseUrl = $("llm-edit-baseurl").value.trim();
   const proxy = $("llm-edit-proxy").value.trim();
-  const fallbacks = $("llm-edit-fallbacks").value.split("\n").map(s => s.trim()).filter(Boolean);
   p.name = name; p.provider = provider; p.protocol = protocol;
-  p.model = model; p.baseUrl = baseUrl; p.proxy = proxy; p.fallbacks = fallbacks;
+  p.baseUrl = baseUrl; p.proxyUrl = proxy;
+  // p.model / p.fallback / p.models 由 chip 交互直接维护（renderModelChips / renderFallbackChips）
   // 用户没填新 Key → 沿用旧值；填了才覆盖
   if (apiKey) p.apiKey = apiKey;
   // 任何字段变化都让"已测试"失效（参考 STORY wa 组件：lastTestedOk: false）

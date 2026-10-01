@@ -2723,15 +2723,18 @@ class Handler(BaseHTTPRequestHandler):
                 incoming = data.get("profiles")
                 if not isinstance(incoming, list):
                     raise ValueError("profiles 必须是数组")
-                # 校验：至少 1 个 profile、至少 1 个 enabled
                 if len(incoming) == 0:
                     raise ValueError("至少保留 1 个 profile")
+                # 校验：每个 enabled 的 profile 必须有 apiKey（未启用的草稿允许空 Key）
+                # 修复 STORY LLM 编辑器对标：openNewProfile 立即 POST 一个空草稿（enabled:false），
+                # 用户填好 Key 后再点编辑头部的「设为当前」激活（Settings-XLgSTp15.js:619-697）。
+                for p in incoming:
+                    if p.get("enabled") and not (p.get("apiKey") or "").strip():
+                        raise ValueError("已启用的 profile 必须填写 API Key")
+                # 兜底：如果没有任何 enabled（用户刚清空 / 首次创建），自动启用第一个
+                # 注：自动启用只换 enabled 字段，不再强制要求 Key —— 用户填 Key 后再切换。
                 if not any(p.get("enabled") for p in incoming):
                     incoming[0]["enabled"] = True
-                # 校验每个 profile 必填字段（如果是 active 状态，必须有 apiKey）
-                active = next((p for p in incoming if p.get("enabled")), None)
-                if active and not (active.get("apiKey") or "").strip():
-                    raise ValueError("当前激活的 profile 必须填写 API Key")
                 save_profiles(incoming)
             except ValueError as e:
                 self._json(400, {"error": str(e)})
