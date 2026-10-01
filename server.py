@@ -784,13 +784,14 @@ VIEWPOINT_MODULES = {
 
 
 TRACK_LABEL = {
-    "character": "人物故事",
-    "health":    "健康图书",
-    "folk":      "民间故事",
-    "culture":   "文化科普",
-    "picture":   "绘本故事",
-    "ecom":      "电商带货",
-    "soul":      "心灵鸡汤",
+    "character-story":   "人物故事",
+    "health-book":       "健康图书",
+    "culture-knowledge": "传统文化",
+    "picture-book":      "绘本故事",
+    "ecommerce":         "电商带货",
+    "inspirational":     "心灵鸡汤",
+    "folk-tale":         "民间故事",
+    "general":           "通用故事",
 }
 
 HOOK_LABEL = {
