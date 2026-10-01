@@ -172,12 +172,6 @@ textarea{resize:vertical;min-height:60px;font-family:var(--font-mono);font-size:
 /* === STORY 真值：custom-platform-banner（Settings.js:1804 等）— provider 提示横幅 === */
 .custom-platform-banner{padding:12px 14px;background:var(--brand-soft);border-radius:var(--radius-md);font-size:12.5px;line-height:1.6;color:var(--text);margin-bottom:14px;}
 .custom-platform-banner a{color:var(--brand);text-decoration:underline;cursor:pointer;}
-/* === STORY 真值：credits-balance-row（Settings.js:1744 等）— 积分余额条 === */
-.credits-balance-row{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--brand-soft);border-radius:var(--radius-md);margin-bottom:10px;}
-.credits-balance-label{font-size:12.5px;color:var(--text-muted);font-weight:500;}
-.credits-balance-value{font-size:18px;font-weight:700;color:var(--brand);font-variant-numeric:tabular-nums;}
-.credits-balance-unit{font-size:12px;color:var(--text-muted);}
-.credits-balance-est{font-size:11.5px;color:var(--text-muted);}
 /* === STORY 真值：slider-row（Settings.js:1705 等）— 滑动条 === */
 .slider-row{display:flex;align-items:center;gap:10px;}
 .slider{flex:1;height:6px;-webkit-appearance:none;appearance:none;background:var(--bg-raised);border-radius:999px;outline:none;border:1px solid var(--border-subtle);cursor:pointer;}
@@ -278,11 +272,6 @@ code{background:var(--bg);padding:1px 5px;border-radius:3px;font-family:var(--fo
       <div class="icon">📦</div>
       <div class="meta"><div class="name">剪映</div><div class="sub">草稿目录 · BGM</div></div>
       <span class="dot" id="dot-draft"></span>
-    </a>
-    <a class="nav-item" data-section="license" href="#license">
-      <div class="icon">🔑</div>
-      <div class="meta"><div class="name">激活与订阅</div><div class="sub">试用 · 激活码</div></div>
-      <span class="dot" id="dot-license"></span>
     </a>
     <a class="nav-item" data-section="ai-creation" href="#ai-creation">
       <div class="icon">💡</div>
@@ -549,7 +538,7 @@ code{background:var(--bg);padding:1px 5px;border-radius:3px;font-family:var(--fo
         <div class="field-hd"><span class="label">额度用完自动切换</span></div>
         <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;font-size:13px;color:var(--text-secondary);padding:10px;background:var(--bg-raised);border-radius:var(--radius-sm)">
           <input type="checkbox" id="ms-auto-fallback" style="margin-top:2px;flex-shrink:0">
-          <span>魔粒用完后自动改用<b>全能绘图</b>（<span style="color:var(--warning)">消耗积分</span>），任务不中断。<br><span style="color:var(--text-muted);font-size:12px">需可使用全能绘图且积分充足，否则会提示去配置。不勾则魔粒用完即停。</span></span>
+          <span>魔搭额度用完后自动改用已配置的<b>全能绘图</b>，任务不中断；调用费用由对应 API 服务商收取。<br><span style="color:var(--text-muted);font-size:12px">未配置全能绘图时会提示先配置。不勾则魔搭额度用完即停。</span></span>
         </label>
 
         <div class="settings-card-footer">
@@ -561,7 +550,7 @@ code{background:var(--bg);padding:1px 5px;border-radius:3px;font-family:var(--fo
       <!-- ========== RunningHub ========== -->
       <div class="settings-card" id="img-card-runninghub" style="display:none">
         <div class="custom-platform-banner" style="background:var(--brand-soft);display:flex;flex-direction:column;gap:10px;align-items:flex-start">
-          <span>ⓘ 此引擎需要去 RunningHub 国际站（runninghub.ai）注册账号 + 充值钱包余额（按张扣费，自付费，不扣软件积分）。<b>原国内站（runninghub.cn）API 已于 2026-07-30 停用</b>——老用户请先用<a id="rh-migrate-link">官方迁移工具</a>把密钥和余额同步到国际站（密钥不变，无需改配置），或在国际站重新生成 Key 填到下方。</span>
+          <span>ⓘ 此引擎使用你自己的 RunningHub 账号，费用由该服务商收取。<b>原国内站（runninghub.cn）API 已于 2026-07-30 停用</b>——老用户可用<a id="rh-migrate-link">官方迁移工具</a>迁移密钥和余额，或在国际站重新生成 Key 填到下方。</span>
           <button type="button" class="btn btn-primary btn-sm" id="btn-rh-register" style="padding:6px 14px">前往 RunningHub 注册 →</button>
         </div>
 
@@ -830,23 +819,6 @@ code{background:var(--bg);padding:1px 5px;border-radius:3px;font-family:var(--fo
       </div>
     </div>
 
-    <!-- ============ 激活与订阅 ============ -->
-    <div class="section hidden" id="section-license">
-      <div class="settings-section-head">
-        <div class="settings-section-icon"><span class="icon">🔑</span></div>
-        <div class="flex-1">
-          <div class="settings-section-title">激活与订阅</div>
-          <div class="settings-section-sub">本软件独立部署，不依赖官方激活码。本页仅为兼容占位。</div>
-        </div>
-        <span class="settings-pip ok" id="st-license"><span class="settings-pip-dot"></span>无需激活</span>
-      </div>
-      <div class="card">
-        <div class="field-hd"><span class="label">激活码（占位）</span></div>
-        <input type="text" id="license-key" placeholder="留空">
-        <div style="margin-top:14px"><button class="btn primary" id="btn-license-save">💾 保存</button></div>
-      </div>
-    </div>
-
     <!-- ============ AI 创作 · IMA ============ -->
     <div class="section hidden" id="section-ai-creation">
       <div class="settings-section-head">
@@ -954,7 +926,7 @@ const MODEL_HINTS = {
   "kimi-k2.7-code": "强制思考 · 无法关闭",
   "kimi-k2.7-code-highspeed": "强制思考 · 无法关闭"
 };
-const SECTIONS = ["llm","image","tts","asr","draft","license","ai-creation","about"];
+const SECTIONS = ["llm","image","tts","asr","draft","ai-creation","about"];
 let editingProfileId = null;
 let profilesCache = [];
 
@@ -1285,8 +1257,8 @@ async function openNewProfile() {
     models: [],       // 用户在「+ 自定义」加的常驻模型 id（Settings-XLgSTp15.js:810）
     fallback: [],     // 备选模型 chip 多选（Settings-XLgSTp15.js:840-848）
     apiKey: "",
-    // 新配置默认不激活：server 校验只在启用态要求 Key，草稿允许空。
-    // 用户填好 Key 后点编辑头部的「设为当前」即可激活。
+    // 新配置默认不设为当前；草稿允许先留空 Key。
+    // 用户填好 Key 后可点编辑头部的「设为当前」。
     enabled: false,
   };
   profilesCache.push(newProfile);
@@ -1459,7 +1431,7 @@ async function loadProfiles() {
     // 更新 nav dot
     const active = (r.profiles || []).find(p => p.enabled);
     setDot("dot-llm", active && active.has_key ? "ok" : (active ? "warn" : "bad"));
-    setStatus("st-llm", active ? (active.has_key ? "✓ 当前：" + active.name : "当前配置缺 API Key") : "未激活",
+    setStatus("st-llm", active ? (active.has_key ? "✓ 当前：" + active.name : "当前配置缺 API Key") : "未配置",
       active && active.has_key);
 
     // STORY 真值：思考模式（Settings.js:1174-1235）
@@ -1497,7 +1469,7 @@ function setStatus(id, txt, ok) {
   el.className = "settings-pip " + cls;
 }
 
-// ============ 出图 / TTS / ASR / 剪映 / IMA / 激活 / 关于 — 各自加载 + 保存 ============
+// ============ 出图 / TTS / ASR / 剪映 / IMA / 关于 — 各自加载 + 保存 ============
 async function refreshSettings() {
   try {
     const s = await api("/api/settings");
@@ -1614,9 +1586,6 @@ async function refreshSettings() {
     }
     setStatus("st-ai-creation", s.ima.configured ? "✓ 已配置" : "未配置", s.ima.configured);
     setDot("dot-ai-creation", s.ima.configured ? "ok" : "bad");
-    // License
-    setStatus("st-license", s.license.configured ? "✓ 已激活" : "无需激活", true);
-    setDot("dot-license", s.license.configured ? "ok" : "ok");
     // About
     setStatus("st-about", "✓ 正常", true);
     setDot("dot-about", "ok");
@@ -2043,14 +2012,6 @@ async function testIMA() {
   } catch (e) { toast("❌ " + e.message, false); }
 }
 
-async function saveLicense() {
-  try {
-    await api("/api/settings", "POST", { license_key: $("license-key").value.trim() || KEEP });
-    toast("✓ 已保存", true);
-    await refreshSettings();
-  } catch (e) { toast("❌ " + e.message, false); }
-}
-
 async function saveIMA() {
   try {
     await api("/api/settings", "POST", {
@@ -2154,7 +2115,6 @@ $("btn-jy-save").onclick = saveJY;
 $("btn-jy-browse") && ($("btn-jy-browse").onclick = () => browseFolder("jy-draft-path"));
 $("btn-jy-bgm-browse") && ($("btn-jy-bgm-browse").onclick = () => browseFolder("jy-bgm-path"));
 $("btn-ima-test") && ($("btn-ima-test").onclick = testIMA);
-$("btn-license-save").onclick = saveLicense;
 $("btn-ima-save").onclick = saveIMA;
 $("btn-clear-tasks").onclick = clearTasks;
 $("btn-clear-all").onclick = clearAll;
@@ -2171,7 +2131,7 @@ initImageProviderTabs();
   } catch {}
   // hash 决定初始 section
   const initial = (location.hash || "#llm").slice(1);
-  if (SECTIONS.includes(initial)) showSection(initial);
+  showSection(SECTIONS.includes(initial) ? initial : "llm");
   await Promise.all([loadProfiles(), refreshSettings()]);
 })();
 </script>

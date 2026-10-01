@@ -457,7 +457,7 @@ def public_profiles():
 
 
 def resolve_active_llm_settings():
-    """取当前激活的 profile，转成 settings 风格 dict（call_llm 期望的格式）。
+    """取当前选用的 profile，转成 settings 风格 dict（call_llm 期望的格式）。
     如果没有 profiles 或没有 enabled 的，回退到 settings.json 顶层字段。
     """
     profiles = load_profiles()
@@ -589,7 +589,7 @@ def _merged(values):
         "concurrency": _val_int(values.get("jimeng_concurrency"), jm_cur.get("concurrency", 3)),
     }
 
-    # modelscope 块（多 Token + 模型 + 比例 + 自动切积分 + 自定义模型）
+    # modelscope 块（多 Token + 模型 + 比例 + 切换到自备绘图 API + 自定义模型）
     ms_cur = cur.get("modelscope", {}) or {}
     ms_tokens_in = values.get("modelscope_tokens")
     ms_existing = list(ms_cur.get("tokens", []) or [])
@@ -700,10 +700,6 @@ def _merged(values):
         "access_key": _val(values.get("asr_access"),     asr_cur.get("access_key", "")),
     }
 
-    # 激活码 —— 本软件不依赖官方激活码（所有 AI 走用户自己的 API Key），字段保留以便将来扩展
-    lic_cur = cur.get("license", {}) or {}
-    license_info = {"key": _val(values.get("license_key"), lic_cur.get("key", ""))}
-
     # STORY 真值：思考模式（Settings.js:1175-1235）— auto / off / model_default
     valid_tm = {"auto", "off", "model_default"}
     tm_in = values.get("llm_thinking_mode")
@@ -729,7 +725,6 @@ def _merged(values):
         "jianying": jianying,
         "ima":      ima,
         "asr":      asr,
-        "license":  license_info,
         "llm_thinking_mode": llm_thinking_mode,
     }
 
@@ -868,9 +863,6 @@ def public_settings():
             "provider": (s.get("asr") or {}).get("provider", "volcengine"),
             "app_id": (s.get("asr") or {}).get("app_id", ""),
             "configured": bool((s.get("asr") or {}).get("app_id")),
-        },
-        "license": {
-            "configured": bool((s.get("license") or {}).get("key")),
         },
     }
 
@@ -2758,7 +2750,7 @@ class Handler(BaseHTTPRequestHandler):
                 incoming = _merge_profile_keys(incoming, load_profiles())
                 # 校验：每个 enabled 的 profile 必须有 apiKey（未启用的草稿允许空 Key）
                 # 修复 STORY LLM 编辑器对标：openNewProfile 立即 POST 一个空草稿（enabled:false），
-                # 用户填好 Key 后再点编辑头部的「设为当前」激活（Settings-XLgSTp15.js:619-697）。
+                # 用户填好 Key 后再点编辑头部的「设为当前」（Settings-XLgSTp15.js:619-697）。
                 for p in incoming:
                     if p.get("enabled") and not (p.get("apiKey") or "").strip():
                         raise ValueError("已启用的 profile 必须填写 API Key")
