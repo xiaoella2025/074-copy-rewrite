@@ -169,6 +169,28 @@ textarea{resize:vertical;min-height:60px;font-family:var(--font-mono);font-size:
 .image-provider-tab:hover{border-color:var(--border-strong);color:var(--text);}
 .image-provider-tab.active{background:var(--brand-soft);color:var(--brand);border-color:var(--brand);font-weight:600;}
 .image-provider-tab-badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;background:var(--brand);color:var(--brand-fg);border-radius:999px;font-size:10.5px;font-weight:600;line-height:1.3;}
+.image-choice-grid{display:flex;flex-wrap:wrap;gap:8px;}
+.image-choice{min-width:68px;padding:8px 11px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-elevated);color:var(--text);text-align:left;cursor:pointer;display:flex;flex-direction:column;gap:2px;}
+.image-choice:hover{border-color:var(--border-strong);}
+.image-choice[data-active="true"]{border-color:var(--brand);background:var(--brand-soft);color:var(--brand);}
+.image-choice-main{font-size:12.5px;font-weight:600;}
+.image-choice-sub{font-size:10.5px;color:var(--text-muted);}
+.rh-model-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;}
+.rh-model-grid .image-provider-tab{min-width:0;width:100%;}
+.rh-model-grid .rh-model-top{display:flex;gap:5px;align-items:center;flex-wrap:wrap;}
+.rh-model-grid .rh-model-name{font-size:12.5px;line-height:1.3;}
+.rh-model-grid .rh-model-desc{font-size:11px;color:var(--text-muted);line-height:1.4;}
+@media(max-width:650px){.rh-model-grid{grid-template-columns:1fr;}}
+.rh-workflow-grid{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr) minmax(0,1fr);gap:10px;}
+.rh-workflow-grid>div{min-width:0;}
+@media(max-width:650px){.rh-workflow-grid{grid-template-columns:1fr;}}
+.aura-voice-entry{display:flex;gap:8px;align-items:stretch;}
+.aura-voice-entry #tts-aura-name{flex:0 0 160px;min-width:0;}
+.aura-voice-entry #tts-aura-new-id{flex:1;min-width:0;}
+.aura-voice-entry button{flex-shrink:0;}
+@media(max-width:560px){.aura-voice-entry{flex-wrap:wrap;}.aura-voice-entry #tts-aura-name{flex:1 1 100%;}.aura-voice-entry #tts-aura-new-id{flex:1 1 160px;}}
+.aura-voice-remove{border:0;background:transparent;color:inherit;opacity:.55;cursor:pointer;padding:0 2px;font-size:11px;}
+.aura-voice-remove:hover{opacity:1;}
 /* === STORY 真值：custom-platform-banner（Settings.js:1804 等）— provider 提示横幅 === */
 .custom-platform-banner{padding:12px 14px;background:var(--brand-soft);border-radius:var(--radius-md);font-size:12.5px;line-height:1.6;color:var(--text);margin-bottom:14px;}
 .custom-platform-banner a{color:var(--brand);text-decoration:underline;cursor:pointer;}
@@ -564,15 +586,15 @@ code{background:var(--bg);padding:1px 5px;border-radius:3px;font-family:var(--fo
           </div>
         </div>
         <div class="field-help">API Key 保存在本机 074 配置文件中。</div>
-        <div class="field-hd"><span class="label">工作流 ID</span><span class="hint">当前后端出图接口必填</span></div>
-        <input type="text" id="rh-workflow-id" class="input" placeholder="RunningHub 工作流 ID">
-        <div class="field-hd"><span class="label">提示词节点 ID</span><span class="hint">从工作流 API 格式导出中读取</span></div>
-        <input type="text" id="rh-prompt-node-id" class="input" placeholder="例如 6">
-        <div class="field-hd"><span class="label">提示词字段名</span></div>
-        <input type="text" id="rh-prompt-field" class="input" placeholder="text">
+        <div class="rh-workflow-grid">
+          <div><div class="field-hd"><span class="label">工作流 ID</span><span class="hint">必填</span></div><input type="text" id="rh-workflow-id" class="input" placeholder="RunningHub 工作流 ID"></div>
+          <div><div class="field-hd"><span class="label">提示词节点 ID</span></div><input type="text" id="rh-prompt-node-id" class="input" placeholder="例如 6"></div>
+          <div><div class="field-hd"><span class="label">提示词字段名</span></div><input type="text" id="rh-prompt-field" class="input" placeholder="text"></div>
+        </div>
+        <div class="field-help">提示词节点 ID 与字段名从工作流 API 格式导出中读取。</div>
 
         <div class="field-hd"><span class="label">模型选择</span></div>
-        <div style="display:flex;flex-direction:column;gap:8px" id="rh-models"></div>
+        <div class="rh-model-grid" id="rh-models"></div>
 
         <div class="field-hd"><span class="label">画面比例</span></div>
         <select id="rh-ratio" class="input">
@@ -601,7 +623,7 @@ code{background:var(--bg);padding:1px 5px;border-radius:3px;font-family:var(--fo
 
       <!-- ========== 自定义平台 ========== -->
       <div class="settings-card" id="img-card-custom" style="display:none">
-        <div class="custom-platform-banner">★ 永久会员特权 · 你可以接入任意 OpenAI 兼容协议的图片生成 API</div>
+        <div class="custom-platform-banner">可接入任意 OpenAI 兼容协议的图片生成 API。</div>
 
         <div class="field-hd"><span class="label">显示名称</span></div>
         <input type="text" id="custom-display-name" class="input" placeholder="例如：我的 OpenAI 中转站">
@@ -684,22 +706,28 @@ code{background:var(--bg);padding:1px 5px;border-radius:3px;font-family:var(--fo
         </div>
         <div class="field-hd"><span class="label">模型</span></div>
         <div class="chips" id="tts-aura-models">
-          <div class="chip" data-v="minimax-speech-2.8-turbo">2.8 turbo</div>
-          <div class="chip" data-v="minimax-speech-2.8-hd">2.8 hd</div>
-          <div class="chip" data-v="minimax-speech-2.6-turbo">2.6 turbo</div>
+          <div class="chip" data-v="minimax-speech-2.8-turbo"><span class="chip-main">2.8 turbo</span><span class="chip-hint">性价比</span></div>
+          <div class="chip" data-v="minimax-speech-2.8-hd"><span class="chip-main">2.8 hd</span><span class="chip-hint">高保真</span></div>
+          <div class="chip" data-v="minimax-speech-2.6-turbo"><span class="chip-main">2.6 turbo</span><span class="chip-hint">旧版</span></div>
         </div>
-        <div class="field-hd"><span class="label">默认音色 ID</span></div>
-        <input type="text" id="tts-aura-voice" placeholder="Chinese (Mandarin)_Reliable_Executive">
-        <div class="chips" id="tts-aura-system-voices" style="margin-top:8px">
-          <div class="chip" data-v="Chinese (Mandarin)_Reliable_Executive">沉稳高管</div>
+        <div class="field-help">按字符计费，价格以平台为准。</div>
+        <input type="hidden" id="tts-aura-voice" value="Chinese (Mandarin)_Reliable_Executive">
+        <div class="field-hd"><span class="label">平台克隆音色</span></div>
+        <div class="chips" id="tts-aura-custom-voices" style="margin-bottom:8px"></div>
+        <div class="aura-voice-entry">
+          <input type="text" id="tts-aura-name" placeholder="音色名称随便填">
+          <input type="text" id="tts-aura-new-id" placeholder="平台克隆好的音色 ID，如 voice_xxx / moss_audio_xxx">
+          <button type="button" class="btn btn-ghost" id="tts-aura-add">＋ 添加</button>
         </div>
-        <div class="field-hd"><span class="label">平台克隆音色</span><span class="hint">先在 Aura Studio 平台完成克隆，再填写音色 ID</span></div>
-        <div class="grid-2">
-          <input type="text" id="tts-aura-name" placeholder="音色名称">
-          <input type="text" id="tts-aura-new-id" placeholder="平台音色 ID">
+        <div class="field-help">在平台克隆好音色后，把音色 ID 复制到这里；点音色名称设为默认。</div>
+        <div class="field-hd"><span class="label">系统精选音色</span></div>
+        <div class="chips" id="tts-aura-system-voices">
+          <div class="chip" data-v="Chinese (Mandarin)_Reliable_Executive"><span class="chip-main">沉稳高管</span><span class="chip-hint">中年男 · 可靠</span></div>
+          <div class="chip" data-v="Chinese (Mandarin)_Stubborn_Friend"><span class="chip-main">嘴硬竹马</span><span class="chip-hint">青年男 · 心软</span></div>
+          <div class="chip" data-v="Chinese (Mandarin)_Wise_Women"><span class="chip-main">阅历姐姐</span><span class="chip-hint">中年女 · 抒情</span></div>
+          <div class="chip" data-v="Chinese (Mandarin)_Gentle_Senior"><span class="chip-main">温柔学姐</span><span class="chip-hint">青年女 · 温暖</span></div>
         </div>
-        <button type="button" class="btn btn-ghost" id="tts-aura-add" style="margin-top:8px">＋ 添加音色</button>
-        <div class="chips" id="tts-aura-custom-voices" style="margin-top:8px"></div>
+        <div class="field-help">平台内置系统音色，也可选作默认。</div>
       </div>
 
       <div class="card" id="tts-volc-block">
@@ -1566,6 +1594,7 @@ async function refreshSettings() {
     if ($("custom-concurrency"))  $("custom-concurrency").value  = cu.concurrency || 5;
     if ($("custom-ratio-mapping"))$("custom-ratio-mapping").value= cu.ratio_mapping_json || "";
 
+    renderImageChoiceSelects();
     // Tab + 使用中 badge
     const activeProvider = img.provider || "jimeng";
     switchImageProvider(activeProvider);
@@ -1654,29 +1683,53 @@ function syncTTSBlocks() {
 bindChipGroup("tts-providers", () => syncTTSBlocks());
 bindChipGroup("tts-speakers", (v) => { $("tts-volc-speaker").value = v; });
 bindChipGroup("tts-aura-models", () => {});
-bindChipGroup("tts-aura-system-voices", (v) => { $("tts-aura-voice").value = v; });
+bindChipGroup("tts-aura-system-voices", (v) => { $("tts-aura-voice").value = v; renderAuraVoices(); });
 let auraCustomVoices = [];
 function renderAuraVoices() {
   const root = $("tts-aura-custom-voices");
   root.replaceChildren();
+  const selectedId = $("tts-aura-voice").value;
+  setChip("tts-aura-system-voices", selectedId);
+  if (!auraCustomVoices.length) {
+    const empty = document.createElement("span");
+    empty.className = "field-help";
+    empty.textContent = "还没添加 · 在下方填名称和音色 ID";
+    root.append(empty);
+  }
   auraCustomVoices.forEach((voice, index) => {
-    const chip = document.createElement("button");
-    chip.type = "button"; chip.className = "chip";
-    chip.textContent = voice.name + " · " + voice.id;
-    chip.onclick = () => { $("tts-aura-voice").value = voice.id; };
+    const chip = document.createElement("div");
+    chip.className = "chip";
+    chip.setAttribute("role", "button");
+    chip.tabIndex = 0;
+    chip.dataset.active = String(selectedId === voice.id);
+    chip.title = voice.id;
+    const label = document.createElement("span");
+    label.textContent = voice.name || voice.id;
+    chip.append(label);
+    chip.onclick = () => { $("tts-aura-voice").value = voice.id; renderAuraVoices(); };
+    chip.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); chip.click(); } };
     const remove = document.createElement("button");
-    remove.type = "button"; remove.className = "btn btn-ghost";
-    remove.textContent = "删除 " + voice.name;
-    remove.onclick = () => { auraCustomVoices.splice(index, 1); renderAuraVoices(); };
-    root.append(chip, remove);
+    remove.type = "button";
+    remove.className = "aura-voice-remove";
+    remove.textContent = "✕";
+    remove.title = "删除 " + (voice.name || voice.id);
+    remove.onclick = e => {
+      e.stopPropagation();
+      auraCustomVoices.splice(index, 1);
+      if ($("tts-aura-voice").value === voice.id) $("tts-aura-voice").value = "Chinese (Mandarin)_Reliable_Executive";
+      renderAuraVoices();
+    };
+    chip.append(remove);
+    root.append(chip);
   });
 }
 $("tts-aura-add").onclick = () => {
   const name = $("tts-aura-name").value.trim();
   const id = $("tts-aura-new-id").value.trim();
-  if (!name || !id) { toast("请填写音色名称和 ID", false); return; }
+  if (!id) { toast("请填写音色 ID", false); return; }
   if (auraCustomVoices.some(v => v.id === id)) { toast("音色 ID 已添加", false); return; }
-  auraCustomVoices.push({name, id});
+  auraCustomVoices.push({name: name || id, id});
+  $("tts-aura-voice").value = id;
   $("tts-aura-name").value = ""; $("tts-aura-new-id").value = "";
   renderAuraVoices();
 };
@@ -1731,14 +1784,14 @@ function buildRHModels(selectedId) {
   const wrap = $("rh-models");
   wrap.innerHTML = RH_MODELS.map(m => {
     const active = m.id === selectedId;
-    return `<button type="button" class="image-provider-tab ${active?'active':''}" data-rh-model="${m.id}" style="text-align:left;padding:10px 14px;display:flex;flex-direction:column;align-items:flex-start;gap:2px">
-      <div style="display:flex;align-items:center;gap:8px;width:100%">
-        <strong style="font-size:14px">${m.displayName}</strong>
-        <span style="color:var(--brand);font-size:12px;font-weight:700;padding:2px 8px;background:var(--brand-soft);border-radius:4px;line-height:1.4">${m.price}</span>
-        ${m.note ? `<span style="color:var(--warning);font-size:11px;font-weight:600;padding:2px 6px;border:1px solid var(--warning);border-radius:4px;line-height:1.4">${m.note}</span>` : ""}
-        ${active ? `<span class="image-provider-tab-badge" style="margin-left:auto">使用中</span>` : ""}
+    return `<button type="button" class="image-provider-tab ${active?'active':''}" data-rh-model="${escapeHtml(m.id)}" aria-pressed="${active}" style="text-align:left;padding:9px 10px;display:flex;flex-direction:column;align-items:flex-start;gap:5px">
+      <div class="rh-model-top">
+        <strong class="rh-model-name">${escapeHtml(m.displayName)}</strong>
+        <span style="color:var(--brand);font-size:10.5px;font-weight:700;padding:2px 5px;background:var(--brand-soft);border-radius:4px">${escapeHtml(m.price)}</span>
+        ${m.note ? `<span style="color:var(--warning);font-size:10px;border:1px solid var(--warning);border-radius:4px;padding:1px 4px">${escapeHtml(m.note)}</span>` : ""}
+        ${active ? `<span class="image-provider-tab-badge">使用中</span>` : ""}
       </div>
-      <span style="color:var(--text-muted);font-size:12px">${m.desc}</span>
+      <span class="rh-model-desc">${escapeHtml(m.desc)}</span>
     </button>`;
   }).join("");
 }
@@ -1752,8 +1805,43 @@ function buildMSModels(selectedId) {
   const all = [...MS_BUILTIN_MODELS, ...msCustomModels.map(x => ({ id: x.id, name: x.name, sub: "自定义" }))];
   const sel = $("ms-model");
   sel.innerHTML = all.map(m =>
-    `<option value="${m.id}" ${m.id === selectedId ? "selected" : ""}>${m.name} · ${m.sub}</option>`
+    `<option value="${escapeHtml(m.id)}" ${m.id === selectedId ? "selected" : ""}>${escapeHtml(m.name)} · ${escapeHtml(m.sub)}</option>`
   ).join("");
+  renderImageChoiceSelect("ms-model");
+}
+
+// 保留原 select 作为保存字段；界面按 Story 的横向 chip 展示。
+const IMAGE_CHOICE_SELECTS = ["jimeng-model-sel", "jimeng-ratio", "jimeng-resolution", "gpt-ratio", "ms-model", "ms-ratio", "rh-ratio", "rh-resolution", "custom-protocol", "custom-ratio"];
+function renderImageChoiceSelect(id) {
+  const select = $(id);
+  if (!select) return;
+  select.hidden = true;
+  let root = $(id + "-choices");
+  if (!root) {
+    root = document.createElement("div");
+    root.id = id + "-choices";
+    root.className = "image-choice-grid";
+    select.after(root);
+  }
+  root.innerHTML = Array.from(select.options).map(option => {
+    const [main, ...detail] = option.textContent.split(" · ");
+    const active = option.value === select.value;
+    return `<button type="button" class="image-choice" data-choice="${escapeHtml(option.value)}" data-active="${active}" aria-pressed="${active}"><span class="image-choice-main">${escapeHtml(main)}</span>${detail.length ? `<span class="image-choice-sub">${escapeHtml(detail.join(" · "))}</span>` : ""}</button>`;
+  }).join("");
+  root.querySelectorAll(".image-choice").forEach(button => {
+    button.addEventListener("click", () => {
+      select.value = button.dataset.choice;
+      root.querySelectorAll(".image-choice").forEach(chip => {
+        const active = chip === button;
+        chip.dataset.active = String(active);
+        chip.setAttribute("aria-pressed", String(active));
+      });
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+  });
+}
+function renderImageChoiceSelects() {
+  IMAGE_CHOICE_SELECTS.forEach(renderImageChoiceSelect);
 }
 
 function buildMSTokens() {
@@ -1873,10 +1961,10 @@ async function testImageConn(p) {
 }
 
 function initImageProviderTabs() {
+  renderImageChoiceSelects();
   document.querySelectorAll("#image-provider-tabs .image-provider-tab").forEach(t => {
     t.addEventListener("click", () => {
       switchImageProvider(t.dataset.p);
-      updateImgBadges(currentImgProvider);
     });
   });
   // GPT concurrency slider live update
@@ -1923,7 +2011,7 @@ function initImageProviderTabs() {
     msCustomModels.push({ id, name: $("ms-model-name").value.trim() || id });
     $("ms-model-id").value = ""; $("ms-model-name").value = "";
     $("ms-model-add-wrap").style.display = "none";
-    buildMSModels($("ms-model").value);
+    buildMSModels(id);
   };
 
   // RunningHub model select
