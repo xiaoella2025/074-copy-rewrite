@@ -1846,6 +1846,24 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/tasks.html" or self.path == "/tasks":
             self._file(ROOT / "tasks.html", "text/html; charset=utf-8")
             return
+        if self.path.startswith("/assets/"):
+            # /assets/<sub>/<file> — 静态资源（CSS / JS / 图标）
+            rel = self.path.lstrip("/")
+            f = ROOT / rel
+            if f.exists() and f.is_file():
+                ext = f.suffix.lower()
+                mime = {
+                    ".css": "text/css; charset=utf-8",
+                    ".js": "application/javascript; charset=utf-8",
+                    ".svg": "image/svg+xml",
+                    ".png": "image/png",
+                    ".jpg": "image/jpeg",
+                    ".ico": "image/x-icon",
+                }.get(ext, "application/octet-stream")
+                self._file(f, mime)
+            else:
+                self._json(404, {"error": f"资源不存在: {rel}"})
+            return
         if self.path.startswith("/covers/"):
             self._file(DATA_DIR / self.path.lstrip("/"), "image/png")
             return
