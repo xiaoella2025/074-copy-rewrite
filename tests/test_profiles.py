@@ -50,6 +50,18 @@ class ProfileSaveTests(unittest.TestCase):
             "enabled": True,
         }])
 
+    def test_new_profile_without_key_can_be_saved_for_later_editing(self):
+        draft = {"id": "new-profile", "name": "新配置", "provider": "deepseek",
+                 "protocol": "openai", "baseUrl": "https://api.deepseek.com",
+                 "model": "deepseek-v4-pro", "apiKey": "", "enabled": False}
+        status, result = self.request("POST", "/api/profiles", {"profiles": [draft]})
+        self.assertEqual(status, 200)
+        self.assertTrue(result["ok"])
+        status, public = self.request("GET", "/api/profiles")
+        self.assertEqual(status, 200)
+        self.assertEqual(len(public["profiles"]), 1)
+        self.assertFalse(public["profiles"][0]["has_key"])
+
     def test_edit_without_retyping_key_keeps_secret_and_custom_models(self):
         self.seed()
         status, public = self.request("GET", "/api/profiles")

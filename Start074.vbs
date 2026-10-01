@@ -16,7 +16,7 @@ alreadyRunning = False
 On Error Resume Next
 Dim http
 Set http = CreateObject("WinHttp.WinHttpRequest.5.1")
-http.SetTimeouts 300, 300, 300, 300
+http.SetTimeouts 2000, 2000, 2000, 2000
 http.Open "GET", url & "/api/settings", False
 http.Send
 If Err.Number = 0 Then

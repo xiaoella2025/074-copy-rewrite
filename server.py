@@ -16,6 +16,7 @@ import urllib.request
 import base64
 import difflib
 import shutil
+import socket
 import subprocess
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -26,6 +27,17 @@ DATA_DIR = ROOT / "data"
 SETTINGS_PATH = DATA_DIR / "settings.json"
 PROFILES_PATH = DATA_DIR / "profiles.json"
 PORT = 18801
+
+
+class SingleInstanceHTTPServer(ThreadingHTTPServer):
+    """Prevent two app074 processes from sharing the same Windows TCP port."""
+
+    allow_reuse_address = False
+
+    def server_bind(self):
+        if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
 
 LLM_PROVIDERS = {
     "deepseek": {"protocol": "openai", "base_url": "https://api.deepseek.com"},
@@ -4249,7 +4261,7 @@ class Handler(BaseHTTPRequestHandler):
 
 def main():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+    server = SingleInstanceHTTPServer(("127.0.0.1", PORT), Handler)
     msg = f"app074 listening on http://127.0.0.1:{PORT}"
     # pythonw.exe 没控制台，print 会抛异常，只写文件
     try:
