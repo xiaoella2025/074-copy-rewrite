@@ -381,7 +381,7 @@ code{background:var(--bg);padding:1px 5px;border-radius:3px;font-family:var(--fo
             <button class="btn" id="btn-llm-test">🔌 测试连接</button>
             <button class="btn btn-secondary" id="btn-llm-test-tool">🛠 测试工具调用</button>
           </div>
-          <div class="help-line">返回即自动保存（无需「保存」按钮）。</div>
+          <div class="help-line">修改自动保存到 <code>profiles.json</code>；测试连接只验证 Key 是否可用，不写入配置。</div>
         </div>
       </div>
     </div>
@@ -1010,6 +1010,7 @@ function renderProviderChips() {
       $("llm-edit-baseurl").value = p.baseUrl;
     }
     renderModelChips(p ? p.models : []);
+    scheduleAutoSaveEdit();
   });
 }
 
@@ -1025,8 +1026,23 @@ function renderModelChips(models) {
       ${MODEL_HINTS[m] ? `<span class="chip-hint">${MODEL_HINTS[m]}</span>` : ""}
     </div>
   `).join("");
-  bindChipGroup("llm-edit-models", v => { /* reserved */ });
+  bindChipGroup("llm-edit-models", () => scheduleAutoSaveEdit());
 }
+
+// 协议 chip 是静态 markup（不是 renderModelChips 动态生成），单独绑一次
+bindChipGroup("llm-edit-protocols", () => scheduleAutoSaveEdit());
+
+// 5 个 input/textarea 的 input 事件 → 触发自动保存
+function bindEditInputsAutoSave() {
+  ["llm-edit-name", "llm-edit-key", "llm-edit-baseurl", "llm-edit-proxy", "llm-edit-fallbacks"].forEach(id => {
+    const el = $(id);
+    if (el && !el.dataset.autoSaveBound) {
+      el.addEventListener("input", scheduleAutoSaveEdit);
+      el.dataset.autoSaveBound = "1";
+    }
+  });
+}
+bindEditInputsAutoSave();
 
 function renderProfileList(profiles) {
   profilesCache = profiles || [];
@@ -1172,68 +1188,144 @@ function openEditProfile(id) {
   $("btn-llm-setactive").style.display = p.enabled ? "none" : "";
 }
 
-function openNewProfile() {
-  editingProfileId = null;
+async function openNewProfile() {
+  // STORY 真值：openNewProfile 立即创建并 POST 一个空 profile，拿到 id 后进入编辑态。
+  // 之后每个 input/chip 的 onChange 都会自动持久化（参考 Settings-XLgSTp15.js:974-984）。
+  const id = "p_" + Date.now();
+  const newProfile = {
+    id,
+    name: "新配置",
+    provider: PROVIDERS[0].id,
+    protocol: "openai",
+    model: PROVIDERS[0].models[0] || "",
+    baseUrl: PROVIDERS[0].baseUrl || "",
+    proxy: "",
+    fallbacks: [],
+    apiKey: "",
+    // 新配置默认不激活：避免空 Key 触发 server 端"当前激活的 profile 必须填写 API Key"校验。
+    // 用户填好 Key 后点编辑头部的「设为当前」即可激活。
+    enabled: false,
+  };
+  profilesCache.push(newProfile);
+  editingProfileId = id;
+  try {
+    await api("/api/profiles", "POST", { profiles: profilesCache });
+  } catch (e) {
+    profilesCache.pop();
+    editingProfileId = null;
+    toast("❌ 创建失败：" + e.message, false);
+    return;
+  }
   $("llm-list-view").style.display = "none";
   $("llm-edit-view").style.display = "";
-  $("llm-edit-name").value = "";
+  $("llm-edit-name").value = newProfile.name;
   $("llm-edit-key").value = "";
-  $("llm-edit-baseurl").value = "";
+  $("llm-edit-baseurl").value = newProfile.baseUrl;
   $("llm-edit-proxy").value = "";
   $("llm-edit-fallbacks").value = "";
   setTimeout(() => {
-    setChipGroup("llm-edit-providers", "deepseek");
-    setChipGroup("llm-edit-protocols", "openai");
+    setChipGroup("llm-edit-providers", newProfile.provider);
+    setChipGroup("llm-edit-protocols", newProfile.protocol);
     renderModelChips(PROVIDERS[0].models);
-    setTimeout(() => setChipGroup("llm-edit-models", PROVIDERS[0].models[0]), 30);
-    $("llm-edit-baseurl").value = PROVIDERS[0].baseUrl;
+    setTimeout(() => setChipGroup("llm-edit-models", newProfile.model), 30);
   }, 50);
-  $("btn-llm-setactive").style.display = "none";
+  // 新配置未激活 → 显示「设为当前」按钮
+  $("btn-llm-setactive").style.display = "";
 }
 
-function closeEditProfile() {
+async function closeEditProfile() {
+  // 关闭前先把挂起的自动保存 flush 掉（保证最后一次输入不丢）
+  if (llmAutoSaveTimer) {
+    clearTimeout(llmAutoSaveTimer);
+    llmAutoSaveTimer = null;
+    try {
+      await persistEditProfile();
+    } catch (e) {
+      toast("❌ 自动保存失败：" + e.message, false);
+    }
+  } else if (llmSavingInflight) {
+    // 收尾：等最后一次 in-flight 完成
+    try { await llmSavingInflight; } catch (_) {}
+  }
   $("llm-list-view").style.display = "";
   $("llm-edit-view").style.display = "none";
   editingProfileId = null;
+  await loadProfiles();
+  await refreshSettings();
 }
 
-async function saveProfileFromEdit() {
-  const provider = getChip("llm-edit-providers");
-  const protocol = getChip("llm-edit-protocols") || "openai";
-  const model = getChip("llm-edit-models");
-  const name = $("llm-edit-name").value.trim() || "未命名配置";
+let llmAutoSaveTimer = null;
+let llmSavingInflight = null;
+
+function scheduleAutoSaveEdit() {
+  // 防抖 300ms；连续打字只发最后一次
+  if (llmAutoSaveTimer) clearTimeout(llmAutoSaveTimer);
+  llmAutoSaveTimer = setTimeout(async () => {
+    llmAutoSaveTimer = null;
+    try {
+      await persistEditProfile();
+    } catch (e) {
+      toast("❌ 自动保存失败：" + e.message, false);
+    }
+  }, 300);
+}
+
+async function persistEditProfile() {
+  // 新建流程已经在 openNewProfile 里创建并 POST；这里只做 update。
+  if (!editingProfileId) return;
+  // 串行化：避免与上一次未完成的请求乱序
+  if (llmSavingInflight) { try { await llmSavingInflight; } catch (_) {} }
+  const profiles = profilesCache.slice();
+  const p = profiles.find(x => x.id === editingProfileId);
+  if (!p) return;
+  const provider = getChip("llm-edit-providers") || p.provider;
+  const protocol = getChip("llm-edit-protocols") || p.protocol || "openai";
+  const model = getChip("llm-edit-models") || p.model;
+  const name = $("llm-edit-name").value.trim() || p.name || "未命名配置";
   const apiKey = $("llm-edit-key").value;
   const baseUrl = $("llm-edit-baseurl").value.trim();
   const proxy = $("llm-edit-proxy").value.trim();
   const fallbacks = $("llm-edit-fallbacks").value.split("\n").map(s => s.trim()).filter(Boolean);
-  let profiles = profilesCache.slice();
-  if (editingProfileId) {
-    // 编辑现有
-    const p = profiles.find(x => x.id === editingProfileId);
-    if (p) {
-      p.name = name; p.provider = provider; p.protocol = protocol;
-      p.model = model; p.baseUrl = baseUrl; p.proxy = proxy; p.fallbacks = fallbacks;
-      if (apiKey) p.apiKey = apiKey;
-    }
-  } else {
-    // 新建
-    const id = "p_" + Date.now();
-    profiles.push({
-      id, name, provider, protocol, model,
-      baseUrl, proxy, fallbacks,
-      apiKey: apiKey || "",
-      enabled: !profiles.some(x => x.enabled), // 第一个自动激活
+  p.name = name; p.provider = provider; p.protocol = protocol;
+  p.model = model; p.baseUrl = baseUrl; p.proxy = proxy; p.fallbacks = fallbacks;
+  // 用户没填新 Key → 沿用旧值；填了才覆盖
+  if (apiKey) p.apiKey = apiKey;
+  // 任何字段变化都让"已测试"失效（参考 STORY wa 组件：lastTestedOk: false）
+  p.lastTestedOk = false;
+  const body = JSON.stringify({ profiles });
+  llmSavingInflight = (async () => {
+    const r = await fetch("/api/profiles", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body,
     });
-  }
+    const t = await r.text();
+    if (!r.ok) {
+      let j; try { j = JSON.parse(t); } catch { j = { error: t }; }
+      throw new Error(j.error || `HTTP ${r.status}`);
+    }
+    return j;
+  })();
   try {
-    await api("/api/profiles", "POST", { profiles });
-    toast("✓ LLM 配置已保存", true);
-    closeEditProfile();
-    await loadProfiles();
-    await refreshSettings();
-  } catch (e) {
-    toast("❌ " + e.message, false);
+    await llmSavingInflight;
+  } finally {
+    llmSavingInflight = null;
   }
+}
+
+async function saveProfileFromEdit() {
+  // 兼容旧调用：显式保存一次，关闭视图并刷新
+  if (llmAutoSaveTimer) { clearTimeout(llmAutoSaveTimer); llmAutoSaveTimer = null; }
+  try {
+    await persistEditProfile();
+  } catch (e) {
+    toast("❌ 保存失败：" + e.message, false);
+    throw e;
+  }
+  toast("✓ LLM 配置已保存", true);
+  closeEditProfile();
+  await loadProfiles();
+  await refreshSettings();
 }
 
 async function setActiveProfile(id) {
