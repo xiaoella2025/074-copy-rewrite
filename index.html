@@ -354,7 +354,7 @@ body{padding-left:220px;}
     <div class="section-title"><span class="icon">🎬</span> 视频形态</div>
     <div class="chips" id="video-form">
       <div class="chip active" data-form="narrator">旁白视频 · 单人出镜讲述（默认）</div>
-      <div class="chip" data-form="podcast">双人播客 · 两位主播一问一答内容</div>
+      <div class="chip disabled" data-form="podcast" aria-disabled="true">双人播客 · 暂未接入</div>
     </div>
   </div>
 
@@ -408,9 +408,15 @@ body{padding-left:220px;}
         </div>
         <div class="chips" id="pause-mode">
           <div class="chip active" data-pam="never">不暂停</div>
-          <div class="chip" data-pam="key">关键节点 · 改写后</div>
+          <div class="chip" data-pam="key">关键节点 · 文案与分镜后</div>
           <div class="chip" data-pam="every">每步确认</div>
           <div class="chip" data-pam="custom">自定义</div>
+        </div>
+        <div id="pause-custom" style="display:none;margin-top:8px">
+          <label><input type="checkbox" value="generate" checked> 文案与分镜后</label>
+          <label><input type="checkbox" value="tts"> 配音后</label>
+          <label><input type="checkbox" value="prompts"> 绘图提示词后</label>
+          <label><input type="checkbox" value="images"> 出图后</label>
         </div>
       </div>
     </div>
@@ -545,9 +551,9 @@ body{padding-left:220px;}
       <div class="help" style="margin-bottom:6px">素材来源</div>
       <div class="chips" id="img-source">
         <div class="chip active" data-img-src="ai">AI 绘图 · 按画面风格生成插画/写实图</div>
-        <div class="chip" data-img-src="web">网络素材 · 真实视频画面，免版权可用素材</div>
-        <div class="chip" data-img-src="mine">我的素材库 · 用你收集的真实图片</div>
-        <div class="chip" data-img-src="external">外部出图 · 提供说明文案，由你/智能体接手</div>
+        <div class="chip disabled" data-img-src="web" aria-disabled="true">网络素材 · 暂未接入</div>
+        <div class="chip disabled" data-img-src="mine" aria-disabled="true">我的素材库 · 暂未接入</div>
+        <div class="chip disabled" data-img-src="external" aria-disabled="true">外部出图 · 暂未接入</div>
       </div>
     </div>
 
@@ -555,19 +561,16 @@ body{padding-left:220px;}
       <div>
         <div class="help" style="margin-bottom:6px">绘图引擎</div>
         <select class="model-select" style="width:100%;padding:6px 10px" id="img-engine">
-          <option>🎨 全能绘图（内置）</option>
-          <option>🪄 魔搭 · ModelScope</option>
-          <option>Runwayml-Hub-Kev</option>
-          <option>Runwayml-Hub-...</option>
+          <option value="">加载配置中…</option>
         </select>
       </div>
       <div>
         <div class="help" style="margin-bottom:6px">动态分镜</div>
-        <div class="chips">
+        <div class="chips" id="dynamic-shots">
           <span class="chip active" data-dynamic="off">关闭</span>
-          <span class="chip" data-dynamic="3">前 3 张</span>
-          <span class="chip" data-dynamic="all">全部</span>
-          <span class="chip" data-dynamic="custom">自定义</span>
+          <span class="chip disabled" data-dynamic="3" aria-disabled="true">前 3 张 · 暂未接入</span>
+          <span class="chip disabled" data-dynamic="all" aria-disabled="true">全部 · 暂未接入</span>
+          <span class="chip disabled" data-dynamic="custom" aria-disabled="true">自定义 · 暂未接入</span>
         </div>
       </div>
     </div>
@@ -617,8 +620,8 @@ body{padding-left:220px;}
         </div>
       </div>
       <div>
-        <div class="help" style="margin-bottom:6px">AI 出图比例 · 已忽略草稿模板</div>
-        <div class="chips" style="margin-bottom:6px">
+        <div class="help" style="margin-bottom:6px">AI 出图比例</div>
+        <div class="chips" id="img-ratio" style="margin-bottom:6px">
           <span class="chip active" data-ratio="916">9:16 · 预演</span>
           <span class="chip" data-ratio="43">4:3 · 标准</span>
           <span class="chip" data-ratio="11">1:1 · 方形</span>
@@ -638,6 +641,7 @@ body{padding-left:220px;}
       <input type="file" id="prod-file" class="file-hidden" accept="image/*">
     </label>
     <div class="upload-result" id="prod-result"></div>
+    <button type="button" class="btn" id="prod-clear" style="display:none">移除参考图</button>
   </div>
 
   <!-- 封面海报 -->
@@ -675,7 +679,7 @@ body{padding-left:220px;}
 
     <!-- 本地上传（默认隐藏） -->
     <div id="cover-upload-area" style="display:none">
-      <div class="help" style="margin-bottom:8px">自己上传一张图当封面；出片自动带入剪映，不用 AI 画，不花钱</div>
+      <div class="help" style="margin-bottom:8px">自己上传一张图作为发布封面；草稿生成后可在剪映中设置封面。</div>
       <label class="dropzone" id="cover-drop" style="display:block">
         📁 拖封面图拖到框里，或点击选择 · 支持 png / jpg / webp · 建议竖图
         <input type="file" id="cover-file" class="file-hidden" accept="image/*">
@@ -689,7 +693,7 @@ body{padding-left:220px;}
     <span class="cost">预计 <strong>22-30</strong> 分钟完成 <span class="muted" style="color:var(--muted);margin-left:6px">改写仅几秒</span></span>
     <div style="display:flex;gap:8px">
       <button class="btn ghost">保存为草稿</button>
-      <button class="btn primary" id="btn-run-full">▶ 一键全链路（Step 0–6）</button>
+      <button class="btn primary" id="btn-run-full">▶ 仅生成文本与绘图提示词（Step 0–3）</button>
     </div>
   </div>
 
@@ -699,21 +703,20 @@ body{padding-left:220px;}
 
     <div class="chips" id="tts-mode" style="margin-bottom:10px">
       <span class="chip active" data-tts="system">系统配音（TTS 生成）</span>
-      <span class="chip" data-tts="custom">上传自定义配音</span>
+      <span class="chip disabled" data-tts="custom" aria-disabled="true">上传自定义配音 · 暂未接入</span>
     </div>
 
     <div class="chips" id="tts-provider" style="margin-bottom:10px">
       <span class="chip active" data-ttsp="volcengine">🔥 火山引擎（豆包）</span>
       <span class="chip" data-ttsp="minimax">⚡ MiniMax</span>
+      <span class="chip" data-ttsp="aura">🎙 Aura Studio</span>
     </div>
 
     <div class="grid-2" style="margin-bottom:10px">
       <div>
         <div class="help" style="margin-bottom:6px">配音员</div>
         <select class="model-select" style="width:100%;padding:6px 10px" id="voice">
-          <option>豆包 · MiniMax · Aura</option>
-          <option>智谱 · 智声 · 中文合成</option>
-          <option>阿里 · CosyVoice · 温柔学姐</option>
+          <option value="">加载配置中…</option>
         </select>
       </div>
       <div>
@@ -722,16 +725,7 @@ body{padding-left:220px;}
     </div>
 
     <div class="help" style="margin-bottom:6px">平台克隆音色</div>
-    <div class="chips" id="cloned-voices" style="margin-bottom:10px">
-      <span class="chip" data-cv="xiaomang">小忙老师</span>
-      <span class="chip active" data-cv="wang">王老师</span>
-      <span class="chip" data-cv="shuguo">shuguo</span>
-      <span class="chip" data-cv="stable">沉稳高管</span>
-      <span class="chip" data-cv="tomboy">闺蜜竹马</span>
-      <span class="chip" data-cv="jiejie">润白姐姐</span>
-      <span class="chip" data-cv="senior">温柔学姐</span>
-      <span class="chip" data-cv="more">更多音色...</span>
-    </div>
+    <div class="chips" id="cloned-voices" style="margin-bottom:10px"></div>
 
     <div class="grid-2" style="margin-bottom:10px">
       <div>
@@ -762,7 +756,7 @@ body{padding-left:220px;}
   <!-- 输出 -->
   <div class="section">
     <div class="section-title"><span class="icon">📤</span> 输出</div>
-    <div id="output">点击底部「▶ 一键全链路」跑完整 Step 0–6 流程（预审 → 改写 → 元信息 → 分镜 → 出图 prompt → 出图 → 配音 → 剪映草稿）。</div>
+    <div id="output">点击底部「▶ 一键全链路」依次执行预审、改写、元信息、分镜、配音、绘图提示词、出图和剪映草稿。</div>
     <div class="row" style="display:flex;gap:8px;margin-top:10px">
       <button class="btn" id="btn-copy" disabled>📋 复制文案</button>
       <button class="btn" id="btn-rerun" disabled>🔄 再改一轮</button>
@@ -873,6 +867,7 @@ body{padding-left:220px;}
 <!-- Settings Modal —— 已被 /settings.html 取代 -->
 <div id="modal-settings" style="display:none"></div>
 
+<script src="/assets/image_pipeline.js"></script>
 <script>
 const $ = id => document.getElementById(id);
 
@@ -891,6 +886,11 @@ function bindChips(containerId, onChange, single = true) {
   const c = $(containerId);
   if (!c) return;
   c.querySelectorAll(".chip").forEach(chip => {
+    if (chip.classList.contains("disabled")) {
+      chip.style.pointerEvents = "none";
+      chip.title = "该选项暂未接入图文全流程";
+      return;
+    }
     chip.onclick = () => {
       if (single) {
         c.querySelectorAll(".chip").forEach(x => x.classList.remove("active"));
@@ -917,14 +917,19 @@ bindChips("hooks", null, false);
 bindChips("viewpoints");
 bindChips("sources", null, false);
 bindChips("img-source");
+bindChips("dynamic-shots");
+bindChips("img-ratio");
 bindChips("style");
 bindChips("cover-mode");
 bindChips("tts-mode");
 bindChips("tts-provider");
 bindChips("tts-speed");
-bindChips("cloned-voices");
+document.querySelectorAll("#tts-provider .chip").forEach(chip => chip.addEventListener("click", syncVoiceOptions));
 bindChips("process-mode");
 bindChips("pause-mode");
+document.querySelectorAll("#pause-mode .chip").forEach(chip => chip.addEventListener("click", () => {
+  $("pause-custom").style.display = chip.dataset.pam === "custom" ? "" : "none";
+}));
 
 // Style chips with preview swatch (use style-chip class, not chip)
 document.querySelectorAll("#style .style-chip").forEach(chip => {
@@ -969,9 +974,15 @@ if (prodDrop && prodInput) {
     if (f) {
       prodResult.textContent = `✓ 已选择：${f.name}`;
       prodResult.classList.add("ok");
+      $("prod-clear").style.display = "";
     }
   });
 }
+$("prod-clear").onclick = () => {
+  prodInput.value = "";
+  prodResult.textContent = "";
+  $("prod-clear").style.display = "none";
+};
 
 // 封面模式切换
 function syncCoverMode() {
@@ -1005,6 +1016,8 @@ async function callCover(promptOverride) {
       style: styleLabel,
       hooks: hooks,
       prompt: promptOverride || "",
+      provider: $("img-engine").value,
+      cover_mode: getActiveChip("cover-mode", "data-cv", "ai"),
     });
     $("cover-img").src = r.url + "?t=" + Date.now();
     $("cover-img").dataset.url = r.url;
@@ -1067,6 +1080,7 @@ document.querySelectorAll(".caret").forEach(c => c.onclick = () => {
 // Toggle rows
 ["toggle-publish", "toggle-fixed", "toggle-tail", "toggle-retry"].forEach(id => {
   const row = $(id);
+  if (!row) return;
   row.onclick = e => {
     if (e.target.tagName === "INPUT") return;
     row.classList.toggle("on");
@@ -1076,7 +1090,7 @@ document.querySelectorAll(".caret").forEach(c => c.onclick = () => {
 });
 
 // Settings
-$("btn-settings").onclick = () => { location.href = "/settings.html"; };
+if ($("btn-settings")) $("btn-settings").onclick = () => { location.href = "/settings.html"; };
 
 function openSettings() {
   // 旧的 modal 设置已被 /settings.html 取代 —— 引导到独立设置页
@@ -1085,7 +1099,7 @@ function openSettings() {
   }
 }
 
-$("btn-cancel").onclick = () => $("modal-settings").classList.remove("open");
+if ($("btn-cancel")) $("btn-cancel").onclick = () => $("modal-settings").classList.remove("open");
 
 async function api(path, method = "GET", body) {
   const opts = { method, headers: { "content-type": "application/json" } };
@@ -1098,31 +1112,18 @@ async function api(path, method = "GET", body) {
   return r.json();
 }
 
-$("btn-save").onclick = async () => {
-  $("set-error").textContent = "";
-  try {
-    await api("/api/settings", "POST", {
-      provider: $("set-provider").value,
-      protocol: $("set-protocol").value,
-      base_url: $("set-baseurl").value.trim(),
-      model: $("set-model").value.trim(),
-      api_key: $("set-apikey").value.trim(),
-      image_provider: "openai",
-      image_base_url: $("set-img-baseurl").value.trim(),
-      image_api_key:  $("set-img-apikey").value.trim(),
-      image_model:    $("set-img-model").value.trim(),
-      image_size:     $("set-img-size").value.trim(),
-    });
-    $("modal-settings").classList.remove("open");
-    await refreshStatus();
-  } catch (e) {
-    $("set-error").textContent = e.message;
-  }
-};
-
 async function refreshStatus() {
   try {
     settings = await api("/api/settings");
+    const savedTtsProvider = settings.tts?.provider;
+    const savedTtsChip = [...document.querySelectorAll("#tts-provider .chip")]
+      .find(chip => chip.dataset.ttsp === savedTtsProvider);
+    if (savedTtsChip) {
+      document.querySelectorAll("#tts-provider .chip").forEach(chip => chip.classList.remove("active"));
+      savedTtsChip.classList.add("active");
+    }
+    syncVoiceOptions();
+    syncImageOptions();
     const [profData] = await Promise.all([
       api("/api/profiles").catch(() => ({ profiles: [] }))
     ]);
@@ -1155,6 +1156,57 @@ async function refreshStatus() {
   } catch (e) {
     console.error(e);
   }
+}
+
+function syncVoiceOptions() {
+  const provider = getActiveChip("tts-provider", "data-ttsp", "volcengine");
+  const tts = settings.tts || {};
+  const voice = $("voice");
+  const previous = voice.value;
+  const entries = [];
+  const add = (id, label) => { if (id && !entries.some(v => v.id === id)) entries.push({id, label}); };
+  if (provider === "volcengine") add(tts.volcengine_speaker || "zh_male_dongfanghaoran_moon_bigtts", "火山 · 默认音色");
+  if (provider === "minimax") add(tts.minimax_voice_id, "MiniMax · 默认音色");
+  if (provider === "aura") {
+    add(tts.aura_voice_id || "Chinese (Mandarin)_Reliable_Executive", "Aura · 默认音色");
+    (tts.aura_custom_voices || []).forEach(v => add(v.id, v.name));
+  }
+  voice.replaceChildren();
+  if (!entries.length) add("", "请先在系统设置中配置音色 ID");
+  entries.forEach(entry => {
+    const option = document.createElement("option");
+    option.value = entry.id; option.textContent = entry.label;
+    voice.appendChild(option);
+  });
+  if (entries.some(v => v.id === previous)) voice.value = previous;
+  const chips = $("cloned-voices");
+  chips.replaceChildren();
+  if (provider === "aura") (tts.aura_custom_voices || []).forEach(v => {
+    const chip = document.createElement("button");
+    chip.type = "button"; chip.className = "chip"; chip.textContent = v.name;
+    chip.onclick = () => { voice.value = v.id; };
+    chips.appendChild(chip);
+  });
+}
+
+function syncImageOptions() {
+  const choices = [
+    ["gpt_image", "全能绘图 · 自有 API", settings.image],
+    ["modelscope", "魔搭 ModelScope", settings.modelscope],
+    ["jimeng", "即梦", settings.jimeng],
+    ["runninghub", "RunningHub", settings.runninghub],
+    ["custom", "自定义绘图", settings.custom_image],
+  ];
+  const select = $("img-engine");
+  select.replaceChildren();
+  choices.forEach(([value, label, cfg]) => {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = label + (cfg?.configured ? " · 已配置" : " · 待配置");
+    select.appendChild(option);
+  });
+  select.value = settings.image?.provider || "gpt_image";
+  if (!select.value) select.value = "gpt_image";
 }
 
 // Run
@@ -1329,112 +1381,138 @@ $("btn-run-full").onclick = runFull;
 // ========== 完整工作流（Step 0-6）一键跑 ==========
 let lastPipelineResult = null;
 
+function readImageDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error("读取封面图片失败"));
+    reader.readAsDataURL(file);
+  });
+}
+
 async function runPipeline() {
-  const btn = $("btn-run-full-pipeline");
-  const orig = btn.innerHTML;
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span> 生成中...';
+  const btns = [$("btn-run-full-pipeline"), $("btn-run-full-footer"), $("btn-run-full")].filter(Boolean);
+  btns.forEach(btn => { btn.disabled = true; btn.dataset.orig = btn.innerHTML; });
   $("full-result").style.display = "";
   $("full-elapsed").textContent = "";
-  // 隐藏 Step 4/5/6 旧结果
   ["step4-block","step5-block","step6-block"].forEach(id => $(id).style.display = "none");
   try {
-    // 1. 跑 /api/generate（Step 0-6）
+    const resumeId = new URLSearchParams(location.search).get("resume");
+    const resume = resumeId ? await api(`/api/task/${encodeURIComponent(resumeId)}`) : null;
+    if (getActiveChip("tts-mode", "data-tts", "system") === "custom") {
+      throw new Error("自定义配音上传尚未接入图文全流程，请选择系统配音");
+    }
+    if (getActiveChip("img-source", "data-img-src", "ai") !== "ai") {
+      throw new Error("当前图文全流程只支持 AI 绘图素材来源，请选择 AI 绘图");
+    }
+    if (getActiveChip("video-form", "data-form", "narrator") !== "narrator") {
+      throw new Error("双人播客需要双音色分镜，当前任务链路尚未接入，请选择旁白视频");
+    }
+    if (getActiveChip("dynamic-shots", "data-dynamic", "off") !== "off") {
+      throw new Error("动态分镜尚未接入剪映草稿生成，请先选择关闭");
+    }
+    if ($("prod-file").files?.length) {
+      throw new Error("产品参考图编辑尚未接入当前出图接口，请移除参考图后继续");
+    }
+    const imageProvider = $("img-engine").value;
+    const imageSettings = imageProvider === "custom" ? settings.custom_image
+      : imageProvider === "gpt_image" ? settings.image : settings[imageProvider];
+    if (!imageSettings?.configured) throw new Error("所选绘图引擎尚未配置，请先到系统设置保存凭据");
+    const coverMode = getActiveChip("cover-mode", "data-cv", "ai");
+    let coverDataUrl = null;
+    if (coverMode === "upload") {
+      const file = $("cover-file").files?.[0];
+      if (!file) throw new Error("请选择本地封面图片");
+      if (!/^image\/(png|jpeg|webp)$/.test(file.type) || file.size > 10_000_000) {
+        throw new Error("封面只支持不超过 10 MB 的 PNG、JPEG、WebP 图片");
+      }
+      coverDataUrl = await readImageDataUrl(file);
+    }
     const styleActive = document.querySelector("#style .style-chip.active");
     const styleLabel = styleActive ? styleActive.textContent.trim() : "现代电影";
     const trackActive = document.querySelector("#tracks .chip.active");
     const track = trackActive ? trackActive.dataset.track : "";
-    const gen = await api("/api/generate", "POST", {
-      line: currentLine,
-      level: currentLevel[currentLine],
-      viewpoint: document.querySelector("#viewpoints .chip.active")?.dataset.vp || "overview",
-      reference: $("reference").value,
-      topic: $("topic").value,
-      title: $("title").value,
-      track: track,
-      hooks: [...document.querySelectorAll("#hooks .chip.active")].map(x => x.dataset.hook),
-      sources: [...document.querySelectorAll("#sources .chip.active")].map(x => x.dataset.src),
-      keywords: $("keywords").value,
-      product: $("product").value,
-      fixed_opening: $("toggle-fixed").classList.contains("on") ? $("fixed-opening").value : "",
-      tail_guide: $("toggle-tail").classList.contains("on") ? $("tail-guide").value : "",
-      extra: $("extra").value,
-      style: styleLabel,
-      run_steps: ["0", "1", "meta", "2", "3"],
-      targets: {
-        shots: $("shots").disabled ? null : parseInt($("shots").value) || null,
-        words: $("words").disabled ? null : parseInt($("words").value) || null,
+    const speedChip = getActiveChip("tts-speed", "data-speed", "10");
+    const speedValue = parseInt(speedChip, 10);
+    const selectedRatio = {"916":"9:16", "43":"4:3", "11":"1:1", "169":"16:9"}[
+      getActiveChip("img-ratio", "data-ratio", "916")];
+    const result = await runImagePipeline({
+      request: (path, body) => api(path, "POST", body),
+      resume,
+      mode: getActiveChip("process-mode", "data-pm", "full"),
+      pauseMode: getActiveChip("pause-mode", "data-pam", "never"),
+      pauseStages: [...document.querySelectorAll("#pause-custom input:checked")].map(input => input.value),
+      onPause: async stage => confirm(`已完成${{generate:"文案与分镜",tts:"配音",prompts:"绘图提示词",images:"出图"}[stage]}。确认继续下一步？取消会停止，产物保留在任务目录。`),
+      generate: {
+        line: currentLine,
+        level: currentLevel[currentLine],
+        viewpoint: document.querySelector("#viewpoints .chip.active")?.dataset.vp || "overview",
+        reference: $("reference").value,
+        topic: $("topic").value,
+        title: $("title").value,
+        track,
+        hooks: [...document.querySelectorAll("#hooks .chip.active")].map(x => x.dataset.hook),
+        sources: [...document.querySelectorAll("#sources .chip.active")].map(x => x.dataset.src),
+        keywords: $("keywords").value,
+        product: $("product").value,
+        fixed_opening: $("toggle-fixed").classList.contains("on") ? $("fixed-opening").value : "",
+        tail_guide: $("toggle-tail").classList.contains("on") ? $("tail-guide").value : "",
+        extra: $("extra").value,
+        style: styleLabel,
+        targets: {
+          shots: $("shots").disabled ? null : parseInt($("shots").value) || null,
+          words: $("words").disabled ? null : parseInt($("words").value) || null,
+        },
+      },
+      tts: {
+        provider: getActiveChip("tts-provider", "data-ttsp", "volcengine"),
+        speaker: $("voice").value,
+        speed: speedValue / (speedChip.length >= 3 ? 100 : 10),
+      },
+      image: {
+        provider: imageProvider,
+        ratio: selectedRatio || imageSettings.ratio || "9:16",
+        resolution: imageSettings.resolution || "1k",
+        concurrency: imageSettings.concurrency || 3,
+        retry: $("toggle-retry").classList.contains("on"),
+      },
+      cover: {mode: coverMode, style: styleLabel, dataUrl: coverDataUrl},
+      onStage: (stage, status, data) => {
+        const names = {generate:"文案与分镜", tts:"Step 5 配音", prompts:"Step 3 绘图提示词", images:"Step 4 出图", draft:"Step 6 剪映草稿", cover:"封面海报"};
+        if (status === "running") btns.forEach(btn => btn.innerHTML = `<span class="spinner"></span> ${names[stage] || stage}中...`);
+        if (status === "done" && stage === "generate") { lastFullResult = data; renderFull(data); }
+        if (status === "done" && stage === "tts") renderStep5(data);
+        if (status === "done" && stage === "prompts" && lastFullResult) {
+          lastFullResult.steps["3"] = (data.steps || {})["3"] || [];
+          renderFull(lastFullResult);
+        }
+        if (status === "done" && stage === "images") renderStep4(data);
+        if (status === "done" && stage === "draft") renderStep6(data);
+        if (status === "done" && stage === "cover") {
+          $("cover-img").src = data.url;
+          $("cover-download").href = data.url;
+          $("cover-prompt").value = data.prompt || "";
+          $("cover-prompt-box").style.display = data.prompt ? "" : "none";
+          $("cover-preview").style.display = "";
+          $("cover-status").textContent = "✓ 封面已就绪";
+        }
+        if (status === "failed" && stage === "tts") renderStep5({error: data.message});
+        if (status === "failed" && stage === "images") renderStep4({error: data.message});
+        if (status === "failed" && stage === "draft") renderStep6({error: data.message});
+        if (status === "failed" && stage === "cover") $("cover-status").textContent = "❌ " + data.message;
       },
     });
-    lastFullResult = gen;
-    renderFull(gen);
-    const meta = (gen.steps && gen.steps.meta) || {};
-    const shots = ((gen.steps || {})["2"] || {}).shots || [];
-    const prompts = (gen.steps || {})["3"] || [];
-    const title = meta.title || $("title").value || "未命名任务";
-    // 用 /api/generate 返回的 task_id（让 step4/5/6 都落盘到同一目录）
-    const taskId = gen.task_id || `task_${Date.now()}`;
-    // 2. Step 4 出图
-    btn.innerHTML = '<span class="spinner"></span> Step 4 出图中...';
-    let step4 = null;
-    try {
-      step4 = await api("/api/step4_generate_images", "POST", {
-        prompts: prompts.map(p => ({idx: p.idx, desc_prompt: p.desc_prompt})),
-        ratio: "9:16",
-        resolution: "1k",
-        concurrency: 3,
-        task_id: taskId,
-      });
-      renderStep4(step4);
-    } catch (e) {
-      renderStep4({error: e.message});
-    }
-    // 3. Step 5 配音
-    btn.innerHTML = '<span class="spinner"></span> Step 5 配音中...';
-    let step5 = null;
-    try {
-      step5 = await api("/api/step5_tts", "POST", {
-        task_id: taskId,
-        segments: shots.map(s => ({idx: s.idx, text: s.text})),
-        speed: (function() {
-            const v = getActiveChip("tts-speed", "data-speed", "10");
-            const num = parseInt(v, 10);
-            return num / (v.length >= 3 ? 100 : 10);
-          })(),
-        provider: getActiveChip("tts-provider", "data-ttsp", "volcengine"),
-      });
-      renderStep5(step5);
-    } catch (e) {
-      renderStep5({error: e.message});
-    }
-    // 4. Step 6 剪映草稿
-    btn.innerHTML = '<span class="spinner"></span> Step 6 草稿打包中...';
-    let step6 = null;
-    try {
-      const images = (step4 && step4.results) || [];
-      const segments = ((step5 && step5.results) || []).map(r => ({
-        idx: r.idx, ok: r.ok, duration: r.duration, path: r.path, url: r.url, text: r.text,
-      }));
-      step6 = await api("/api/step6_jianying_draft", "POST", {
-        task_id: taskId,
-        shots, images, segments, title,
-        ratio: "9:16",
-        cover_title: meta,
-      });
-      renderStep6(step6);
-    } catch (e) {
-      renderStep6({error: e.message});
-    }
-    lastPipelineResult = {gen, step4, step5, step6, taskId, title};
-    $("full-elapsed").innerHTML = `✓ 全链路完成（任务 ${taskId}）<a href="/tasks.html" style="margin-left:8px;color:var(--accent)">📋 查看任务</a>`;
+    lastPipelineResult = result;
+    $("full-elapsed").innerHTML = `✓ 全链路完成（任务 ${escapeHtml(result.taskId)}）<a href="/tasks.html" style="margin-left:8px;color:var(--accent)">📋 查看任务</a>`;
     $("full-elapsed").style.color = "var(--ok, #10b981)";
     $("full-result").scrollIntoView({behavior: "smooth", block: "start"});
   } catch (e) {
     $("full-meta").textContent = "❌ " + e.message;
     $("full-meta").style.color = "var(--danger)";
+    $("full-elapsed").textContent = "流程已中断；已完成的阶段保留在任务目录中";
+    $("full-elapsed").style.color = "var(--danger)";
   } finally {
-    btn.disabled = false;
-    btn.innerHTML = orig;
+    btns.forEach(btn => { btn.disabled = false; btn.innerHTML = btn.dataset.orig; });
   }
 }
 
@@ -1527,7 +1605,7 @@ function renderStep6(r) {
 }
 
 $("btn-run-full-pipeline").onclick = runPipeline;
-$("btn-run-full-footer").onclick = runFull;
+$("btn-run-full-footer").onclick = runPipeline;
 $("btn-copy-full").onclick = () => {
   if (!lastFullResult) return;
   navigator.clipboard.writeText(JSON.stringify(lastFullResult, null, 2)).then(() => {
@@ -1603,6 +1681,11 @@ document.querySelectorAll("#process-mode .chip").forEach(chip => {
 
 (async function init() {
   await refreshStatus();
+  const resumeId = new URLSearchParams(location.search).get("resume");
+  if (resumeId) {
+    $("output").textContent = `已载入待续任务 ${resumeId}。点击「一键全链路」只补齐缺失阶段；已生成的配音和图片会复用。`;
+    $("btn-run-full-footer").textContent = "▶ 继续未完成阶段";
+  }
 })();
 </script>
 </body>

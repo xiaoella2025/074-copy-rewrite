@@ -148,8 +148,8 @@ function escapeHtml(s) {
 }
 
 function renderStepPills(steps) {
-  // 6 步：0 预审 / 1 改写 / meta / 2 分镜 / 3 prompt / 4 出图 / 5 配音 / 6 草稿
-  const order = [0, 1, "meta", 2, 3, 4, 5, 6];
+  // 图文实际执行顺序：预审 → 改写 → 元信息 → 分镜 → 配音 → 绘图提示词 → 出图 → 草稿
+  const order = [0, 1, "meta", 2, 5, 3, 4, 6];
   return order.map(k => {
     const done = steps.includes(k);
     const cls = done ? (k === "meta" ? "meta" : "done") : "";
@@ -204,6 +204,7 @@ function renderDetail(d) {
     <span class="badge">${info.completed_steps.length}/8 步完成</span>
     <span class="badge">${info.created_at}</span>
     ${info.draft_dir ? `<span class="badge" title="剪映草稿路径">📁 ${escapeHtml(info.draft_dir)}</span>` : ''}
+    ${!info.completed_steps.includes(6) && info.shot_count ? `<button type="button" class="btn" data-resume-id="${escapeHtml(info.task_id)}">▶ 继续未完成阶段</button>` : ''}
   </div>`);
   // 统计
   html.push(`<div class="section">
@@ -290,6 +291,10 @@ function renderDetail(d) {
     </div>`);
   }
   $("detail-panel").innerHTML = html.join("");
+  const resumeButton = $("detail-panel").querySelector("[data-resume-id]");
+  if (resumeButton) resumeButton.onclick = () => {
+    location.href = "/index.html?resume=" + encodeURIComponent(info.task_id);
+  };
 }
 
 // 主题切换（与 settings.html 同步）

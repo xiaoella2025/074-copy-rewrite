@@ -328,7 +328,7 @@ code{background:var(--bg);padding:1px 5px;border-radius:3px;font-family:var(--fo
           <div class="profile-empty-sub">添加你的第一个 LLM 配置开始使用</div>
           <button class="btn primary" onclick="$('btn-llm-new').click()">添加第一个配置</button>
         </div>
-        <div class="profile-hint">ⓘ 创建任务时可在「使用模型」下拉里秒切 · 不同配置可以用不同的代理、Base URL · API Key 安全存储在系统钥匙串</div>
+        <div class="profile-hint">ⓘ 创建任务时可在「使用模型」下拉里切换。API Key 保存在本机 074 的配置文件中。</div>
 
         <!-- STORY 真值：思考模式（Settings.js:1174-1235） -->
         <div id="thinking-mode-block" style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border-subtle)">
@@ -407,7 +407,7 @@ code{background:var(--bg);padding:1px 5px;border-radius:3px;font-family:var(--fo
 
       <!-- ========== 即梦 ========== -->
       <div class="settings-card" id="img-card-jimeng" style="display:none">
-        <div class="field-hd"><span class="label">Session ID</span><span class="hint">必填</span></div>
+        <div class="field-hd"><span class="label">Session ID</span><span class="hint">旧配置保留，当前出图接口不用此字段</span></div>
         <div class="key-input">
           <input type="password" id="jimeng-session" class="key-input-field" placeholder="粘贴即梦 Session ID">
           <div class="key-input-actions">
@@ -415,7 +415,11 @@ code{background:var(--bg);padding:1px 5px;border-radius:3px;font-family:var(--fo
             <button type="button" class="key-input-btn" data-paste-key="jimeng-session" title="从剪贴板粘贴">📋</button>
           </div>
         </div>
-        <div class="field-help">登录即梦 Web 端后，从 Cookie 中取得 <code>sessionid</code> 值</div>
+        <div class="field-help">074 当前通过火山视觉 API 调用即梦，需在下方配置 AK / SK。</div>
+        <div class="field-hd"><span class="label">火山 Access Key (AK)</span></div>
+        <input type="password" id="jimeng-ak" class="input" placeholder="留空保留原值">
+        <div class="field-hd"><span class="label">火山 Secret Key (SK)</span></div>
+        <input type="password" id="jimeng-sk" class="input" placeholder="留空保留原值">
 
         <div class="field-hd"><span class="label">模型</span></div>
         <select id="jimeng-model-sel" class="input">
@@ -457,17 +461,13 @@ code{background:var(--bg);padding:1px 5px;border-radius:3px;font-family:var(--fo
 
       <!-- ========== 全能绘图 ========== -->
       <div class="settings-card" id="img-card-gpt_image" style="display:none">
-        <div class="credits-balance-row">
-          <span class="credits-balance-label">积分余额</span>
-          <span class="credits-balance-value" id="gpt-credits">--</span>
-          <span class="credits-balance-unit">积分</span>
-          <span class="credits-balance-est" id="gpt-credits-est"></span>
-          <div style="flex:1"></div>
-          <button type="button" class="btn btn-primary btn-sm" id="btn-gpt-recharge">充值 / 交易记录 →</button>
-        </div>
-        <div class="field-help" style="margin-bottom:14px">
-          全能绘图消耗的是<b>软件内充值的积分</b>（1 积分 = 1 元）。魔搭 / RunningHub / 即梦走各自平台的额度，不扣这里的积分。
-        </div>
+        <div class="field-help" style="margin-bottom:14px">074 使用你自己的 OpenAI 兼容出图接口，费用由该接口平台收取。</div>
+        <div class="field-hd"><span class="label">Base URL</span></div>
+        <input type="text" id="gpt-base-url" class="input" placeholder="https://api.openai.com">
+        <div class="field-hd"><span class="label">API Key</span></div>
+        <input type="password" id="gpt-api-key" class="input" placeholder="留空保留原值">
+        <div class="field-hd"><span class="label">模型 ID</span></div>
+        <input type="text" id="gpt-model" class="input" placeholder="gpt-image-1">
 
         <div class="field-hd"><span class="label">画面比例</span></div>
         <select id="gpt-ratio" class="input">
@@ -521,7 +521,7 @@ code{background:var(--bg);padding:1px 5px;border-radius:3px;font-family:var(--fo
           </div>
         </div>
         <button type="button" class="btn btn-ghost btn-sm" id="btn-ms-token-add-show" style="font-size:12px">＋ 添加 Token</button>
-        <div class="field-help">走系统钥匙串保存。在魔搭「我的 > Access Token」页面获取；多个账号各加一条</div>
+        <div class="field-help">Token 保存在本机 074 配置文件中；多个账号可各加一条。</div>
 
         <div class="field-hd"><span class="label">模型选择</span></div>
         <select id="ms-model" class="input"></select>
@@ -570,7 +570,13 @@ code{background:var(--bg);padding:1px 5px;border-radius:3px;font-family:var(--fo
             <button type="button" class="key-input-btn" data-paste-key="rh-key">📋</button>
           </div>
         </div>
-        <div class="field-help">走系统钥匙串保存。在国际站 runninghub.ai「企业级共享 API Key」页面（enterprise-api/sharedApi）拿到 32 位 Key</div>
+        <div class="field-help">API Key 保存在本机 074 配置文件中。</div>
+        <div class="field-hd"><span class="label">工作流 ID</span><span class="hint">当前后端出图接口必填</span></div>
+        <input type="text" id="rh-workflow-id" class="input" placeholder="RunningHub 工作流 ID">
+        <div class="field-hd"><span class="label">提示词节点 ID</span><span class="hint">从工作流 API 格式导出中读取</span></div>
+        <input type="text" id="rh-prompt-node-id" class="input" placeholder="例如 6">
+        <div class="field-hd"><span class="label">提示词字段名</span></div>
+        <input type="text" id="rh-prompt-field" class="input" placeholder="text">
 
         <div class="field-hd"><span class="label">模型选择</span></div>
         <div style="display:flex;flex-direction:column;gap:8px" id="rh-models"></div>
@@ -620,7 +626,7 @@ code{background:var(--bg);padding:1px 5px;border-radius:3px;font-family:var(--fo
             <button type="button" class="key-input-btn" data-paste-key="custom-api-key">📋</button>
           </div>
         </div>
-        <div class="field-help">走系统钥匙串保存，不会写入 config.json</div>
+        <div class="field-help">API Key 保存在本机 074 配置文件中。</div>
 
         <div class="field-hd"><span class="label">模型</span><span class="hint">必填</span></div>
         <input type="text" id="custom-model" class="input" placeholder="gpt-image-1">
@@ -659,7 +665,7 @@ code{background:var(--bg);padding:1px 5px;border-radius:3px;font-family:var(--fo
         <div class="settings-section-icon"><span class="icon">🎤</span></div>
         <div class="flex-1">
           <div class="settings-section-title">TTS 配音 · 每镜语音</div>
-          <div class="settings-section-sub">配置 TTS 服务（火山豆包 / MiniMax）。</div>
+          <div class="settings-section-sub">配置 TTS 服务（火山豆包 / MiniMax / Aura Studio）。</div>
         </div>
         <span class="settings-pip" id="st-tts"><span class="settings-pip-dot"></span>检测中…</span>
       </div>
@@ -669,7 +675,38 @@ code{background:var(--bg);padding:1px 5px;border-radius:3px;font-family:var(--fo
         <div class="chips" id="tts-providers">
           <div class="chip" data-v="volcengine"><span class="chip-main">火山引擎</span><span class="chip-hint">豆包语音 · 情感自然</span></div>
           <div class="chip" data-v="minimax"><span class="chip-main">MiniMax</span><span class="chip-hint">支持声音克隆</span></div>
+          <div class="chip" data-v="aura"><span class="chip-main">Aura Studio</span><span class="chip-hint">平台音色与克隆音色</span></div>
         </div>
+      </div>
+
+      <div class="card" id="tts-aura-block" style="display:none">
+        <div class="card-hd"><span class="label">Aura Studio TTS</span><span class="hint">按平台计费</span></div>
+        <div class="field-hd"><span class="label">API Key</span></div>
+        <div class="key-input">
+          <input type="password" id="tts-aura-key" class="key-input-field" placeholder="留空保留原值">
+          <div class="key-input-actions">
+            <button type="button" class="key-input-btn" data-toggle-key="tts-aura-key">👁</button>
+            <button type="button" class="key-input-btn" data-paste-key="tts-aura-key">📋</button>
+          </div>
+        </div>
+        <div class="field-hd"><span class="label">模型</span></div>
+        <div class="chips" id="tts-aura-models">
+          <div class="chip" data-v="minimax-speech-2.8-turbo">2.8 turbo</div>
+          <div class="chip" data-v="minimax-speech-2.8-hd">2.8 hd</div>
+          <div class="chip" data-v="minimax-speech-2.6-turbo">2.6 turbo</div>
+        </div>
+        <div class="field-hd"><span class="label">默认音色 ID</span></div>
+        <input type="text" id="tts-aura-voice" placeholder="Chinese (Mandarin)_Reliable_Executive">
+        <div class="chips" id="tts-aura-system-voices" style="margin-top:8px">
+          <div class="chip" data-v="Chinese (Mandarin)_Reliable_Executive">沉稳高管</div>
+        </div>
+        <div class="field-hd"><span class="label">平台克隆音色</span><span class="hint">先在 Aura Studio 平台完成克隆，再填写音色 ID</span></div>
+        <div class="grid-2">
+          <input type="text" id="tts-aura-name" placeholder="音色名称">
+          <input type="text" id="tts-aura-new-id" placeholder="平台音色 ID">
+        </div>
+        <button type="button" class="btn btn-ghost" id="tts-aura-add" style="margin-top:8px">＋ 添加音色</button>
+        <div class="chips" id="tts-aura-custom-voices" style="margin-top:8px"></div>
       </div>
 
       <div class="card" id="tts-volc-block">
@@ -1279,15 +1316,20 @@ async function refreshSettings() {
     if ($("jimeng-ratio"))     $("jimeng-ratio").value     = jm.ratio || "9:16";
     if ($("jimeng-resolution"))$("jimeng-resolution").value= jm.resolution || "1k";
     if ($("jimeng-concurrency"))$("jimeng-concurrency").value= jm.concurrency || 3;
+    $("jimeng-ak").value = ""; $("jimeng-sk").value = "";
 
     // 全能绘图
     if ($("gpt-ratio"))        $("gpt-ratio").value        = img.ratio || "9:16";
+    $("gpt-base-url").value = img.base_url || "https://api.openai.com";
+    $("gpt-model").value = img.model || "gpt-image-1";
+    $("gpt-api-key").value = "";
     const gptConc = img.concurrency || 6;
     if ($("gpt-concurrency"))  { $("gpt-concurrency").value = gptConc; $("gpt-conc-val").textContent = gptConc; }
     if ($("gpt-proxy"))        $("gpt-proxy").value        = img.proxy_url || "";
 
     // 魔搭
-    msTokens = ms.tokens || [];
+    msSavedTokenCount = ms.token_count || 0;
+    msTokens = Array.from({length: msSavedTokenCount}, (_, savedIndex) => ({savedIndex}));
     msCustomModels = ms.custom_models || [];
     buildMSTokens();
     buildMSModels(ms.model || "Tongyi-MAI/Z-Image-Turbo");
@@ -1299,6 +1341,9 @@ async function refreshSettings() {
     if ($("rh-ratio"))         $("rh-ratio").value         = rh.ratio || "9:16";
     if ($("rh-resolution"))    $("rh-resolution").value    = rh.resolution || "1k";
     if ($("rh-concurrency"))   $("rh-concurrency").value   = rh.concurrency || 3;
+    if ($("rh-workflow-id"))    $("rh-workflow-id").value = rh.workflow_id || "";
+    $("rh-prompt-node-id").value = rh.prompt_node_id || "";
+    $("rh-prompt-field").value = rh.prompt_field_name || "text";
 
     // 自定义
     if ($("custom-display-name")) $("custom-display-name").value = cu.display_name || "";
@@ -1324,11 +1369,17 @@ async function refreshSettings() {
     $("tts-volc-speaker").value = s.tts.volcengine_speaker || "";
     $("tts-minimax-model").value = s.tts.minimax_model || "";
     $("tts-minimax-voice").value = s.tts.minimax_voice_id || "";
+    setChip("tts-aura-models", s.tts.aura_model || "minimax-speech-2.8-turbo");
+    $("tts-aura-voice").value = s.tts.aura_voice_id || "Chinese (Mandarin)_Reliable_Executive";
+    auraCustomVoices = Array.isArray(s.tts.aura_custom_voices) ? s.tts.aura_custom_voices.slice() : [];
+    renderAuraVoices();
     $("tts-volc-key").value = "";
     $("tts-minimax-key").value = "";
+    $("tts-aura-key").value = "";
     syncTTSBlocks();
     const ttsOk = (s.tts.provider === "volcengine" && s.tts.volcengine_configured) ||
-                  (s.tts.provider === "minimax" && s.tts.minimax_configured);
+                  (s.tts.provider === "minimax" && s.tts.minimax_configured) ||
+                  (s.tts.provider === "aura" && s.tts.aura_configured);
     setStatus("st-tts", ttsOk ? "✓ " + s.tts.provider : "未配置", ttsOk);
     setDot("dot-tts", ttsOk ? "ok" : "bad");
     // ASR
@@ -1386,10 +1437,38 @@ function syncTTSBlocks() {
   const v = getChip("tts-providers");
   $("tts-volc-block").style.display = v === "volcengine" ? "" : "none";
   $("tts-minimax-block").style.display = v === "minimax" ? "" : "none";
+  $("tts-aura-block").style.display = v === "aura" ? "" : "none";
 }
 
 bindChipGroup("tts-providers", () => syncTTSBlocks());
 bindChipGroup("tts-speakers", (v) => { $("tts-volc-speaker").value = v; });
+bindChipGroup("tts-aura-models", () => {});
+bindChipGroup("tts-aura-system-voices", (v) => { $("tts-aura-voice").value = v; });
+let auraCustomVoices = [];
+function renderAuraVoices() {
+  const root = $("tts-aura-custom-voices");
+  root.replaceChildren();
+  auraCustomVoices.forEach((voice, index) => {
+    const chip = document.createElement("button");
+    chip.type = "button"; chip.className = "chip";
+    chip.textContent = voice.name + " · " + voice.id;
+    chip.onclick = () => { $("tts-aura-voice").value = voice.id; };
+    const remove = document.createElement("button");
+    remove.type = "button"; remove.className = "btn btn-ghost";
+    remove.textContent = "删除 " + voice.name;
+    remove.onclick = () => { auraCustomVoices.splice(index, 1); renderAuraVoices(); };
+    root.append(chip, remove);
+  });
+}
+$("tts-aura-add").onclick = () => {
+  const name = $("tts-aura-name").value.trim();
+  const id = $("tts-aura-new-id").value.trim();
+  if (!name || !id) { toast("请填写音色名称和 ID", false); return; }
+  if (auraCustomVoices.some(v => v.id === id)) { toast("音色 ID 已添加", false); return; }
+  auraCustomVoices.push({name, id});
+  $("tts-aura-name").value = ""; $("tts-aura-new-id").value = "";
+  renderAuraVoices();
+};
 bindChipGroup("asr-providers", () => {});
 
 // STORY 真值：思考模式切换（Settings.js:1175-1180）
@@ -1423,6 +1502,7 @@ const MS_BUILTIN_MODELS = [
 ];
 let msCustomModels = [];
 let msTokens = [];
+let msSavedTokenCount = 0;
 let currentImgProvider = "jimeng";
 
 function switchImageProvider(p) {
@@ -1468,7 +1548,7 @@ function buildMSModels(selectedId) {
 function buildMSTokens() {
   const list = $("ms-token-list");
   list.innerHTML = msTokens.map((tk, i) =>
-    `<div class="token-row"><span class="idx">${i+1}.</span><span class="val">${escapeHtml(tk)}</span><span class="del" data-ms-del="${i}" title="删除此 Token">✕</span></div>`
+    `<div class="token-row"><span class="idx">${i+1}.</span><span class="val">${tk.savedIndex !== undefined ? "已保存的 Token（内容已隐藏）" : "新 Token（保存后隐藏）"}</span><span class="del" data-ms-del="${i}" title="删除此 Token">✕</span></div>`
   ).join("");
   $("ms-token-hint").textContent = msTokens.length > 0 ? `已配置 ${msTokens.length} 个 · 出图并发 ${msTokens.length}` : "必填";
 }
@@ -1483,7 +1563,10 @@ function updateImgBadges(activeProvider) {
 async function saveImageJimeng() {
   try {
     await api("/api/settings", "POST", {
+      image_provider: "jimeng",
       jimeng_session_id: $("jimeng-session").value.trim() || KEEP,
+      jimeng_ak: $("jimeng-ak").value.trim() || KEEP,
+      jimeng_sk: $("jimeng-sk").value.trim() || KEEP,
       jimeng_model: $("jimeng-model-sel").value || KEEP,
       jimeng_ratio: $("jimeng-ratio").value || KEEP,
       jimeng_resolution: $("jimeng-resolution").value || KEEP,
@@ -1491,6 +1574,7 @@ async function saveImageJimeng() {
     });
     toast("✓ 即梦配置已保存", true);
     $("jimeng-session").value = "";
+    $("jimeng-ak").value = ""; $("jimeng-sk").value = "";
     await refreshSettings();
   } catch (e) { toast("❌ " + e.message, false); }
 }
@@ -1500,11 +1584,15 @@ async function saveImageGPT() {
     const c = parseInt($("gpt-concurrency").value) || 6;
     await api("/api/settings", "POST", {
       image_provider: "gpt_image",
+      image_base_url: $("gpt-base-url").value.trim() || KEEP,
+      image_api_key: $("gpt-api-key").value.trim() || KEEP,
+      image_model: $("gpt-model").value.trim() || KEEP,
       gpt_image_ratio: $("gpt-ratio").value || KEEP,
       gpt_image_concurrency: c,
       gpt_image_proxy_url: $("gpt-proxy").value.trim() || KEEP,
     });
     toast("✓ 全能绘图已保存", true);
+    $("gpt-api-key").value = "";
     await refreshSettings();
   } catch (e) { toast("❌ " + e.message, false); }
 }
@@ -1513,7 +1601,9 @@ async function saveImageModelScope() {
   try {
     await api("/api/settings", "POST", {
       image_provider: "modelscope",
-      modelscope_tokens: msTokens.length ? msTokens : KEEP,
+      modelscope_tokens_add: msTokens.filter(t => t.savedIndex === undefined).map(t => t.value),
+      modelscope_tokens_remove: Array.from({length: msSavedTokenCount}, (_, i) => i)
+        .filter(i => !msTokens.some(t => t.savedIndex === i)),
       modelscope_model: $("ms-model").value || KEEP,
       modelscope_ratio: $("ms-ratio").value || KEEP,
       modelscope_auto_fallback_gpt: $("ms-auto-fallback").checked,
@@ -1527,7 +1617,11 @@ async function saveImageModelScope() {
 async function saveImageRunningHub() {
   try {
     await api("/api/settings", "POST", {
+      image_provider: "runninghub",
       rh_key: $("rh-key").value.trim() || KEEP,
+      rh_workflow_id: $("rh-workflow-id").value.trim() || KEEP,
+      rh_prompt_node_id: $("rh-prompt-node-id").value.trim() || KEEP,
+      rh_prompt_field_name: $("rh-prompt-field").value.trim() || KEEP,
       rh_model: getRHSelectedModel(),
       rh_ratio: $("rh-ratio").value || KEEP,
       rh_resolution: $("rh-resolution").value || KEEP,
@@ -1559,10 +1653,10 @@ async function saveImageCustom() {
 }
 
 async function testImageConn(p) {
-  toast("⏳ 测试连接中...", true);
+  toast("⏳ 检查配置中...", true);
   try {
     const r = await api("/api/test_image", "POST", { provider: p });
-    if (r.ok) toast("✓ 连接成功（" + (r.elapsed || 0) + "s）", true);
+    if (r.ok) toast("✓ 必填配置已填齐（未请求绘图平台）", true);
     else toast("❌ " + (r.error || "失败"), false);
   } catch (e) { toast("❌ " + e.message, false); }
 }
@@ -1590,7 +1684,7 @@ function initImageProviderTabs() {
   $("btn-ms-token-add-confirm").onclick = () => {
     const v = $("ms-token-input").value.trim();
     if (!v) { toast("⚠ 请填写 Token", false); return; }
-    msTokens.push(v);
+    msTokens.push({value: v});
     $("ms-token-input").value = "";
     $("ms-token-add-wrap").style.display = "none";
     buildMSTokens();
@@ -1636,7 +1730,6 @@ function initImageProviderTabs() {
   $("rh-migrate-link") && ($("rh-migrate-link").onclick = () => window.open("https://www.runninghub.cn/wallet-migrate", "_blank"));
   $("btn-ms-token").onclick = () => window.open("https://modelscope.cn/my/myaccesstoken", "_blank");
   $("btn-ms-register").onclick = () => window.open("https://www.modelscope.cn/register", "_blank");
-  $("btn-gpt-recharge").onclick = () => toast("ⓘ 前往积分管理页（导航栏）", true);
 
   // Save buttons
   $("btn-jimeng-save").onclick = saveImageJimeng;
@@ -1677,10 +1770,14 @@ async function saveTTS() {
       tts_volc_speaker: $("tts-volc-speaker").value.trim() || KEEP,
       tts_minimax_key: $("tts-minimax-key").value.trim() || KEEP,
       tts_minimax_model: $("tts-minimax-model").value.trim() || KEEP,
-      tts_minimax_voice: $("tts-minimax-voice").value.trim() || KEEP
+      tts_minimax_voice: $("tts-minimax-voice").value.trim() || KEEP,
+      tts_aura_key: $("tts-aura-key").value.trim() || KEEP,
+      tts_aura_model: getChip("tts-aura-models") || KEEP,
+      tts_aura_voice: $("tts-aura-voice").value.trim() || KEEP,
+      tts_aura_custom_voices: auraCustomVoices
     });
     toast("✓ TTS 已保存", true);
-    $("tts-volc-key").value = ""; $("tts-minimax-key").value = "";
+    $("tts-volc-key").value = ""; $("tts-minimax-key").value = ""; $("tts-aura-key").value = "";
     await refreshSettings();
   } catch (e) { toast("❌ " + e.message, false); }
 }
@@ -1828,7 +1925,7 @@ function showSection(name) {
   });
   try { location.hash = "#" + name; } catch {}
 }
-document.querySelectorAll(".nav-item").forEach(n => {
+document.querySelectorAll(".nav-item[data-section]").forEach(n => {
   n.addEventListener("click", e => {
     e.preventDefault();
     showSection(n.dataset.section);

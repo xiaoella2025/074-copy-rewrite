@@ -13,6 +13,8 @@ import uuid
 import urllib.error
 import urllib.request
 import base64
+import shutil
+import subprocess
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -76,7 +78,12 @@ def _scan_task(task_dir):
         "title": "",
         "created_at": "",
         "draft_dir": "",
+        "has_cover": (task_dir / "cover-meta.json").exists(),
     }
+    p = task_dir / "01-review.json"
+    if p.exists():
+        info["completed_steps"].append(0)
+        info["files"]["review"] = p.name
     # 改写
     p = task_dir / "02-rewrite.txt"
     if p.exists():
@@ -182,6 +189,12 @@ def get_task_detail(task_id):
         return None
     # 加载具体产物
     detail = {"info": info, "steps": {}}
+    p = task_dir / "01-review.json"
+    if p.exists():
+        try:
+            detail["steps"]["review"] = json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            pass
     p = task_dir / "02-rewrite.txt"
     if p.exists():
         try:
@@ -210,6 +223,12 @@ def get_task_detail(task_id):
     if p.exists():
         try:
             detail["steps"]["segments"] = json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            pass
+    p = task_dir / "cover-meta.json"
+    if p.exists():
+        try:
+            detail["steps"]["cover"] = json.loads(p.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             pass
     # 出图列表（filename + url）
@@ -409,12 +428,6 @@ def _merged(values):
         out_model    = cur.get("model", "")
         out_key      = cur.get("api_key", "")
         out_proxy    = _val(values.get("proxy"),    cur.get("proxy", ""))
-        if out_provider == "custom":
-            if not (out_provider and out_protocol and out_base_url and out_key):
-                raise ValueError("首次配自定义 LLM 必须填齐：provider / protocol / base_url / api_key")
-        else:
-            if not (out_provider and out_protocol and out_base_url and out_model and out_key):
-                raise ValueError("首次必须先配齐 LLM：provider / protocol / base_url / model / api_key")
 
     # 通用出图块（OpenAI 兼容通道：gpt_image / modelscope / custom_image）
     img_cur = cur.get("image", {}) or {}
@@ -423,10 +436,10 @@ def _merged(values):
         "base_url":    _val(values.get("image_base_url"), img_cur.get("base_url", "https://api.openai.com")),
         "api_key":     _val(values.get("image_api_key"),  img_cur.get("api_key", "")) or "",
         "model":       _val(values.get("image_model"),    img_cur.get("model", "gpt-image-1")),
-        "ratio":       _val(values.get("image_ratio"),    img_cur.get("ratio", "9:16")),
+        "ratio":       _val(values.get("image_ratio", values.get("gpt_image_ratio")), img_cur.get("ratio", "9:16")),
         "resolution":  _val(values.get("image_resolution"), img_cur.get("resolution", "1k")),
-        "proxy_url":   _val(values.get("image_proxy_url"), img_cur.get("proxy_url", "")) or "",
-        "concurrency": _val_int(values.get("image_concurrency"), img_cur.get("concurrency", 6)),
+        "proxy_url":   _val(values.get("image_proxy_url", values.get("gpt_image_proxy_url")), img_cur.get("proxy_url", "")) or "",
+        "concurrency": _val_int(values.get("image_concurrency", values.get("gpt_image_concurrency")), img_cur.get("concurrency", 6)),
     }
 
     # jimeng 块（Session ID + 模型 + 比例 + 分辨率 + 并发数）
@@ -444,9 +457,17 @@ def _merged(values):
     # modelscope 块（多 Token + 模型 + 比例 + 自动切积分 + 自定义模型）
     ms_cur = cur.get("modelscope", {}) or {}
     ms_tokens_in = values.get("modelscope_tokens")
+    ms_existing = list(ms_cur.get("tokens", []) or [])
+    ms_remove = values.get("modelscope_tokens_remove")
+    if isinstance(ms_remove, list):
+        removed = {i for i in ms_remove if isinstance(i, int) and 0 <= i < len(ms_existing)}
+        ms_existing = [token for i, token in enumerate(ms_existing) if i not in removed]
+    ms_add = values.get("modelscope_tokens_add")
+    if isinstance(ms_add, list):
+        ms_existing.extend(str(token).strip() for token in ms_add if str(token).strip())
     ms_cust_in   = values.get("modelscope_custom_models")
     modelscope = {
-        "tokens":             ms_tokens_in if isinstance(ms_tokens_in, list) else ms_cur.get("tokens", []),
+        "tokens":             ms_tokens_in if isinstance(ms_tokens_in, list) else ms_existing,
         "model":              _val(values.get("modelscope_model"),     ms_cur.get("model", "Tongyi-MAI/Z-Image-Turbo")),
         "ratio":              _val(values.get("modelscope_ratio"),     ms_cur.get("ratio", "9:16")),
         "auto_fallback_gpt":  _val_bool(values.get("modelscope_auto_fallback_gpt"), ms_cur.get("auto_fallback_gpt", False)),
@@ -456,7 +477,7 @@ def _merged(values):
     # runninghub 块（Key + 3 个模型 + 比例 + 分辨率 + 并发数）
     rh_cur = cur.get("runninghub", {}) or {}
     runninghub = {
-        "api_key":     _val(values.get("rh_api_key"),  rh_cur.get("api_key", "")) or "",
+        "api_key":     _val(values.get("rh_api_key", values.get("rh_key")),  rh_cur.get("api_key", "")) or "",
         "model":       _val(values.get("rh_model"),    rh_cur.get("model", "rh-image-g2")),
         "ratio":       _val(values.get("rh_ratio"),    rh_cur.get("ratio", "9:16")),
         "resolution":  _val(values.get("rh_resolution"), rh_cur.get("resolution", "1k")),
@@ -464,6 +485,8 @@ def _merged(values):
         # 兼容旧 schema
         "base_url":    _val(values.get("rh_base_url"),    rh_cur.get("base_url", "https://www.runninghub.ai")),
         "workflow_id": _val(values.get("rh_workflow_id"), rh_cur.get("workflow_id", "")) or "",
+        "prompt_node_id": _val(values.get("rh_prompt_node_id"), rh_cur.get("prompt_node_id", "")) or "",
+        "prompt_field_name": _val(values.get("rh_prompt_field_name"), rh_cur.get("prompt_field_name", "text")) or "text",
     }
 
     # custom_image 块（自定义 OpenAI 兼容）
@@ -482,9 +505,15 @@ def _merged(values):
     tts_cur = cur.get("tts", {}) or {}
     volc_cur = tts_cur.get("volcengine", {}) or {}
     mx_cur = tts_cur.get("minimax", {}) or {}
+    aura_cur = tts_cur.get("aura", {}) or {}
+    aura_voices_in = values.get("tts_aura_custom_voices")
+    aura_voices = ([{"name": str(v.get("name", "")).strip(), "id": str(v.get("id", "")).strip()}
+                    for v in aura_voices_in if isinstance(v, dict) and v.get("name") and v.get("id")]
+                   if isinstance(aura_voices_in, list) else aura_cur.get("custom_voices", []))
     tts = {
         "provider": _val(values.get("tts_provider"), tts_cur.get("provider", "volcengine")),
         "volcengine": {
+            "api_key":    _val(values.get("tts_volc_key"), volc_cur.get("api_key", volc_cur.get("access_key", ""))),
             "app_id":     _val(values.get("tts_volc_appid"),  volc_cur.get("app_id", "")),
             "access_key": _val(values.get("tts_volc_access"), volc_cur.get("access_key", "")),
             "speaker":    _val(values.get("tts_volc_speaker"), volc_cur.get("speaker", "zh_male_dongfanghaoran_moon_bigtts")),
@@ -493,6 +522,12 @@ def _merged(values):
             "api_key":  _val(values.get("tts_minimax_key"),   mx_cur.get("api_key", "")),
             "model":    _val(values.get("tts_minimax_model"), mx_cur.get("model", "speech-2.8-hd")),
             "voice_id": _val(values.get("tts_minimax_voice"), mx_cur.get("voice_id", "")),
+        },
+        "aura": {
+            "api_key": _val(values.get("tts_aura_key"), aura_cur.get("api_key", "")),
+            "model": _val(values.get("tts_aura_model"), aura_cur.get("model", "minimax-speech-2.8-turbo")),
+            "voice_id": _val(values.get("tts_aura_voice"), aura_cur.get("voice_id", "Chinese (Mandarin)_Reliable_Executive")),
+            "custom_voices": aura_voices,
         },
     }
 
@@ -559,7 +594,7 @@ def _merged(values):
 def save_settings(values):
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     payload = _merged(values)
-    if not re.match(r"^https?://", payload["base_url"]):
+    if payload["base_url"] and not re.match(r"^https?://", payload["base_url"]):
         raise ValueError("base_url 必须以 http:// 或 https:// 开头")
     if len(payload["model"]) > 300:
         raise ValueError("模型名过长")
@@ -586,6 +621,7 @@ def public_settings():
     tts = s.get("tts", {})
     tts_volc = tts.get("volcengine", {})
     tts_mx = tts.get("minimax", {})
+    tts_aura = tts.get("aura", {})
     jy = s.get("jianying", {})
     ima = s.get("ima", {})
     # LLM 「已配置」要求 4 个核心字段都填齐（不再只看 api_key；
@@ -620,10 +656,7 @@ def public_settings():
             "concurrency": img.get("concurrency", 6),
         },
         "jimeng": {
-            "configured": bool((s.get("jimeng") or {}).get("session_id") or ((s.get("jimeng") or {}).get("ak") and (s.get("jimeng") or {}).get("sk"))),
-            "session_id": (s.get("jimeng") or {}).get("session_id", ""),
-            "ak": (s.get("jimeng") or {}).get("ak", ""),
-            "sk": (s.get("jimeng") or {}).get("sk", ""),
+            "configured": bool((s.get("jimeng") or {}).get("ak") and (s.get("jimeng") or {}).get("sk")),
             "model": (s.get("jimeng") or {}).get("model", "jimeng-4.5"),
             "ratio": (s.get("jimeng") or {}).get("ratio", "9:16"),
             "resolution": (s.get("jimeng") or {}).get("resolution", "1k"),
@@ -631,27 +664,29 @@ def public_settings():
         },
         "modelscope": {
             "configured": bool((s.get("modelscope") or {}).get("tokens")),
-            "tokens": (s.get("modelscope") or {}).get("tokens", []),
+            "token_count": len((s.get("modelscope") or {}).get("tokens") or []),
             "model": (s.get("modelscope") or {}).get("model", "Tongyi-MAI/Z-Image-Turbo"),
             "ratio": (s.get("modelscope") or {}).get("ratio", "9:16"),
             "auto_fallback_gpt": (s.get("modelscope") or {}).get("auto_fallback_gpt", False),
             "custom_models": (s.get("modelscope") or {}).get("custom_models", []),
         },
         "runninghub": {
-            "configured": bool((s.get("runninghub") or {}).get("api_key")),
-            "api_key": (s.get("runninghub") or {}).get("api_key", ""),
+            "configured": bool((s.get("runninghub") or {}).get("api_key") and
+                               (s.get("runninghub") or {}).get("workflow_id") and
+                               (s.get("runninghub") or {}).get("prompt_node_id")),
             "model": (s.get("runninghub") or {}).get("model", "rh-image-g2"),
             "ratio": (s.get("runninghub") or {}).get("ratio", "9:16"),
             "resolution": (s.get("runninghub") or {}).get("resolution", "1k"),
             "concurrency": (s.get("runninghub") or {}).get("concurrency", 3),
             "base_url": (s.get("runninghub") or {}).get("base_url", ""),
             "workflow_id": (s.get("runninghub") or {}).get("workflow_id", ""),
+            "prompt_node_id": (s.get("runninghub") or {}).get("prompt_node_id", ""),
+            "prompt_field_name": (s.get("runninghub") or {}).get("prompt_field_name", "text"),
         },
         "custom_image": {
             "configured": bool((s.get("custom_image") or {}).get("base_url") and (s.get("custom_image") or {}).get("api_key") and (s.get("custom_image") or {}).get("model")),
             "display_name": (s.get("custom_image") or {}).get("display_name", ""),
             "base_url": (s.get("custom_image") or {}).get("base_url", ""),
-            "api_key": (s.get("custom_image") or {}).get("api_key", ""),
             "model": (s.get("custom_image") or {}).get("model", ""),
             "async_mode": (s.get("custom_image") or {}).get("async_mode", False),
             "ratio": (s.get("custom_image") or {}).get("ratio", "9:16"),
@@ -660,12 +695,16 @@ def public_settings():
         },
         "tts": {
             "provider": tts.get("provider", "volcengine"),
-            "volcengine_configured": bool(tts_volc.get("app_id") and tts_volc.get("access_key") and tts_volc.get("speaker")),
+            "volcengine_configured": bool((tts_volc.get("api_key") or tts_volc.get("access_key")) and tts_volc.get("speaker")),
             "volcengine_app_id": tts_volc.get("app_id", ""),
             "volcengine_speaker": tts_volc.get("speaker", ""),
             "minimax_configured": bool(tts_mx.get("api_key") and tts_mx.get("model")),
             "minimax_model": tts_mx.get("model", ""),
             "minimax_voice_id": tts_mx.get("voice_id", ""),
+            "aura_configured": bool(tts_aura.get("api_key") and tts_aura.get("model") and tts_aura.get("voice_id")),
+            "aura_model": tts_aura.get("model", "minimax-speech-2.8-turbo"),
+            "aura_voice_id": tts_aura.get("voice_id", "Chinese (Mandarin)_Reliable_Executive"),
+            "aura_custom_voices": tts_aura.get("custom_voices", []) or [],
         },
         "jianying": {
             "draft_path":   jy.get("draft_path", ""),
@@ -688,7 +727,6 @@ def public_settings():
             "configured": bool((s.get("asr") or {}).get("app_id")),
         },
         "license": {
-            "key": (s.get("license") or {}).get("key", ""),
             "configured": bool((s.get("license") or {}).get("key")),
         },
     }
@@ -1100,79 +1138,144 @@ def _call_jimeng(cfg, prompt, ratio, resolution):
 
 
 # -------- runninghub 异步任务 --------
+def _call_modelscope(cfg, prompt, max_wait=180):
+    """魔搭 API Inference 的异步文生图接口。"""
+    token = (cfg.get("api_key") or "").strip()
+    model = (cfg.get("model") or "").strip()
+    if not token or not model:
+        raise RuntimeError("魔搭需要 Access Token 和模型 ID")
+    root = "https://api-inference.modelscope.cn/v1"
+    headers = {
+        "Authorization": "Bearer " + token,
+        "Content-Type": "application/json",
+        "X-ModelScope-Async-Mode": "true",
+    }
+    _, raw = _http_post_json(root + "/images/generations", headers,
+                             json.dumps({"model": model, "prompt": prompt}, ensure_ascii=False).encode("utf-8"))
+    submission = json.loads(raw)
+    task_id = submission.get("task_id")
+    if not task_id:
+        raise RuntimeError(f"魔搭提交失败: {str(submission.get('message') or raw[:200])}")
+    poll_headers = {"Authorization": "Bearer " + token,
+                    "X-ModelScope-Task-Type": "image_generation"}
+    deadline = time.time() + max_wait
+    while time.time() < deadline:
+        _, raw = _http_get_json(root + "/tasks/" + str(task_id), poll_headers)
+        result = json.loads(raw)
+        state = result.get("task_status")
+        if state == "SUCCEED":
+            images = result.get("output_images") or []
+            if images and isinstance(images[0], str):
+                return {"url": images[0], "mime": "image/png"}
+            raise RuntimeError("魔搭任务成功但没有图片")
+        if state == "FAILED":
+            raise RuntimeError(f"魔搭任务失败: {str(result.get('message') or raw[:200])}")
+        time.sleep(3)
+    raise RuntimeError(f"魔搭任务 {task_id} 超时（{max_wait}s）")
+
+
 def _call_runninghub(cfg, prompt, ratio, resolution, max_wait=180):
-    """runninghub.cn 提交任务 + 轮询拿图。"""
+    """RunningHub 提交工作流 + 轮询拿图。"""
     api_key = cfg.get("api_key", "").strip()
-    workflow_id = cfg.get("model") or cfg.get("workflow_id") or ""
-    base_url = cfg.get("base_url") or "https://www.runninghub.cn"
-    if not api_key or not workflow_id:
-        raise RuntimeError("runninghub 需要 api_key 和 workflow_id（即 model 字段）")
+    workflow_id = cfg.get("workflow_id") or ""
+    prompt_node_id = cfg.get("prompt_node_id") or ""
+    prompt_field_name = cfg.get("prompt_field_name") or "text"
+    base_url = cfg.get("base_url") or "https://www.runninghub.ai"
+    if not api_key or not workflow_id or not prompt_node_id:
+        raise RuntimeError("RunningHub 需要 API Key、工作流 ID 和提示词节点 ID")
 
     # 1. 提交
-    submit_url = base_url.rstrip("/") + "/api/v1/run"
+    submit_url = base_url.rstrip("/") + "/task/openapi/create"
     submit_body = json.dumps({
         "apiKey": api_key,
         "workflowId": workflow_id,
-        "inputs": {
-            "prompt": prompt,
-            "ratio": ratio or "9:16",
-            "resolution": resolution or "1k",
-        },
+        "nodeInfoList": [{"nodeId": str(prompt_node_id), "fieldName": prompt_field_name,
+                          "fieldValue": prompt}],
     }).encode("utf-8")
     status, text = _http_post_json(submit_url, {
         "Content-Type": "application/json",
         "Authorization": "Bearer " + api_key,
     }, submit_body)
     sub = json.loads(text)
-    task_id = sub.get("data", {}).get("taskId") or sub.get("taskId") or sub.get("data")
+    sub_data = sub.get("data") or {}
+    task_id = sub_data.get("taskId") if isinstance(sub_data, dict) else None
     if not task_id:
-        raise RuntimeError(f"runninghub 提交失败: {text[:300]}")
-    if isinstance(task_id, dict):
-        task_id = task_id.get("taskId") or str(task_id)
+        raise RuntimeError(f"RunningHub 提交失败: {str(sub.get('msg') or sub.get('message') or text[:200])}")
 
     # 2. 轮询
-    poll_url = base_url.rstrip("/") + f"/api/v1/status/{task_id}"
+    poll_url = base_url.rstrip("/") + "/task/openapi/outputs"
     import time as _time
     deadline = _time.time() + max_wait
     while _time.time() < deadline:
+        _, ptext = _http_post_json(poll_url, {
+            "Content-Type": "application/json", "Authorization": "Bearer " + api_key,
+        }, json.dumps({"apiKey": api_key, "taskId": task_id}).encode("utf-8"))
+        pres = json.loads(ptext)
+        if pres.get("code") not in (0, "0", None):
+            raise RuntimeError(f"RunningHub 查询失败: {str(pres.get('msg') or '')[:200]}")
+        outputs = pres.get("data") or []
+        if isinstance(outputs, list):
+            for output in outputs:
+                val = output.get("fileUrl") if isinstance(output, dict) else None
+                if isinstance(val, str) and val.startswith(("http://", "https://")):
+                    return {"url": val, "mime": "image/png"}
         _time.sleep(3)
-        try:
-            _, ptext = _http_get_json(poll_url, {"Authorization": "Bearer " + api_key})
-            pres = json.loads(ptext)
-        except RuntimeError:
-            continue
-        state = (pres.get("data") or {}).get("status") or pres.get("status") or ""
-        if state in ("SUCCESS", "success", "completed", "COMPLETED"):
-            outputs = (pres.get("data") or {}).get("outputs") or pres.get("outputs") or []
-            if outputs:
-                # runninghub 输出形如 [{"nodeId": "...", "field": "image", "value": "https://..."}]
-                for o in outputs:
-                    val = o.get("value") if isinstance(o, dict) else o
-                    if isinstance(val, str) and (val.startswith("http") or val.startswith("data:")):
-                        if val.startswith("data:image"):
-                            import base64
-                            b64 = val.split(",", 1)[1]
-                            return {"b64": b64, "mime": "image/png"}
-                        return {"url": val, "mime": "image/png"}
-            raise RuntimeError(f"runninghub 完成但无图: {ptext[:300]}")
-        if state in ("FAILED", "failed", "error"):
-            raise RuntimeError(f"runninghub 任务失败: {ptext[:300]}")
-    raise RuntimeError(f"runninghub 任务 {task_id} 超时（{max_wait}s）")
+    raise RuntimeError(f"RunningHub 任务 {task_id} 超时（{max_wait}s）")
 
 
 def image_dispatcher(image_cfg, prompt, ratio="9:16", resolution="1k"):
     """根据 image_cfg.provider 派发到对应 provider。"""
     provider = image_cfg.get("provider", "gpt_image")
-    if provider in ("gpt_image", "modelscope", "custom_image", "openai"):
+    if provider in ("gpt_image", "custom_image", "openai"):
         # OpenAI 兼容协议
         width, height = parse_ratio(ratio, "1024x1792")
         size = f"{width}x{height}"
         return call_image_gen(image_cfg, prompt, size=size)
+    if provider == "modelscope":
+        tokens = image_cfg.get("tokens") or [image_cfg.get("api_key")]
+        last_quota_error = None
+        for token in tokens:
+            if not token:
+                continue
+            try:
+                return _call_modelscope({**image_cfg, "api_key": token}, prompt)
+            except RuntimeError as error:
+                if not any(word in str(error).lower() for word in
+                           ("429", "quota", "balance", "exhausted", "insufficient", "额度", "魔粒")):
+                    raise
+                last_quota_error = error
+        fallback = image_cfg.get("gpt_fallback") or {}
+        if last_quota_error and image_cfg.get("auto_fallback_gpt") and all(
+            fallback.get(field) for field in ("api_key", "base_url", "model")
+        ):
+            width, height = parse_ratio(ratio, "1024x1792")
+            return call_image_gen(fallback, prompt, size=f"{width}x{height}")
+        raise last_quota_error or RuntimeError("魔搭 Access Token 未配置")
     if provider == "jimeng":
         return _call_jimeng(image_cfg, prompt, ratio, resolution)
     if provider == "runninghub":
         return _call_runninghub(image_cfg, prompt, ratio, resolution)
     raise RuntimeError(f"未知出图 provider: {provider}")
+
+
+def resolve_image_config(settings, provider=None):
+    """从所选平台的配置块取出图参数，避免误用全能绘图凭据。"""
+    selected = provider or (settings.get("image") or {}).get("provider") or "gpt_image"
+    if selected in ("gpt_image", "openai"):
+        return {**(settings.get("image") or {}), "provider": "gpt_image"}
+    if selected == "jimeng":
+        return {**(settings.get("jimeng") or {}), "provider": "jimeng"}
+    if selected == "runninghub":
+        return {**(settings.get("runninghub") or {}), "provider": "runninghub"}
+    if selected in ("custom", "custom_image"):
+        return {**(settings.get("custom_image") or {}), "provider": "custom_image"}
+    if selected == "modelscope":
+        ms = settings.get("modelscope") or {}
+        tokens = ms.get("tokens") or []
+        return {**ms, "provider": "modelscope", "api_key": tokens[0] if tokens else "",
+                "base_url": ms.get("base_url") or "https://api-inference.modelscope.cn/v1",
+                "gpt_fallback": settings.get("image") or {}}
+    raise ValueError(f"未知出图 provider: {selected}")
 
 
 # ============================================================
@@ -1331,6 +1434,63 @@ def _minimax_tts_synthesize(api_key, text, voice_id, idx, speed=1.0, mx_cfg=None
     except ValueError:
         return {"idx": idx, "ok": False, "text": text, "error": "MiniMax audio 字段非 hex"}
     return {"idx": idx, "ok": True, "text": text, "audio_bytes": audio}
+
+
+AURA_TTS_URL = "https://tts.aurastd.com/api/v1/tts"
+
+
+def _aura_tts_synthesize(api_key, text, voice_id, idx, speed=1.0, aura_cfg=None):
+    """Aura Studio 同步 TTS；仅从响应中的 hex audio 落盘。"""
+    body = {
+        "model": (aura_cfg or {}).get("model") or "minimax-speech-2.8-turbo",
+        "text": text,
+        "stream": False,
+        "language_boost": "auto",
+        "voice_setting": {"voice_id": voice_id, "speed": max(0.5, min(2.0, float(speed))),
+                          "vol": 1, "pitch": 0},
+        "audio_setting": {"sample_rate": 32000, "bitrate": 128000, "format": "mp3", "channel": 1},
+        "output_format": "hex",
+    }
+    req = urllib.request.Request(
+        AURA_TTS_URL, data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
+        method="POST", headers={"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            obj = json.loads(resp.read().decode("utf-8"))
+            status = resp.status
+    except urllib.error.HTTPError as e:
+        return {"idx": idx, "ok": False, "text": text, "error": f"Aura Studio HTTP {e.code}"}
+    except Exception as e:
+        return {"idx": idx, "ok": False, "text": text, "error": f"Aura Studio 请求失败: {e}"}
+    if status >= 400 or not isinstance(obj, dict):
+        return {"idx": idx, "ok": False, "text": text, "error": f"Aura Studio 响应错误: HTTP {status}"}
+    hex_audio = obj.get("audio") or ((obj.get("data") or {}).get("audio")) or ""
+    try:
+        audio = bytes.fromhex(hex_audio)
+    except (TypeError, ValueError):
+        audio = b""
+    if not audio:
+        return {"idx": idx, "ok": False, "text": text,
+                "error": f"Aura Studio 未返回有效音频: {str(obj.get('message') or obj.get('error') or 'audio 为空')[:160]}"}
+    return {"idx": idx, "ok": True, "text": text, "audio_bytes": audio}
+
+
+def probe_audio_duration(path):
+    """读取生成音频真实时长；ffprobe 不可用时由调用方采用估算值。"""
+    executable = shutil.which("ffprobe")
+    if not executable:
+        return None
+    try:
+        result = subprocess.run(
+            [executable, "-v", "error", "-show_entries", "format=duration",
+             "-of", "default=noprint_wrappers=1:nokey=1", str(path)],
+            capture_output=True, text=True, timeout=10, check=False,
+        )
+        duration = float(result.stdout.strip()) if result.returncode == 0 else 0
+        return round(duration, 2) if duration > 0 else None
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        return None
 
 
 # ============================================================
@@ -1791,14 +1951,19 @@ def save_tasks(data):
 
 
 def save_task_record(record):
-    """存一条任务到 tasks.json。"""
+    """按任务 ID 更新历史，分阶段运行不产生重复任务。"""
     data = load_tasks()
-    data["tasks"].insert(0, record)
+    tasks = data.get("tasks", [])
+    task_id = record.get("id")
+    previous = next((task for task in tasks if task_id and task.get("id") == task_id), None)
+    if previous:
+        record = {**previous, **record, "ts": previous.get("ts", record.get("ts"))}
+    data["tasks"] = [record] + [task for task in tasks if not task_id or task.get("id") != task_id]
     data["tasks"] = data["tasks"][:100]
     save_tasks(data)
 
 
-def build_cover_prompt(llm_settings, title, content, style, hooks):
+def build_cover_prompt(llm_settings, title, content, style, hooks, cover_mode="ai"):
     """让 LLM 根据标题/文案/风格/钩子写一段英文出图 prompt。"""
     hooks_str = " / ".join(hooks) if hooks else ""
     style_str = style or "现代电影"
@@ -1814,6 +1979,10 @@ def build_cover_prompt(llm_settings, title, content, style, hooks):
         f"2. 描述主体场景、构图、光线、镜头、情绪、画面风格\n"
         f"3. 不要出现中文、不要任何额外说明\n"
     )
+    if cover_mode == "title":
+        user_p += f"4. 为画面保留清晰标题区，并在画面中呈现标题文字：{title.strip()}\n"
+    elif cover_mode == "blank":
+        user_p += "4. 画面不包含任何文字、字母、标识或水印，保留可后期添加标题的留白区域。\n"
     text = call_llm(llm_settings, sys_p, user_p)
     # 去掉可能的引号
     text = text.strip().strip('"').strip("'").strip()
@@ -2109,8 +2278,8 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 if provider == "jimeng":
                     jm = s.get("jimeng") or {}
-                    if not (jm.get("session_id") or (jm.get("ak") and jm.get("sk"))):
-                        raise ValueError("即梦 Session ID 未配置")
+                    if not (jm.get("ak") and jm.get("sk")):
+                        raise ValueError("即梦火山视觉 AK / SK 未配置")
                 elif provider == "gpt_image":
                     img = s.get("image") or {}
                     if not (img.get("api_key") and img.get("model") and img.get("base_url")):
@@ -2121,8 +2290,8 @@ class Handler(BaseHTTPRequestHandler):
                         raise ValueError("魔搭 Access Token 未配置")
                 elif provider == "runninghub":
                     rh = s.get("runninghub") or {}
-                    if not rh.get("api_key"):
-                        raise ValueError("RunningHub API Key 未配置")
+                    if not (rh.get("api_key") and rh.get("workflow_id") and rh.get("prompt_node_id")):
+                        raise ValueError("RunningHub API Key、工作流 ID 或提示词节点 ID 未配置")
                 elif provider == "custom":
                     cu = s.get("custom_image") or {}
                     if not (cu.get("api_key") and cu.get("model") and cu.get("base_url")):
@@ -2189,66 +2358,95 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, {"ok": True})
             return
 
+        if self.path == "/api/cover_upload":
+            task_id = str(data.get("task_id") or "")
+            if task_id and not re.fullmatch(r"[A-Za-z0-9_-]{1,100}", task_id):
+                self._json(400, {"error": "无效 task_id"})
+                return
+            data_url = data.get("data_url") or ""
+            match = re.fullmatch(r"data:image/(png|jpeg|webp);base64,([A-Za-z0-9+/=]+)", data_url)
+            if not match or len(match.group(2)) > 14_000_000:
+                self._json(400, {"error": "只支持不超过 10 MB 的 PNG、JPEG、WebP 图片"})
+                return
+            try:
+                raw = base64.b64decode(match.group(2), validate=True)
+            except ValueError:
+                self._json(400, {"error": "图片 base64 无效"})
+                return
+            if not raw or len(raw) > 10_000_000:
+                self._json(400, {"error": "图片为空或超过 10 MB"})
+                return
+            ext = {"png": "png", "jpeg": "jpg", "webp": "webp"}[match.group(1)]
+            covers_dir = DATA_DIR / "covers"
+            covers_dir.mkdir(parents=True, exist_ok=True)
+            name = f"upload_{uuid.uuid4().hex}.{ext}"
+            (covers_dir / name).write_bytes(raw)
+            if task_id:
+                task_cover = _tasks_root() / task_id / f"cover-upload.{ext}"
+                task_cover.parent.mkdir(parents=True, exist_ok=True)
+                task_cover.write_bytes(raw)
+            result = {"url": f"/covers/{name}", "task_id": task_id}
+            if task_id:
+                (task_cover.parent / "cover-meta.json").write_text(
+                    json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+            self._json(200, result)
+            return
+
         if self.path == "/api/cover":
             try:
                 s = load_settings()
-                llm = resolve_active_llm_settings()
-                if not llm.get("api_key"):
+                prompt_override = (data.get("prompt") or "").strip()
+                llm = resolve_active_llm_settings() if not prompt_override else None
+                if not prompt_override and not llm.get("api_key"):
                     self._json(400, {"error": "未配置 LLM，请先到设置页填写"})
                     return
                 # 按 provider 选 image 配置
                 provider = (data.get("provider") or "").strip()
                 if not provider:
                     provider = (s.get("image") or {}).get("provider", "gpt_image")
-                if provider in ("gpt_image", "modelscope", "custom_image", "openai"):
-                    img = s.get("image") or {}
-                    if not img.get("api_key"):
-                        self._json(400, {"error": "未配置出图 API（OpenAI 兼容通道）"})
-                        return
-                    ratio = img.get("ratio") or "9:16"
-                    resolution = img.get("resolution") or "1k"
-                    image_cfg = img
-                elif provider == "jimeng":
-                    img = s.get("jimeng") or {}
-                    if not (img.get("ak") and img.get("sk")):
-                        self._json(400, {"error": "未配置 jimeng（AK / SK 必填）"})
-                        return
-                    ratio = img.get("ratio") or "9:16"
-                    resolution = img.get("resolution") or "1k"
-                    image_cfg = img
-                elif provider == "runninghub":
-                    img = s.get("runninghub") or {}
-                    if not (img.get("api_key") and img.get("workflow_id")):
-                        self._json(400, {"error": "未配置 runninghub（api_key / workflow_id 必填）"})
-                        return
-                    ratio = img.get("ratio") or "9:16"
-                    resolution = img.get("resolution") or "1k"
-                    image_cfg = img
-                else:
-                    self._json(400, {"error": f"未知出图 provider: {provider}"})
+                image_cfg = resolve_image_config(s, provider)
+                provider = image_cfg["provider"]
+                if provider in ("gpt_image", "modelscope", "custom_image") and not image_cfg.get("api_key"):
+                    self._json(400, {"error": f"未配置 {provider} 出图 API Key"})
                     return
+                if provider == "jimeng" and not (image_cfg.get("ak") and image_cfg.get("sk")):
+                    self._json(400, {"error": "未配置即梦 AK / SK"})
+                    return
+                if provider == "runninghub" and not (image_cfg.get("api_key") and image_cfg.get("workflow_id") and image_cfg.get("prompt_node_id")):
+                    self._json(400, {"error": "未配置 RunningHub 必需字段"})
+                    return
+                ratio = image_cfg.get("ratio") or "9:16"
+                resolution = image_cfg.get("resolution") or "1k"
 
                 title = (data.get("title") or "").strip()
                 content = (data.get("content") or "").strip()
                 style = (data.get("style") or "现代电影").strip()
                 hooks = data.get("hooks") or []
-                if not content and not title:
+                if not content and not title and not prompt_override:
                     self._json(400, {"error": "文案和标题至少填一个"})
                     return
                 t0 = time.time()
-                prompt = build_cover_prompt(llm, title, content, style, hooks)
+                prompt = prompt_override or build_cover_prompt(
+                    llm, title, content, style, hooks, data.get("cover_mode") or "ai")
                 result = image_dispatcher(image_cfg, prompt, ratio=ratio, resolution=resolution)
                 if "b64" in result:
                     cover_url = save_cover_image(result["b64"], result.get("mime", "image/png"))
                 else:
                     cover_url = save_cover_image(result["url"], result.get("mime", "image/png"))
                 elapsed = time.time() - t0
-                self._json(200, {
+                cover_result = {
                     "url": cover_url,
                     "prompt": prompt,
                     "elapsed": round(elapsed, 1),
                     "provider": provider,
-                })
+                }
+                cover_task_id = str(data.get("task_id") or "")
+                if cover_task_id and re.fullmatch(r"[A-Za-z0-9_-]{1,100}", cover_task_id):
+                    cover_dir = _tasks_root() / cover_task_id
+                    cover_dir.mkdir(parents=True, exist_ok=True)
+                    (cover_dir / "cover-meta.json").write_text(
+                        json.dumps(cover_result, ensure_ascii=False, indent=2), encoding="utf-8")
+                self._json(200, cover_result)
             except ValueError as e:
                 self._json(400, {"error": str(e)})
             except RuntimeError as e:
@@ -2412,6 +2610,9 @@ class Handler(BaseHTTPRequestHandler):
                 task_id = (data.get("task_id") or f"task_{int(time.time())}_{os.urandom(3).hex()}").strip()
                 task_dir = _tasks_root() / task_id
                 task_dir.mkdir(parents=True, exist_ok=True)
+                if "0" in run_steps:
+                    (task_dir / "01-review.json").write_text(
+                        json.dumps(out["steps"]["0"], ensure_ascii=False, indent=2), encoding="utf-8")
                 # Step 1 改写
                 if rewritten:
                     (task_dir / "02-rewrite.txt").write_text(rewritten, encoding="utf-8")
@@ -2476,26 +2677,26 @@ class Handler(BaseHTTPRequestHandler):
                 # 并发数：参考 M_ 默认 3；外部可传
                 concurrency = int(data.get("concurrency") or 3)
                 concurrency = max(1, min(10, concurrency))
+                retry = bool(data.get("retry", False))
                 if not prompts_in:
                     self._json(400, {"error": "prompts 不能为空"})
                     return
                 # 选 image 配置
                 if not provider:
                     provider = (s.get("image") or {}).get("provider", "gpt_image")
-                if provider in ("gpt_image", "modelscope", "custom_image", "openai"):
-                    img_cfg = s.get("image") or {}
+                img_cfg = resolve_image_config(s, provider)
+                provider = img_cfg["provider"]
+                if provider in ("gpt_image", "modelscope", "custom_image"):
                     if not (img_cfg.get("api_key") and img_cfg.get("base_url")):
-                        self._json(400, {"error": "未配置出图 API（OpenAI 兼容通道）"})
+                        self._json(400, {"error": f"未配置 {provider} 出图 API"})
                         return
                 elif provider == "jimeng":
-                    img_cfg = s.get("jimeng") or {}
                     if not (img_cfg.get("ak") and img_cfg.get("sk")):
                         self._json(400, {"error": "未配置即梦 jimeng（AK / SK 必填）"})
                         return
                 elif provider == "runninghub":
-                    img_cfg = s.get("runninghub") or {}
-                    if not (img_cfg.get("api_key") and img_cfg.get("workflow_id")):
-                        self._json(400, {"error": "未配置 runninghub（api_key / workflow_id 必填）"})
+                    if not (img_cfg.get("api_key") and img_cfg.get("workflow_id") and img_cfg.get("prompt_node_id")):
+                        self._json(400, {"error": "未配置 RunningHub（API Key / 工作流 ID / 提示词节点 ID 必填）"})
                         return
                 else:
                     self._json(400, {"error": f"未知 provider: {provider}"})
@@ -2510,7 +2711,7 @@ class Handler(BaseHTTPRequestHandler):
                         return slot, {"idx": idx, "ok": False, "error": "desc_prompt 为空"}
                     # 单次重试（复活 1 次）
                     last_err = None
-                    for attempt in (1, 2):
+                    for attempt in ((1, 2) if retry else (1,)):
                         try:
                             t0 = time.time()
                             r = image_dispatcher(img_cfg, desc, ratio=ratio, resolution=resolution)
@@ -2535,7 +2736,8 @@ class Handler(BaseHTTPRequestHandler):
                             return slot, {"idx": idx, "ok": True, "url": url, "task_local": task_local, "elapsed": round(time.time()-t0, 1), "attempt": attempt}
                         except Exception as e:
                             last_err = str(e)
-                    return slot, {"idx": idx, "ok": False, "error": last_err, "attempts": 2}
+                    return slot, {"idx": idx, "ok": False, "error": last_err,
+                                  "attempts": 2 if retry else 1}
                 t_total = time.time()
                 with ThreadPoolExecutor(max_workers=concurrency) as ex:
                     futs = [ex.submit(gen_one, i, p) for i, p in enumerate(prompts_in)]
@@ -2594,8 +2796,16 @@ class Handler(BaseHTTPRequestHandler):
                     if not speaker:
                         self._json(400, {"error": "MiniMax TTS 需要指定 voice_id（设置 → TTS 配音 → 默认发音人）"})
                         return
+                elif provider == "aura":
+                    aura = tts.get("aura") or {}
+                    api_key = (aura.get("api_key") or "").strip()
+                    if not api_key:
+                        self._json(400, {"error": "未配置 Aura Studio TTS（API Key 必填）"})
+                        return
+                    if not speaker:
+                        speaker = (aura.get("voice_id") or "Chinese (Mandarin)_Reliable_Executive").strip()
                 else:
-                    self._json(400, {"error": f"暂不支持 TTS provider: {provider}（当前仅支持 volcengine / minimax）"})
+                    self._json(400, {"error": f"暂不支持 TTS provider: {provider}"})
                     return
 
                 # 任务目录：data/tasks/<task_id>/audio/
@@ -2622,6 +2832,8 @@ class Handler(BaseHTTPRequestHandler):
                         return _volc_tts_synthesize(api_key, text, speaker, idx, speed)
                     elif provider == "minimax":
                         return _minimax_tts_synthesize(api_key, text, speaker, idx, speed, mx)
+                    elif provider == "aura":
+                        return _aura_tts_synthesize(api_key, text, speaker, idx, speed, aura)
                     return {"idx": idx, "ok": False, "error": f"未知 provider: {provider}"}
 
                 # 并发合成（参考 R6 的 _ = max(3, floor(h.length/3))；上限 3 路）
@@ -2645,10 +2857,11 @@ class Handler(BaseHTTPRequestHandler):
                         audio_path.write_bytes(r["audio_bytes"])
                         r["url"] = f"/api/audio/{task_id}/seg_{r['idx']:03d}.mp3"
                         r["path"] = str(audio_path)
-                        # 时长估算：先用 chars*0.18 占位，再用火山 ASR（若已配置且 key 一致）替换为真实时间戳
+                        # 优先读取真实音频时长；本机缺 ffprobe 时按字数估算。
                         text_chars = sum(1 for ch in (r.get("text") or "") if ch.strip())
-                        r["duration"] = round(max(1.0, text_chars * 0.18), 2)
-                        r["duration_source"] = "chars_est"
+                        measured_duration = probe_audio_duration(audio_path)
+                        r["duration"] = measured_duration or round(max(1.0, text_chars * 0.18), 2)
+                        r["duration_source"] = "ffprobe" if measured_duration else "chars_est"
                         # 火山 ASR 对齐（仅当 TTS provider = volcengine 且有 key 时启用；其他 provider 跳过）
                         if provider == "volcengine" and api_key:
                             try:
@@ -2672,8 +2885,18 @@ class Handler(BaseHTTPRequestHandler):
                     else:
                         r = r or {"ok": False, "error": "未知错误"}
                 # 保存 05-tts-segments.json（参考 R6 的 SEGMENTS 持久化）
-                (task_dir / "05-tts-segments.json").write_text(
-                    json.dumps(seg_json, ensure_ascii=False, indent=2),
+                segment_file = task_dir / "05-tts-segments.json"
+                previous_segments = []
+                if segment_file.exists():
+                    try:
+                        previous_segments = json.loads(segment_file.read_text(encoding="utf-8"))
+                    except (OSError, ValueError):
+                        previous_segments = []
+                by_index = {item["index"]: item for item in previous_segments
+                            if isinstance(item, dict) and isinstance(item.get("index"), int)}
+                by_index.update({item["index"]: item for item in seg_json})
+                segment_file.write_text(
+                    json.dumps([by_index[idx] for idx in sorted(by_index)], ensure_ascii=False, indent=2),
                     encoding="utf-8"
                 )
                 ok_count = sum(1 for r in results if r and r.get("ok"))
@@ -2747,6 +2970,8 @@ class Handler(BaseHTTPRequestHandler):
                     img_local = ""
                     if img_url.startswith("/covers/"):
                         img_local = str(DATA_DIR / img_url.lstrip("/"))
+                    elif img_url.startswith(f"/api/task_image/{task_id}/"):
+                        img_local = str(_tasks_root() / task_id / "covers" / Path(img_url).name)
                     video_segments.append({
                         "id": f"video_seg_{idx}",
                         "type": "video",
