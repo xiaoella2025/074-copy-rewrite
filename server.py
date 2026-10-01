@@ -1490,10 +1490,10 @@ def step2_split(llm_settings, content, target_shots=None, target_words=None):
     """Step 2 智能分镜：PA 真值算法的简化版。
     真值：LLM 输出尾部锚点（10-20 字精确原文）→ 锚点匹配原文切片。
     简化：单轮 LLM 调用 → 解析锚点数组 → 锚点切片；匹配失败回退到按段落+标点切。
-    返回 [{idx, text, chars}]。"""
+    返回 {shots, notes, match_rate}。match_rate: 0~1，LLM 锚点匹配率（用于前端 UI 显示）。"""
     text = content.strip()
     if not text:
-        return []
+        return {"shots": [], "notes": "", "match_rate": 0}
 
     sys_p = load_prompt_module("step2_split.py")
 
@@ -1512,6 +1512,7 @@ def step2_split(llm_settings, content, target_shots=None, target_words=None):
     )
     anchors = None
     notes = ""
+    match_rate = 0
     try:
         out = call_llm(llm_settings, sys_p, user_p)
         try:
@@ -1544,9 +1545,11 @@ def step2_split(llm_settings, content, target_shots=None, target_words=None):
                 tail = text[cursor:].strip()
                 if tail:
                     cuts.append(tail)
+                if clean:
+                    match_rate = round((len(clean) - miss) / len(clean), 3)
                 if miss / max(1, len(clean)) < 0.3 and cuts:
                     anchors = cuts
-                    notes = f"LLM 锚点切分（{len(cuts)} 镜，{miss} 个锚点未匹配）"
+                    notes = f"LLM 锚点切分（{len(cuts)} 镜，{miss}/{len(clean)} 个锚点未匹配，匹配率 {match_rate*100:.0f}%）"
     except (RuntimeError, ValueError) as e:
         notes = f"LLM 失败，回退段落切分：{e}"
 
@@ -1558,7 +1561,7 @@ def step2_split(llm_settings, content, target_shots=None, target_words=None):
         for p in paragraphs:
             parts = _re.split(r"(?<=[。！？!?；;])\s*", p)
             anchors.extend([s.strip() for s in parts if s.strip()])
-        notes = (notes + "；" if notes else "") + f"段落+标点切分（{len(anchors)} 镜）"
+        notes = (notes + "；" if notes else "") + f"段落+标点切分（{len(anchors)} 镜，匹配率 —）"
 
     # 兜底：target_words 强制拆分
     if target_words and int(target_words) > 0:
@@ -1575,7 +1578,7 @@ def step2_split(llm_settings, content, target_shots=None, target_words=None):
         anchors = normalized
 
     shots = [{"idx": i + 1, "text": s, "chars": len(s)} for i, s in enumerate(anchors) if s.strip()]
-    return {"shots": shots, "notes": notes}
+    return {"shots": shots, "notes": notes, "match_rate": match_rate}
 
 
 def step3_image_prompts(llm_settings, shots, track, style_label, story_context="", character_card=None):

@@ -1264,7 +1264,9 @@ function renderFull(r) {
   const shots = s2.shots || [];
   if (shots.length) {
     $("step2-block").style.display = "";
-    $("step2-note").textContent = s2.notes || `共 ${shots.length} 镜`;
+    const mr = typeof s2.match_rate === "number" ? s2.match_rate : null;
+    const mrChip = mr !== null ? ` · <span style="display:inline-block;padding:1px 8px;border-radius:999px;font-size:11px;background:${mr>=0.7?'#dcfce7':mr>=0.4?'#fef3c7':'#fee2e2'};color:${mr>=0.7?'#166534':mr>=0.4?'#854d0e':'#991b1b'}">匹配率 ${(mr*100).toFixed(0)}%</span>` : "";
+    $("step2-note").innerHTML = (s2.notes || `共 ${shots.length} 镜`) + mrChip;
     $("shots-list").innerHTML = shots.map(s =>
       `<div class="shot-item"><div class="idx">${s.idx}</div><div class="txt">${escapeHtml(s.text)}</div></div>`
     ).join("");
