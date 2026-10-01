@@ -5,11 +5,45 @@
 <title>app074 · 文案改写</title>
 <link rel="stylesheet" href="/assets/story_theme.css">
 <style>
+/* === STORY 1.24.0 真值 oklch 变量（与 /assets/story_theme.css 一致） === */
 :root{
-  --bg:#fafafa;--panel:#fff;--panel-2:#f7f8fa;--border:#e5e7eb;--border-strong:#d1d5db;
-  --text:#1f2937;--muted:#6b7280;--accent:#10b981;--accent-2:#059669;--accent-soft:#ecfdf5;
-  --primary:#111827;--warn:#f59e0b;--danger:#ef4444;--code:#f9fafb;
-  --shadow:0 1px 2px rgba(0,0,0,.04);
+  --font-sans:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei","Noto Sans SC",sans-serif;
+  --font-mono:"SF Mono","Cascadia Code",Consolas,monospace;
+  --radius-xs:4px;--radius-sm:6px;--radius-md:8px;--radius-lg:12px;--radius-xl:16px;
+  --ease-out:cubic-bezier(.22,1,.36,1);--ease-in-out:cubic-bezier(.65,0,.35,1);
+  --brand-hue:168;
+  --bg:oklch(.99 .003 250);--panel:oklch(1 0 0);--panel-2:oklch(.985 .003 250);
+  --border:oklch(.9 .005 250);--border-strong:oklch(.82 .007 250);--border-subtle:oklch(.94 .004 250);
+  --text:oklch(.22 .01 250);--muted:oklch(.44 .01 250);--text-faint:oklch(.7 .008 250);
+  --accent:oklch(.56 .16 168);--accent-2:oklch(.5 .17 168);--accent-soft:oklch(.56 .16 168 / .12);
+  --primary:oklch(.22 .01 250);--warn:oklch(.6 .15 65);--danger:oklch(.55 .2 25);
+  --code:oklch(.965 .004 250);
+  --shadow:0 1px 2px rgba(15,20,28,.06);
+  /* STORY 真值别名（与 story_theme.css 对齐，供新 UI 组件用） */
+  --brand:var(--accent);--brand-hover:var(--accent-2);--brand-soft:var(--accent-soft);
+  --brand-fg:oklch(.99 .003 250);--text-muted:var(--muted);--text-subtle:oklch(.58 .009 250);
+  --bg-elevated:var(--panel);--bg-raised:var(--panel-2);--bg-sunken:var(--code);
+  --bg-hover:oklch(.955 .005 250);--bg-active:oklch(.94 .006 250);
+  --success:var(--accent);--info:oklch(.55 .15 240);
+  --shadow-sm:var(--shadow);--shadow-md:0 4px 12px -2px rgba(15,20,28,.08);
+  --shadow-lg:0 12px 32px -8px rgba(15,20,28,.12);
+  --sidebar-bg:var(--bg);--titlebar-bg:var(--code);
+}
+[data-theme=dark]{
+  --bg:oklch(.165 .008 250);--panel:oklch(.195 .009 250);--panel-2:oklch(.215 .01 250);
+  --border:oklch(.28 .01 250);--border-strong:oklch(.36 .012 250);--border-subtle:oklch(.23 .008 250);
+  --text:oklch(.96 .005 250);--muted:oklch(.72 .008 250);--text-faint:oklch(.42 .01 250);
+  --accent:oklch(.72 .16 var(--brand-hue));--accent-2:oklch(.78 .17 var(--brand-hue));
+  --accent-soft:oklch(.72 .16 var(--brand-hue) / .12);
+  --primary:oklch(.96 .005 250);--warn:oklch(.8 .15 82);--danger:oklch(.68 .2 25);
+  --code:oklch(.145 .008 250);--shadow:0 1px 2px rgba(0,0,0,.3);
+  --brand:var(--accent);--brand-hover:var(--accent-2);--brand-soft:var(--accent-soft);
+  --brand-fg:oklch(.15 .01 250);--text-muted:var(--muted);--text-subtle:oklch(.56 .01 250);
+  --bg-elevated:var(--panel);--bg-raised:var(--panel-2);--bg-sunken:var(--code);
+  --bg-hover:oklch(.235 .011 250);--bg-active:oklch(.265 .012 250);
+  --success:var(--accent);--info:oklch(.72 .14 240);
+  --shadow-sm:var(--shadow);--shadow-md:0 4px 12px -2px rgba(0,0,0,.4);
+  --shadow-lg:0 12px 32px -8px rgba(0,0,0,.5);
 }
 *{box-sizing:border-box}
 html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
@@ -57,12 +91,13 @@ textarea{min-height:80px;}
 textarea.big{min-height:200px;}
 input.inline{width:auto;display:inline-block;}
 
-/* Chip groups */
+/* Chip groups — STORY 真值 */
 .chips{display:flex;flex-wrap:wrap;gap:6px;}
-.chip{padding:5px 11px;background:var(--panel-2);border:1px solid var(--border);
-  border-radius:14px;cursor:pointer;font-size:12px;color:var(--text);transition:.15s;user-select:none;}
-.chip:hover{border-color:var(--accent);}
-.chip.active{background:var(--primary);border-color:var(--primary);color:white;}
+.chip{padding:5px 11px;background:var(--panel);border:1px solid var(--border);
+  border-radius:14px;cursor:pointer;font-size:12px;color:var(--text-muted);transition:.15s;user-select:none;}
+.chip:hover{border-color:var(--border-strong);color:var(--text);}
+.chip.active,.chip[data-active=true]{background:var(--brand);border-color:var(--brand);color:var(--brand-fg);}
+.chip.active:hover,.chip[data-active=true]:hover{background:var(--brand-hover);border-color:var(--brand-hover);}
 .chip.sub{padding:3px 8px;font-size:11px;}
 .chip.disabled{opacity:.4;cursor:not-allowed;}
 
@@ -154,14 +189,15 @@ body{padding-left:220px;}
 /* 改写强度 打断轮数 / 带改模式 */
 .rewrite-extra{margin-top:10px;padding-top:10px;border-top:1px dashed var(--border);}
 .rewrite-extra .row{margin-bottom:6px;}
-.btn{padding:7px 16px;border-radius:6px;border:1px solid var(--border);background:white;cursor:pointer;font-size:13px;}
-.btn:hover{background:var(--panel-2);}
-.btn.primary{background:var(--primary);color:white;border-color:var(--primary);}
-.btn.primary:hover{background:#374151;}
-.btn.primary:disabled{background:#9ca3af;border-color:#9ca3af;cursor:not-allowed;}
-.btn.accent{background:var(--accent);color:white;border-color:var(--accent);}
-.btn.accent:hover{background:var(--accent-2);}
-.btn.ghost{background:transparent;}
+.btn{padding:7px 16px;border-radius:6px;border:1px solid var(--border);background:var(--panel);color:var(--text);cursor:pointer;font-size:13px;font-weight:500;transition:all .12s;}
+.btn:hover{border-color:var(--brand);color:var(--brand);}
+.btn.primary,.btn.btn-primary{background:var(--primary);color:white;border-color:var(--primary);}
+.btn.primary:hover,.btn.btn-primary:hover{background:oklch(.32 .01 250);border-color:oklch(.32 .01 250);}
+.btn.primary:disabled,.btn.btn-primary:disabled{background:var(--text-faint);border-color:var(--text-faint);cursor:not-allowed;}
+.btn.accent,.btn.btn-accent{background:var(--brand);color:var(--brand-fg);border-color:var(--brand);}
+.btn.accent:hover,.btn.btn-accent:hover{background:var(--brand-hover);border-color:var(--brand-hover);}
+.btn.ghost,.btn.btn-ghost{background:transparent;color:var(--text-muted);}
+.btn.ghost:hover,.btn.btn-ghost:hover{background:var(--bg-hover);color:var(--text);}
 .cost{font-size:12px;color:var(--muted);margin-left:auto;}
 .cost strong{color:var(--text);font-weight:600;}
 .cost .muted{color:var(--muted);margin-left:6px;}
@@ -178,6 +214,25 @@ body{padding-left:220px;}
   border:1px solid var(--border);border-radius:6px;padding:8px;font-size:13px;}
 .modal .actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px;}
 .error{color:var(--danger);font-size:12px;margin-top:8px;}
+
+/* === STORY 真值：settings-section-head + settings-card + settings-pip === */
+.settings-section-head{display:flex;align-items:center;gap:12px;margin-bottom:6px;}
+.settings-section-icon{width:32px;height:32px;border-radius:var(--radius-md);background:var(--brand-soft);color:var(--brand);display:grid;place-items:center;font-size:15px;flex-shrink:0;}
+.settings-section-title{font-size:14.5px;font-weight:600;color:var(--text);line-height:1.3;}
+.settings-section-sub{font-size:12px;color:var(--text-muted);margin-top:2px;line-height:1.4;}
+.settings-section-head .flex-1{flex:1;min-width:0;}
+.settings-pip{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;font-size:11.5px;font-weight:500;background:var(--bg-raised);color:var(--text-muted);border:1px solid var(--border-subtle);white-space:nowrap;flex-shrink:0;}
+.settings-pip-dot{width:7px;height:7px;border-radius:50%;background:currentColor;opacity:.65;flex-shrink:0;}
+.settings-pip.ok{background:color-mix(in oklch,var(--success) 12%,transparent);color:var(--success);border-color:color-mix(in oklch,var(--success) 22%,transparent);}
+.settings-pip.ok .settings-pip-dot{background:var(--success);opacity:1;box-shadow:0 0 0 2px color-mix(in oklch,var(--success) 18%,transparent);}
+.settings-pip.warn{background:color-mix(in oklch,var(--warn) 12%,transparent);color:var(--warn);border-color:color-mix(in oklch,var(--warn) 22%,transparent);}
+.settings-pip.warn .settings-pip-dot{background:var(--warn);opacity:1;}
+.settings-pip.bad{background:color-mix(in oklch,var(--danger) 12%,transparent);color:var(--danger);border-color:color-mix(in oklch,var(--danger) 22%,transparent);}
+.settings-pip.bad .settings-pip-dot{background:var(--danger);opacity:1;}
+.settings-pip.empty{background:var(--bg-raised);color:var(--text-faint);}
+.settings-pip.empty .settings-pip-dot{background:var(--text-faint);opacity:.55;}
+.settings-card{background:var(--panel);border:1px solid var(--border-subtle);border-radius:var(--radius-lg);padding:18px 20px;margin-bottom:14px;box-shadow:var(--shadow-sm);}
+.settings-card-footer{display:flex;align-items:center;gap:10px;margin-top:14px;padding-top:12px;border-top:1px solid var(--border-subtle);flex-wrap:wrap;}
 
 .spinner{display:inline-block;width:12px;height:12px;border:2px solid rgba(255,255,255,.4);
   border-top-color:white;border-radius:50%;animation:spin .8s linear infinite;
@@ -206,14 +261,14 @@ body{padding-left:220px;}
 .upload-result{margin-top:8px;font-size:11px;color:var(--muted);}
 .upload-result.ok{color:var(--accent-2);}
 
-/* 完整生成结果面板 */
-.full-step{margin-bottom:14px;padding:10px 12px;background:var(--code);border:1px solid var(--border);border-radius:6px;}
+/* 完整生成结果面板 — STORY settings-card 升级 */
+.full-step{margin-bottom:14px;padding:14px 16px;background:var(--panel);border:1px solid var(--border-subtle);border-radius:var(--radius-lg);box-shadow:var(--shadow-sm);}
 .full-step:last-child{margin-bottom:0;}
-.step-label{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;color:var(--text);margin-bottom:8px;}
-.step-no{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;background:var(--accent);color:white;border-radius:50%;font-size:11px;font-weight:600;}
-.step-note{font-size:11px;color:var(--muted);margin-bottom:6px;}
-.step-body{font-size:12px;line-height:1.7;white-space:pre-wrap;word-break:break-word;background:white;padding:8px 10px;border-radius:4px;border:1px solid var(--border);}
-.step-stats{font-size:11px;color:var(--muted);margin-top:4px;}
+.step-label{display:flex;align-items:center;gap:10px;font-size:13px;font-weight:600;color:var(--text);margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--border-subtle);}
+.step-no{display:inline-grid;place-items:center;min-width:24px;height:24px;padding:0 6px;background:var(--brand-soft);color:var(--brand);border-radius:6px;font-size:11.5px;font-weight:700;letter-spacing:.02em;}
+.step-note{font-size:11.5px;color:var(--text-muted);margin-bottom:8px;line-height:1.5;}
+.step-body{font-size:12.5px;line-height:1.7;white-space:pre-wrap;word-break:break-word;background:var(--bg-raised);padding:10px 12px;border-radius:var(--radius-sm);border:1px solid var(--border-subtle);}
+.step-stats{font-size:11px;color:var(--text-faint);margin-top:6px;}
 
 .meta-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 14px;}
 .meta-k{font-size:11px;color:var(--muted);margin-bottom:2px;}
@@ -270,12 +325,6 @@ body{padding-left:220px;}
     <div class="nav-item"><span class="ico">💎</span>积分管理</div>
   </div>
 
-  <div class="nav-group">
-    <div class="nav-item" style="color:var(--danger)"><span class="ico">👑</span>帝王密码</div>
-    <div class="nav-item"><span class="ico">⭐</span>对标监控</div>
-    <div class="nav-item"><span class="ico">🏪</span>创作市场</div>
-  </div>
-
   <div class="sidebar-bottom">
     <div class="user-box">
       <div class="name">半半·龙月</div>
@@ -291,15 +340,18 @@ body{padding-left:220px;}
 
   <!-- Page header -->
   <div class="page-hd">
-    <div style="display:flex;align-items:center;justify-content:space-between">
-      <h1><span class="ico">🎬</span>创建视频任务</h1>
-      <div style="display:flex;align-items:center;gap:8px">
-        <span id="status" class="status warn">未配置</span>
-        <button id="btn-tasks" onclick="location.href='/tasks.html'" style="background:transparent;border:1px solid var(--border);color:var(--muted);cursor:pointer;font-size:12px;padding:5px 10px;border-radius:6px">📋 任务</button>
-        <button id="btn-settings" style="background:transparent;border:1px solid var(--border);color:var(--muted);cursor:pointer;font-size:12px;padding:5px 10px;border-radius:6px">⚙ 设置</button>
+    <div class="settings-section-head">
+      <div class="settings-section-icon"><span class="ico">🎬</span></div>
+      <div class="flex-1">
+        <div class="settings-section-title">创建图文视频任务</div>
+        <div class="settings-section-sub">粘贴一段人物故事，几十秒后在剪映里打开</div>
       </div>
+      <span id="status" class="settings-pip warn"><span class="settings-pip-dot"></span>未配置</span>
     </div>
-    <div class="sub">粘贴一段人物故事，几十秒后在剪映里打开</div>
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px">
+      <button id="btn-tasks" onclick="location.href='/tasks.html'" class="btn">📋 任务</button>
+      <button id="btn-settings" onclick="location.href='/settings.html'" class="btn">⚙ 设置</button>
+    </div>
     <div class="quota-bar">⚠ 半半·龙月 150/150 · 已用完 · 可用积分继续（0 积分/条）</div>
   </div>
 
@@ -832,14 +884,14 @@ body{padding-left:220px;}
 <!-- Footer -->
 <div class="footer">
   <div class="inner">
-    <span class="status ok" id="footer-status" style="margin-right:auto">✓ 文案改写链路已就绪</span>
+    <span id="footer-status" class="settings-pip ok" style="margin-right:auto"><span class="settings-pip-dot"></span>文案改写链路已就绪</span>
     <select class="model-select" id="model-pick">
       <option value="">加载中…</option>
     </select>
     <span class="cost" id="cost-estimate">预计 <strong>1-3</strong> 分钟完成 <span class="muted">改写仅几秒</span></span>
-    <button class="btn ghost">保存为草稿</button>
-    <button class="btn primary" id="btn-run">▶ 开始生成 <kbd style="font-size:10px;background:rgba(255,255,255,.2);padding:1px 5px;border-radius:3px;margin-left:4px">Enter</kbd></button>
-    <button class="btn accent" id="btn-run-full-footer">▶ 完整生成（Step 0-3）</button>
+    <button class="btn btn-ghost">保存为草稿</button>
+    <button class="btn btn-primary" id="btn-run">▶ 开始生成 <kbd style="font-size:10px;background:rgba(0,0,0,.15);color:#fff;padding:1px 5px;border-radius:3px;margin-left:4px">Enter</kbd></button>
+    <button class="btn btn-accent" id="btn-run-full-footer">▶ 完整生成（Step 0-3）</button>
   </div>
 </div>
 
