@@ -1,5 +1,14 @@
 async function runImagePipeline({ request, generate, tts, image, cover, resume, mode = 'full',
   pauseMode = 'never', pauseStages = [], onPause = async () => true, onStage = () => {} }) {
+  const makeFormData = (fields) => {
+    const fd = new FormData();
+    for (const [k, v] of Object.entries(fields)) {
+      if (v === undefined || v === null) continue;
+      if (k === 'file' && !(v instanceof Blob)) continue;
+      fd.append(k, v);
+    }
+    return fd;
+  };
   const prior = resume?.steps || {};
   const resumeReady = !!(resume?.info?.task_id && prior.rewrite && prior.meta && prior.shots?.length);
   if (!resumeReady && mode !== 'full' && !generate.reference?.trim()) {
@@ -62,11 +71,24 @@ async function runImagePipeline({ request, generate, tts, image, cover, resume, 
   const missingSpeech = shots.filter(shot => !savedSpeech.has(Number(shot.idx)));
   let newSpeech = [];
   if (missingSpeech.length) {
-    const response = await call('tts', '/api/step5_tts', {
-      task_id: taskId,
-      segments: missingSpeech.map(shot => ({ idx: shot.idx, text: shot.text })),
-      speed: tts.speed, provider: tts.provider, speaker: tts.speaker,
-    });
+    let response;
+    if (tts.mode === 'upload') {
+      if (!tts.file) throw new Error('上传配音模式需要选择本地音频文件');
+      const uploaded = await request('/api/upload_voice', makeFormData({
+        task_id: taskId, file: tts.file,
+      }));
+      if (!uploaded?.ok) throw new Error('音频上传失败');
+      response = await call('tts', '/api/step5_tts', {
+        task_id: taskId, mode: 'upload',
+        segments: missingSpeech.map(shot => ({ idx: shot.idx, text: shot.text })),
+      });
+    } else {
+      response = await call('tts', '/api/step5_tts', {
+        task_id: taskId,
+        segments: missingSpeech.map(shot => ({ idx: shot.idx, text: shot.text })),
+        speed: tts.speed, provider: tts.provider, speaker: tts.speaker,
+      });
+    }
     requireResults('tts', response?.results, missingSpeech.length);
     newSpeech = response.results;
   }

@@ -1493,6 +1493,53 @@ def probe_audio_duration(path):
         return None
 
 
+def slice_uploaded_voice(task_dir, segments):
+    """把 task_dir/uploaded-voice.mp3 按 segments 字符权重切到 audio/seg_XXX.mp3。
+    返回 [{index, path, duration, text, duration_source="upload_slice"}]。
+    需要 ffmpeg；总时长读不到时抛 RuntimeError。"""
+    uploaded = Path(task_dir) / "uploaded-voice.mp3"
+    if not uploaded.exists():
+        raise RuntimeError("未找到 uploaded-voice.mp3，请先调用 /api/upload_voice")
+    ffmpeg_bin = shutil.which("ffmpeg")
+    if not ffmpeg_bin:
+        raise RuntimeError("上传配音切片需要 ffmpeg；本机未在 PATH 中找到 ffmpeg")
+    total_duration = probe_audio_duration(uploaded) or 0
+    if total_duration <= 0:
+        raise RuntimeError("无法读取上传音频时长，ffprobe 可能失败")
+    audio_dir = Path(task_dir) / "audio"
+    audio_dir.mkdir(parents=True, exist_ok=True)
+    chars = [max(1, len((seg.get("text") or "").strip())) for seg in segments]
+    total_chars = sum(chars)
+    results = []
+    cursor = 0.0
+    for i, (seg, c) in enumerate(zip(segments, chars)):
+        share = c / total_chars
+        seg_dur = total_duration * share
+        seg_end = total_duration if i == len(segments) - 1 else cursor + seg_dur
+        out = audio_dir / f"seg_{seg.get('idx', i+1):03d}.mp3"
+        cmd = [ffmpeg_bin, "-y", "-ss", f"{cursor:.3f}", "-to", f"{seg_end:.3f}",
+               "-i", str(uploaded), "-c", "copy", str(out)]
+        try:
+            r = subprocess.run(cmd, capture_output=True, timeout=30, check=False)
+            if r.returncode != 0:
+                # copy 在跨帧时可能失败；回退到重新编码
+                cmd2 = [ffmpeg_bin, "-y", "-ss", f"{cursor:.3f}", "-to", f"{seg_end:.3f}",
+                        "-i", str(uploaded), "-c:a", "libmp3lame", "-b:a", "128k", str(out)]
+                subprocess.run(cmd2, capture_output=True, timeout=60, check=False)
+        except (OSError, subprocess.TimeoutExpired) as e:
+            raise RuntimeError(f"ffmpeg 切片失败：{e}") from e
+        actual_dur = probe_audio_duration(out) or seg_dur
+        results.append({
+            "index": int(seg.get("idx", i+1)),
+            "path": str(out),
+            "duration": round(float(actual_dur), 2),
+            "text": seg.get("text", ""),
+            "duration_source": "upload_slice",
+        })
+        cursor = seg_end
+    return results, round(total_duration, 2)
+
+
 # ============================================================
 # 火山 ASR — 真值函数（参考 STORY H6 40002-L40002.js + index-CXUXw7CE.js:39983-40068）
 #   submit: POST .../auc/bigmodel/submit → 20000000 立即成功 / 否则错误
@@ -2097,6 +2144,63 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _read_multipart(self):
+        """解析 multipart/form-data；返回 (form: dict, files: dict)。
+        字段名 → 文本/字节。失败抛 ValueError。"""
+        content_type = self.headers.get("content-type", "")
+        m = re.search(r"boundary=([^;]+)", content_type)
+        if not m:
+            raise ValueError("multipart 缺少 boundary")
+        boundary = m.group(1).strip().strip('"').encode("ascii")
+        length = int(self.headers.get("content-length", "0") or "0")
+        body = self.rfile.read(length) if length else b""
+        delimiter = b"--" + boundary
+        parts = body.split(delimiter)
+        form, files = {}, {}
+        for raw in parts[1:-1]:
+            if not raw or raw in (b"\r\n", b""):
+                continue
+            if b"\r\n\r\n" not in raw:
+                continue
+            headers_raw, content = raw.split(b"\r\n\r\n", 1)
+            if content.endswith(b"\r\n"):
+                content = content[:-2]
+            headers = {}
+            for line in headers_raw.decode("utf-8", errors="replace").split("\r\n"):
+                if ":" in line:
+                    k, v = line.split(":", 1)
+                    headers[k.strip().lower()] = v.strip()
+            disp = headers.get("content-disposition", "")
+            nm = re.search(r'name="([^"]+)"', disp)
+            if not nm:
+                continue
+            name = nm.group(1)
+            if "filename=" in disp:
+                files[name] = content
+            else:
+                form[name] = content.decode("utf-8", errors="replace")
+        return form, files
+
+    def _handle_upload_voice(self, form, files):
+        task_id = (form.get("task_id") or "").strip() or f"task_{int(time.time())}"
+        content = files.get("file")
+        if not content:
+            raise ValueError("缺少 file 字段")
+        if len(content) > 50 * 1024 * 1024:
+            raise ValueError("音频文件超过 50MB 上限")
+        task_dir = DATA_DIR / "tasks" / task_id
+        task_dir.mkdir(parents=True, exist_ok=True)
+        out = task_dir / "uploaded-voice.mp3"
+        out.write_bytes(content)
+        duration = probe_audio_duration(out) or 0
+        self._json(200, {
+            "ok": True,
+            "task_id": task_id,
+            "path": str(out),
+            "size": len(content),
+            "duration": duration,
+        })
+
     def _file(self, path, ctype):
         if not path.exists():
             self.send_error(404)
@@ -2209,6 +2313,23 @@ class Handler(BaseHTTPRequestHandler):
         self.send_error(404)
 
     def do_POST(self):
+        content_type = self.headers.get("content-type", "")
+        if content_type.startswith("multipart/form-data"):
+            try:
+                form, files = self._read_multipart()
+            except ValueError as e:
+                self._json(400, {"error": f"multipart 解析失败：{e}"})
+                return
+            if self.path == "/api/upload_voice":
+                try:
+                    self._handle_upload_voice(form, files)
+                except ValueError as e:
+                    self._json(400, {"error": str(e)})
+                except RuntimeError as e:
+                    self._json(500, {"error": str(e)})
+                return
+            self._json(404, {"error": f"multipart 接口不存在: {self.path}"})
+            return
         length = int(self.headers.get("content-length", "0") or "0")
         try:
             data = json.loads(self.rfile.read(length).decode("utf-8")) if length else {}
@@ -2771,8 +2892,54 @@ class Handler(BaseHTTPRequestHandler):
                 task_id = (data.get("task_id") or f"task_{int(time.time())}").strip()
                 speed = float(data.get("speed") or 1.0)
                 provider = (data.get("provider") or s.get("tts", {}).get("provider", "volcengine")).strip()
+                mode = (data.get("mode") or "synthesize").strip()
                 if not segments:
                     self._json(400, {"error": "segments 不能为空"})
+                    return
+                task_dir = DATA_DIR / "tasks" / task_id
+                task_dir.mkdir(parents=True, exist_ok=True)
+                audio_dir = task_dir / "audio"
+                audio_dir.mkdir(parents=True, exist_ok=True)
+
+                if mode == "upload":
+                    # 上传自定义配音：用 ffmpeg 按字符权重切片
+                    seg_records, total_dur = slice_uploaded_voice(task_dir, segments)
+                    segment_file = task_dir / "05-tts-segments.json"
+                    previous_segments = []
+                    if segment_file.exists():
+                        try:
+                            previous_segments = json.loads(segment_file.read_text(encoding="utf-8"))
+                        except (OSError, ValueError):
+                            previous_segments = []
+                    by_index = {item["index"]: item for item in previous_segments
+                                if isinstance(item, dict) and isinstance(item.get("index"), int)}
+                    by_index.update({item["index"]: item for item in seg_records})
+                    segment_file.write_text(
+                        json.dumps([by_index[idx] for idx in sorted(by_index)], ensure_ascii=False, indent=2),
+                        encoding="utf-8"
+                    )
+                    results = []
+                    for segment in seg_records:
+                        results.append({
+                            "idx": segment["index"],
+                            "ok": True,
+                            "path": segment["path"],
+                            "url": f"/api/audio/{task_id}/seg_{segment['index']:03d}.mp3",
+                            "duration": segment["duration"],
+                            "text": segment["text"],
+                            "duration_source": segment["duration_source"],
+                        })
+                    self._json(200, {
+                        "results": results,
+                        "task_id": task_id,
+                        "task_dir": str(task_dir),
+                        "provider": "upload",
+                        "speaker": "uploaded-voice",
+                        "ok_count": len(results),
+                        "total": len(results),
+                        "total_duration": total_dur,
+                        "elapsed": 0.0,
+                    })
                     return
                 # 取配置
                 tts = s.get("tts") or {}

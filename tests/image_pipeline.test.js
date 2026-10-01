@@ -170,3 +170,39 @@ test('续跑只补缺失的配音和图片', async () => {
   assert.equal(result.step5.results.length, 2);
   assert.equal(result.step4.results.length, 2);
 });
+
+test('上传配音模式先调 /api/upload_voice 再以 mode=upload 切片', async () => {
+  const calls = [];
+  const file = new Blob([new Uint8Array(2048)], {type: 'audio/mpeg'});
+  const replies = [
+    firstGeneration(),
+    {ok: true, task_id: 'task_1', path: '/tmp/seg_001.mp3', size: 2048, duration: 4.0},
+    {results: [
+      {idx:1,ok:true,path:'/tmp/seg_001.mp3',duration:2,text:'第一镜',duration_source:'upload_slice'},
+    ], provider: 'upload'},
+    {steps:{'3':[{idx:1,desc_prompt:'画面'}]}},
+    {results:[{idx:1,ok:true,url:'/covers/a.png'}]},
+    {draft_dir:'draft'},
+  ];
+  await runImagePipeline({
+    request: async (path, body) => { calls.push({path,body}); return replies.shift(); },
+    generate:{reference:'原文'}, tts:{mode:'upload', file},
+    image:{provider:'gpt_image',ratio:'9:16',resolution:'1k',concurrency:1},
+  });
+  assert.deepEqual(calls.map(c => c.path),
+    ['/api/generate','/api/upload_voice','/api/step5_tts','/api/generate',
+     '/api/step4_generate_images','/api/step6_jianying_draft']);
+  assert.ok(calls[1].body instanceof FormData, 'upload_voice 必须用 FormData');
+  assert.equal(calls[2].body.mode, 'upload');
+  assert.equal(calls[2].body.provider, undefined);
+});
+
+test('上传配音模式缺文件立即报错，不发起付费调用', async () => {
+  const calls = [];
+  await assert.rejects(runImagePipeline({
+    request: async (path) => { calls.push(path); return firstGeneration(); },
+    generate:{reference:'原文'}, tts:{mode:'upload'},  // file 缺失
+    image:{provider:'gpt_image',ratio:'9:16'},
+  }), /需要选择本地音频文件/);
+  assert.deepEqual(calls, ['/api/generate']);  // generate 已调，但 upload_voice 没调
+});

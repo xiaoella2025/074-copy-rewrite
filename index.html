@@ -703,7 +703,13 @@ body{padding-left:220px;}
 
     <div class="chips" id="tts-mode" style="margin-bottom:10px">
       <span class="chip active" data-tts="system">系统配音（TTS 生成）</span>
-      <span class="chip disabled" data-tts="custom" aria-disabled="true">上传自定义配音 · 暂未接入</span>
+      <span class="chip" data-tts="custom">上传自定义配音（mp3/wav）</span>
+    </div>
+
+    <div id="tts-upload-area" style="display:none;margin-bottom:10px">
+      <div class="help" style="margin-bottom:6px">上传整段口播音频（mp3 / wav），用 ffmpeg 按分镜字符权重切片到每个镜头</div>
+      <input type="file" id="tts-upload-file" accept="audio/mpeg,audio/mp3,audio/wav,audio/x-wav">
+      <div class="help" id="tts-upload-info" style="margin-top:4px"></div>
     </div>
 
     <div class="chips" id="tts-provider" style="margin-bottom:10px">
@@ -921,7 +927,9 @@ bindChips("dynamic-shots");
 bindChips("img-ratio");
 bindChips("style");
 bindChips("cover-mode");
-bindChips("tts-mode");
+bindChips("tts-mode", (chip) => {
+  $("tts-upload-area").style.display = chip.dataset.tts === "custom" ? "" : "none";
+});
 bindChips("tts-provider");
 bindChips("tts-speed");
 document.querySelectorAll("#tts-provider .chip").forEach(chip => chip.addEventListener("click", syncVoiceOptions));
@@ -1102,8 +1110,13 @@ function openSettings() {
 if ($("btn-cancel")) $("btn-cancel").onclick = () => $("modal-settings").classList.remove("open");
 
 async function api(path, method = "GET", body) {
-  const opts = { method, headers: { "content-type": "application/json" } };
-  if (body) opts.body = JSON.stringify(body);
+  const opts = { method, headers: {} };
+  if (body instanceof FormData) {
+    opts.body = body;
+  } else if (body) {
+    opts.headers["content-type"] = "application/json";
+    opts.body = JSON.stringify(body);
+  }
   const r = await fetch(path, opts);
   if (!r.ok) {
     const j = await r.json().catch(() => ({ error: r.statusText }));
@@ -1400,7 +1413,8 @@ async function runPipeline() {
     const resumeId = new URLSearchParams(location.search).get("resume");
     const resume = resumeId ? await api(`/api/task/${encodeURIComponent(resumeId)}`) : null;
     if (getActiveChip("tts-mode", "data-tts", "system") === "custom") {
-      throw new Error("自定义配音上传尚未接入图文全流程，请选择系统配音");
+      const f = $("tts-upload-file").files?.[0];
+      if (!f) throw new Error("上传配音模式需要先选一份音频");
     }
     if (getActiveChip("img-source", "data-img-src", "ai") !== "ai") {
       throw new Error("当前图文全流程只支持 AI 绘图素材来源，请选择 AI 绘图");
@@ -1465,9 +1479,11 @@ async function runPipeline() {
         },
       },
       tts: {
+        mode: getActiveChip("tts-mode", "data-tts", "system"),
         provider: getActiveChip("tts-provider", "data-ttsp", "volcengine"),
         speaker: $("voice").value,
         speed: speedValue / (speedChip.length >= 3 ? 100 : 10),
+        file: getActiveChip("tts-mode", "data-tts", "system") === "custom" ? $("tts-upload-file").files?.[0] : null,
       },
       image: {
         provider: imageProvider,
