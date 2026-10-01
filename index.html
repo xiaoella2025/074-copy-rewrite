@@ -1202,7 +1202,7 @@ $("btn-copy").onclick = () => {
   });
 };
 
-// ========== 完整生成（Step 0-3） ==========
+// ========== 一键全链路（Step 0-6） ==========
 let lastFullResult = null;
 
 async function runFull() {
@@ -1338,7 +1338,7 @@ async function runPipeline() {
   // 隐藏 Step 4/5/6 旧结果
   ["step4-block","step5-block","step6-block"].forEach(id => $(id).style.display = "none");
   try {
-    // 1. 跑 /api/generate（Step 0-3）
+    // 1. 跑 /api/generate（Step 0-6）
     const styleActive = document.querySelector("#style .style-chip.active");
     const styleLabel = styleActive ? styleActive.textContent.trim() : "现代电影";
     const trackActive = document.querySelector("#tracks .chip.active");
