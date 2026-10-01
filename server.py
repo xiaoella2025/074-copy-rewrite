@@ -401,16 +401,43 @@ def save_profiles(profiles):
             temp.unlink()
 
 
+def _masked_profile_key(key):
+    """Only use this value for display; it must never be persisted as a credential."""
+    if not isinstance(key, str) or not key or "•" in key:
+        return ""
+    if len(key) <= 8:
+        return "•" * len(key)
+    return key[:4] + "•" * min(20, len(key) - 8) + key[-4:]
+
+
+def _merge_profile_keys(incoming, stored):
+    """Distinguish keep (missing/masked), replace (new text), and clear (empty)."""
+    old_by_id = {p.get("id"): p for p in stored if isinstance(p, dict) and p.get("id")}
+    merged = []
+    for profile in incoming:
+        if not isinstance(profile, dict):
+            raise ValueError("profile 必须是对象")
+        p = dict(profile)
+        old = old_by_id.get(p.get("id"), {})
+        old_key = old.get("apiKey") or ""
+        displayed = _masked_profile_key(old_key)
+        submitted = p.get("apiKey")
+        if "apiKey" not in p or (displayed and submitted == displayed):
+            p["apiKey"] = old_key if displayed else ""
+        elif not isinstance(submitted, str):
+            raise ValueError("API Key 必须是字符串")
+        elif "•" in submitted:
+            raise ValueError("脱敏 API Key 不能作为新 Key 保存，请重新输入")
+        merged.append(p)
+    return merged
+
+
 def public_profiles():
     """返回给前端：所有 profile 的元信息（key 脱敏到只显示前缀+后缀）。"""
     out = []
     for p in load_profiles():
         if not isinstance(p, dict): continue
-        key = p.get("apiKey", "") or ""
-        masked = ""
-        if key:
-            if len(key) <= 8: masked = "•" * len(key)
-            else: masked = key[:4] + "•" * min(20, len(key) - 8) + key[-4:]
+        masked = _masked_profile_key(p.get("apiKey", "") or "")
         out.append({
             "id":       p.get("id") or "",
             "name":     p.get("name") or "未命名",
@@ -419,6 +446,9 @@ def public_profiles():
             "model":    p.get("model") or "",
             "baseUrl":  p.get("baseUrl") or "",
             "apiKey":   masked,
+            "masked_key": masked,
+            "has_key":  bool(masked),
+            "models":   p.get("models") or [],
             "fallback": p.get("fallback") or [],
             "proxyUrl": p.get("proxyUrl") or "",
             "enabled":  bool(p.get("enabled")),
@@ -440,7 +470,7 @@ def resolve_active_llm_settings():
             "protocol": active.get("protocol", "openai"),
             "base_url": (active.get("baseUrl") or "").rstrip("/"),
             "model":    active.get("model", ""),
-            "api_key":  active.get("apiKey", ""),
+            "api_key":  active.get("apiKey", "") if _masked_profile_key(active.get("apiKey", "")) else "",
             "proxy":    active.get("proxyUrl", ""),
             "fallback": active.get("fallback", []) or [],
         }
@@ -2725,6 +2755,7 @@ class Handler(BaseHTTPRequestHandler):
                     raise ValueError("profiles 必须是数组")
                 if len(incoming) == 0:
                     raise ValueError("至少保留 1 个 profile")
+                incoming = _merge_profile_keys(incoming, load_profiles())
                 # 校验：每个 enabled 的 profile 必须有 apiKey（未启用的草稿允许空 Key）
                 # 修复 STORY LLM 编辑器对标：openNewProfile 立即 POST 一个空草稿（enabled:false），
                 # 用户填好 Key 后再点编辑头部的「设为当前」激活（Settings-XLgSTp15.js:619-697）。
@@ -2743,12 +2774,21 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if self.path == "/api/test_llm":
-            # 用请求里直接给的凭据做一次真实调用（不依赖 settings）
+            # 新输入的 Key 优先；输入留空时只测试指定 profile 已保存的整套配置。
             provider = (data.get("provider") or "").strip()
             protocol = (data.get("protocol") or "openai").strip()
             base_url = (data.get("base_url") or "").strip().rstrip("/")
             api_key  = (data.get("api_key") or "").strip()
             model    = (data.get("model") or "").strip()
+            if not api_key and data.get("profile_id"):
+                profile = next((p for p in load_profiles() if isinstance(p, dict) and p.get("id") == data["profile_id"]), None)
+                if profile:
+                    saved_key = profile.get("apiKey") or ""
+                    api_key = saved_key if _masked_profile_key(saved_key) else ""
+                    provider = (profile.get("provider") or "").strip()
+                    protocol = (profile.get("protocol") or "openai").strip()
+                    base_url = (profile.get("baseUrl") or "").strip().rstrip("/")
+                    model = (profile.get("model") or "").strip()
             if not (provider and base_url and api_key and model):
                 self._json(400, {"ok": False, "error": "缺少 provider / base_url / api_key / model"})
                 return

@@ -1240,7 +1240,7 @@ async function refreshStatus() {
       }
     }
 
-    if (active) {
+    if (active?.has_key) {
       $("status").className = "status ok";
       $("status").textContent = `${active.provider} · ${active.model}`;
       $("footer-status").textContent = `✓ 当前配置：${active.name} · ${active.model}`;
@@ -1248,7 +1248,9 @@ async function refreshStatus() {
     } else {
       $("status").className = "status warn";
       $("status").textContent = "未配置";
-      $("footer-status").textContent = "⚠ 未配置任何 LLM（点右上角「设置」新建）";
+      $("footer-status").textContent = active
+        ? "⚠ 当前 LLM 配置缺少 API Key（到系统设置补填并保存）"
+        : "⚠ 未配置任何 LLM（点右上角「设置」新建）";
       $("footer-status").className = "status warn";
     }
   } catch (e) {
