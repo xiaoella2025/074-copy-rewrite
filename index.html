@@ -354,7 +354,24 @@ body{padding-left:220px;}
     <div class="section-title"><span class="icon">🎬</span> 视频形态</div>
     <div class="chips" id="video-form">
       <div class="chip active" data-form="narrator">旁白视频 · 单人出镜讲述（默认）</div>
-      <div class="chip disabled" data-form="podcast" aria-disabled="true">双人播客 · 暂未接入</div>
+      <div class="chip" data-form="podcast">双人播客 · A/B 主播对谈</div>
+    </div>
+    <div id="podcast-speakers" style="display:none;margin-bottom:10px">
+      <div class="grid-2">
+        <div>
+          <div class="help" style="margin-bottom:6px">主播 A · 音色</div>
+          <select class="model-select" style="width:100%;padding:6px 10px" id="podcast-speaker-a">
+            <option value="">加载配置中…</option>
+          </select>
+        </div>
+        <div>
+          <div class="help" style="margin-bottom:6px">主播 B · 音色</div>
+          <select class="model-select" style="width:100%;padding:6px 10px" id="podcast-speaker-b">
+            <option value="">加载配置中…</option>
+          </select>
+        </div>
+      </div>
+      <div class="help" style="margin-top:6px">主播 A/B 会在设置页各自绑定一个火山 TTS voice_id；播客模式下配音不可改为 MiniMax / Aura / 上传</div>
     </div>
   </div>
 
@@ -921,7 +938,28 @@ function getActiveChip(containerId, dataKey, fallback = "") {
   return active.getAttribute(dataKey) || fallback;
 }
 
-bindChips("video-form");
+bindChips("video-form", (chip) => {
+  $("podcast-speakers").style.display = chip.dataset.form === "podcast" ? "" : "none";
+  const podcast = chip.dataset.form === "podcast";
+  document.querySelectorAll("#tts-provider .chip").forEach(c => {
+    if (podcast && c.dataset.ttsp !== "volcengine") {
+      c.classList.add("disabled"); c.style.pointerEvents = "none";
+      c.title = "双人播客目前只支持火山引擎 TTS";
+    } else {
+      c.classList.remove("disabled"); c.style.pointerEvents = "";
+      c.title = "";
+    }
+  });
+  document.querySelectorAll("#tts-mode .chip").forEach(c => {
+    if (podcast && c.dataset.tts !== "system") {
+      c.classList.add("disabled"); c.style.pointerEvents = "none";
+      c.title = "双人播客只能使用系统配音";
+    } else {
+      c.classList.remove("disabled"); c.style.pointerEvents = "";
+      c.title = "";
+    }
+  });
+});
 bindChips("tracks");
 bindChips("hooks", null, false);
 bindChips("viewpoints");
@@ -1206,6 +1244,34 @@ function syncVoiceOptions() {
     chip.onclick = () => { voice.value = v.id; };
     chips.appendChild(chip);
   });
+  // 播客 A/B 主播音色（仅在播客 chip 启用时显示；目前只有火山可播客）
+  const podcastCfg = tts.podcast || {};
+  const defaultA = (provider === "volcengine" && (tts.volcengine_speaker ||
+      "zh_male_dongfanghaoran_moon_bigtts")) || "";
+  const defaultB = (provider === "volcengine" &&
+      "zh_female_wanqudashu_moon_bigtts") || "";
+  for (const sel of ["podcast-speaker-a", "podcast-speaker-b"]) {
+    const el = $(sel);
+    if (!el) continue;
+    el.replaceChildren();
+    const prev = el.value;
+    const list = [];
+    const addP = (id, label) => { if (id && !list.some(v => v.id === id)) list.push({id, label}); };
+    addP(podcastCfg.speaker_a || defaultA, "主播 A · 默认");
+    addP(podcastCfg.speaker_b || defaultB, "主播 B · 默认");
+    if (provider === "volcengine") {
+      addP(tts.volcengine_speaker || "zh_male_dongfanghaoran_moon_bigtts", "火山 · 当前默认音色");
+    }
+    if (!list.length) addP("", "请先在系统设置中配置音色 ID");
+    list.forEach(entry => {
+      const option = document.createElement("option");
+      option.value = entry.id; option.textContent = entry.label;
+      el.appendChild(option);
+    });
+    if (list.some(v => v.id === prev)) el.value = prev;
+    else if (sel === "podcast-speaker-a" && list.some(v => v.id === defaultA)) el.value = defaultA;
+    else if (sel === "podcast-speaker-b" && list.some(v => v.id === defaultB)) el.value = defaultB;
+  }
 }
 
 function syncImageOptions() {
@@ -1426,7 +1492,7 @@ async function runPipeline() {
       throw new Error("当前图文全流程只支持 AI 绘图素材来源，请选择 AI 绘图");
     }
     if (getActiveChip("video-form", "data-form", "narrator") !== "narrator") {
-      throw new Error("双人播客需要双音色分镜，当前任务链路尚未接入，请选择旁白视频");
+      // 双人播客由 runImagePipeline 内部通过 script_format=podcast 路由
     }
     if (getActiveChip("dynamic-shots", "data-dynamic", "off") !== "off"
       && !$("img-source")?.classList) {  /* placeholder so the script keeps shape */
@@ -1491,6 +1557,10 @@ async function runPipeline() {
         speaker: $("voice").value,
         speed: speedValue / (speedChip.length >= 3 ? 100 : 10),
         file: getActiveChip("tts-mode", "data-tts", "system") === "custom" ? $("tts-upload-file").files?.[0] : null,
+        podcast: getActiveChip("video-form", "data-form", "narrator") === "podcast" ? {
+          speaker_a: $("podcast-speaker-a")?.value || "",
+          speaker_b: $("podcast-speaker-b")?.value || "",
+        } : null,
       },
       image: {
         provider: imageProvider,
@@ -1500,6 +1570,7 @@ async function runPipeline() {
         retry: $("toggle-retry").classList.contains("on"),
       },
       cover: {mode: coverMode, style: styleLabel, dataUrl: coverDataUrl},
+      scriptFormat: getActiveChip("video-form", "data-form", "narrator") === "podcast" ? "podcast" : "narrator",
       dynamic: {
         mode: getActiveChip("dynamic-shots", "data-dynamic", "off"),
         custom_idxs: (() => {

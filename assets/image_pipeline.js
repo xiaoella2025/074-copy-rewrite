@@ -1,4 +1,5 @@
 async function runImagePipeline({ request, generate, tts, image, cover, resume, dynamic, mode = 'full',
+  scriptFormat = 'narrator',
   pauseMode = 'never', pauseStages = [], onPause = async () => true, onStage = () => {} }) {
   const makeFormData = (fields) => {
     const fd = new FormData();
@@ -49,6 +50,7 @@ async function runImagePipeline({ request, generate, tts, image, cover, resume, 
   } : await call('generate', '/api/generate', {
     ...generate, ...(resume?.info?.task_id ? {task_id: resume.info.task_id} : {}),
     ...(mode === 'full' ? {} : { rewritten: generate.reference }),
+    ...(scriptFormat ? { script_format: scriptFormat } : {}),
     run_steps: mode === 'full' ? ['0', '1', 'meta', '2'] : ['meta', '2'],
   });
   if (resumeReady) onStage('generate', 'done', gen);
@@ -70,6 +72,7 @@ async function runImagePipeline({ request, generate, tts, image, cover, resume, 
       url: `/api/audio/${taskId}/seg_${String(item.index).padStart(3, '0')}.mp3`}]));
   const missingSpeech = shots.filter(shot => !savedSpeech.has(Number(shot.idx)));
   let newSpeech = [];
+  let podcastResult = null;
   if (missingSpeech.length) {
     let response;
     if (tts.mode === 'upload') {
@@ -82,6 +85,15 @@ async function runImagePipeline({ request, generate, tts, image, cover, resume, 
         task_id: taskId, mode: 'upload',
         segments: missingSpeech.map(shot => ({ idx: shot.idx, text: shot.text })),
       });
+    } else if (scriptFormat === 'podcast') {
+      response = await call('tts', '/api/step5_tts', {
+        task_id: taskId, mode: 'podcast',
+        segments: missingSpeech.map(shot => ({ idx: shot.idx, text: shot.text,
+                                               speaker: shot.speaker || 'A' })),
+        speed: tts.speed,
+        provider: tts.provider || 'volcengine',
+        podcast: tts.podcast || {},
+      });
     } else {
       response = await call('tts', '/api/step5_tts', {
         task_id: taskId,
@@ -91,6 +103,12 @@ async function runImagePipeline({ request, generate, tts, image, cover, resume, 
     }
     requireResults('tts', response?.results, missingSpeech.length);
     newSpeech = response.results;
+    if (scriptFormat === 'podcast' && response?.podcast_path) {
+      podcastResult = { path: response.podcast_path,
+                        url: response.podcast_url,
+                        rounds: response.rounds || [],
+                        speakers: response.speakers || {} };
+    }
   }
   const speechByIdx = new Map([...savedSpeech.values(), ...newSpeech].map(item => [Number(item.idx), item]));
   const step5 = {results: shots.map(shot => speechByIdx.get(Number(shot.idx)))};
@@ -165,6 +183,7 @@ async function runImagePipeline({ request, generate, tts, image, cover, resume, 
     images: step4.results,
     videos: step4WithVideo.videos,
     segments: step5.results,
+    podcast_path: podcastResult?.path || '',
     title,
     ratio: image.ratio,
     cover_title: meta,

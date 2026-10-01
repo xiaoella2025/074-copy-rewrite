@@ -729,6 +729,10 @@ code{background:var(--bg);padding:1px 5px;border-radius:3px;font-family:var(--fo
           <div class="chip" data-v="zh_female_wumei_mars_bigtts"><span class="chip-main">妩媚女声</span></div>
         </div>
         <input type="text" id="tts-volc-speaker" placeholder="自定义 voice id（点上方胶囊选预设）" style="margin-top:8px">
+        <div class="field-hd" style="margin-top:14px"><span class="label">播客主播 A（声音 id）</span><span class="hint">用于「视频形态 → 双人播客」</span></div>
+        <input type="text" id="tts-podcast-speaker-a" placeholder="默认沿用上方默认发音人">
+        <div class="field-hd" style="margin-top:10px"><span class="label">播客主播 B（声音 id）</span><span class="hint">留空 → 默认 zh_female_wanqudashu_moon_bigtts</span></div>
+        <input type="text" id="tts-podcast-speaker-b" placeholder="默认 zh_female_wanqudashu_moon_bigtts">
         <div class="info-bar">控制台：<a href="https://console.volcengine.com/speech" target="_blank">console.volcengine.com/speech</a> → 创建 API Key → 开通「豆包语音合成」</div>
       </div>
 
@@ -1367,6 +1371,8 @@ async function refreshSettings() {
     setChip("tts-providers", s.tts.provider);
     setChip("tts-speakers", s.tts.volcengine_speaker);
     $("tts-volc-speaker").value = s.tts.volcengine_speaker || "";
+    $("tts-podcast-speaker-a").value = (s.tts.podcast && s.tts.podcast.speaker_a) || "";
+    $("tts-podcast-speaker-b").value = (s.tts.podcast && s.tts.podcast.speaker_b) || "";
     $("tts-minimax-model").value = s.tts.minimax_model || "";
     $("tts-minimax-voice").value = s.tts.minimax_voice_id || "";
     setChip("tts-aura-models", s.tts.aura_model || "minimax-speech-2.8-turbo");
@@ -1768,6 +1774,8 @@ async function saveTTS() {
       tts_provider: getChip("tts-providers") || KEEP,
       tts_volc_key: $("tts-volc-key").value.trim() || KEEP,
       tts_volc_speaker: $("tts-volc-speaker").value.trim() || KEEP,
+      tts_podcast_speaker_a: $("tts-podcast-speaker-a").value.trim() || KEEP,
+      tts_podcast_speaker_b: $("tts-podcast-speaker-b").value.trim() || KEEP,
       tts_minimax_key: $("tts-minimax-key").value.trim() || KEEP,
       tts_minimax_model: $("tts-minimax-model").value.trim() || KEEP,
       tts_minimax_voice: $("tts-minimax-voice").value.trim() || KEEP,

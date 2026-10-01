@@ -529,6 +529,14 @@ def _merged(values):
             "voice_id": _val(values.get("tts_aura_voice"), aura_cur.get("voice_id", "Chinese (Mandarin)_Reliable_Executive")),
             "custom_voices": aura_voices,
         },
+        "podcast": {
+            "speaker_a": _val(values.get("tts_podcast_speaker_a"),
+                               tts_cur.get("podcast", {}).get("speaker_a",
+                               volc_cur.get("speaker", "zh_male_dongfanghaoran_moon_bigtts"))),
+            "speaker_b": _val(values.get("tts_podcast_speaker_b"),
+                               tts_cur.get("podcast", {}).get("speaker_b",
+                               "zh_female_wanqudashu_moon_bigtts")),
+        },
     }
 
     jy_cur = cur.get("jianying", {}) or {}
@@ -1828,16 +1836,20 @@ def step1_meta(llm_settings, title, content, hooks, track):
     return result
 
 
-def step2_split(llm_settings, content, target_shots=None, target_words=None):
+def step2_split(llm_settings, content, target_shots=None, target_words=None, script_format="narrator"):
     """Step 2 智能分镜：PA 真值算法的简化版。
     真值：LLM 输出尾部锚点（10-20 字精确原文）→ 锚点匹配原文切片。
     简化：单轮 LLM 调用 → 解析锚点数组 → 锚点切片；匹配失败回退到按段落+标点切。
-    返回 {shots, notes, match_rate}。match_rate: 0~1，LLM 锚点匹配率（用于前端 UI 显示）。"""
+    返回 {shots, notes, match_rate}。match_rate: 0~1，LLM 锚点匹配率（用于前端 UI 显示）。
+
+    script_format="podcast" 时切换到 podcast_dialogue.py，shots[i] 包含 speaker 字段
+    """
     text = content.strip()
     if not text:
         return {"shots": [], "notes": "", "match_rate": 0}
 
-    sys_p = load_prompt_module("step2_split.py")
+    sys_p = (load_prompt_module("podcast_dialogue.py") if script_format == "podcast"
+             else load_prompt_module("step2_split.py"))
 
     # 计算期望分镜数（参考 STORY z0 函数的 count min/max 逻辑）
     text_len = len(text)
@@ -1850,11 +1862,14 @@ def step2_split(llm_settings, content, target_shots=None, target_words=None):
     user_p = (
         f"## 目标分镜数\n{expected}\n\n"
         f"## 原文\n{text}\n\n"
-        f"请输出 JSON 字符串数组，每项 10-20 字，是该分镜在原文中的尾部锚点（精确含标点）。"
+        + ("请输出 JSON 对象数组，每项形如 {\"speaker\":\"A\"|\"B\", \"anchor\":\"...\"}。"
+           if script_format == "podcast"
+           else "请输出 JSON 字符串数组，每项 10-20 字，是该分镜在原文中的尾部锚点（精确含标点）。")
     )
     anchors = None
     notes = ""
     match_rate = 0
+    speaker_for_podcasts = []  # 仅 podcast mode 记录 speaker
     try:
         out = call_llm(llm_settings, sys_p, user_p)
         try:
@@ -1862,8 +1877,22 @@ def step2_split(llm_settings, content, target_shots=None, target_words=None):
         except ValueError:
             arr = None
         if isinstance(arr, list) and arr:
-            # 校验：每项是 10-20 字符串
-            clean = [str(x).strip() for x in arr if isinstance(x, str) and 10 <= len(x.strip()) <= 20]
+            if script_format == "podcast":
+                # 每项 {speaker: A|B, anchor: 10-20字}
+                clean_pairs = []
+                for x in arr:
+                    if not isinstance(x, dict):
+                        continue
+                    sp = str(x.get("speaker", "")).strip().upper()
+                    if sp not in ("A", "B"):
+                        continue
+                    an = str(x.get("anchor", "")).strip()
+                    if 10 <= len(an) <= 20:
+                        clean_pairs.append((sp, an))
+                clean = [a for _, a in clean_pairs]
+                speaker_for_podcasts = [sp for sp, _ in clean_pairs]
+            else:
+                clean = [str(x).strip() for x in arr if isinstance(x, str) and 10 <= len(x.strip()) <= 20]
             if clean:
                 # 按锚点切片原文
                 cuts = []
@@ -1876,23 +1905,23 @@ def step2_split(llm_settings, content, target_shots=None, target_words=None):
                     if pos < 0:
                         miss += 1
                         continue
-                    # 这一镜的终点 = 锚点末尾
                     end = pos + len(a)
                     if end > cursor:
                         seg = text[cursor:end].strip()
                         if seg:
                             cuts.append(seg)
                         cursor = end
-                # 收尾
                 tail = text[cursor:].strip()
                 if tail:
                     cuts.append(tail)
+                    if script_format == "podcast" and len(speaker_for_podcasts) > len(cuts) - 1:
+                        speaker_for_podcasts = speaker_for_podcasts[:len(cuts) - 1] + [speaker_for_podcasts[-1]]
                 if clean:
                     match_rate = round((len(clean) - miss) / len(clean), 3)
                 if miss / max(1, len(clean)) < 0.3 and cuts:
                     anchors = cuts
                     notes = f"LLM 锚点切分（{len(cuts)} 镜，{miss}/{len(clean)} 个锚点未匹配，匹配率 {match_rate*100:.0f}%）"
-    except (RuntimeError, ValueError) as e:
+    except (RuntimeError, ValueError, KeyError) as e:
         notes = f"LLM 失败，回退段落切分：{e}"
 
     # 兜底：按段落 + 标点切
@@ -1903,6 +1932,10 @@ def step2_split(llm_settings, content, target_shots=None, target_words=None):
         for p in paragraphs:
             parts = _re.split(r"(?<=[。！？!?；;])\s*", p)
             anchors.extend([s.strip() for s in parts if s.strip()])
+        if script_format == "podcast":
+            speaker_for_podcasts = []
+            for i in range(len(anchors)):
+                speaker_for_podcasts.append("A" if i % 2 == 0 else "B")
         notes = (notes + "；" if notes else "") + f"段落+标点切分（{len(anchors)} 镜，匹配率 —）"
 
     # 兜底：target_words 强制拆分
@@ -1920,6 +1953,9 @@ def step2_split(llm_settings, content, target_shots=None, target_words=None):
         anchors = normalized
 
     shots = [{"idx": i + 1, "text": s, "chars": len(s)} for i, s in enumerate(anchors) if s.strip()]
+    if script_format == "podcast":
+        for i, sh in enumerate(shots):
+            sh["speaker"] = speaker_for_podcasts[i] if i < len(speaker_for_podcasts) else ("A" if i % 2 == 0 else "B")
     return {"shots": shots, "notes": notes, "match_rate": match_rate}
 
 
@@ -2502,7 +2538,7 @@ class Handler(BaseHTTPRequestHandler):
             # 用 Windows 资源管理器原生选目录对话框
             initial = (data.get("initial") or "").strip()
             try:
-                import subprocess, tkinter as tk
+                import tkinter as tk
                 from tkinter import filedialog
                 root = tk.Tk()
                 root.withdraw()
@@ -2758,7 +2794,10 @@ class Handler(BaseHTTPRequestHandler):
                         target_shots = None
                     if target_words in ("auto", "", None):
                         target_words = None
-                    out["steps"]["2"] = step2_split(settings, rewritten, target_shots=target_shots, target_words=target_words)
+                    script_format = (data.get("script_format") or "narrator").strip()
+                    out["steps"]["2"] = step2_split(settings, rewritten,
+                                                   target_shots=target_shots, target_words=target_words,
+                                                   script_format=script_format)
                 else:
                     out["steps"]["2"] = {"shots": data.get("shots") or [], "notes": "前端传入"}
 
@@ -2987,6 +3026,129 @@ class Handler(BaseHTTPRequestHandler):
                         "total": len(results),
                         "total_duration": total_dur,
                         "elapsed": 0.0,
+                    })
+                    return
+                if mode == "podcast":
+                    # 双人播客：segments 必须含 speaker 字段，按 A/B 选不同音色；
+                    # 合成完用 ffmpeg concat 成 podcast.mp3 + 落 05-podcast.json
+                    podcast_cfg = (s.get("tts") or {}).get("podcast") or {}
+                    req_podcast = data.get("podcast") or {}
+                    volc = (s.get("tts") or {}).get("volcengine") or {}
+                    volc_api_key = (volc.get("api_key") or volc.get("access_key") or "").strip()
+                    if not volc_api_key:
+                        self._json(400, {"error": "双人播客依赖火山 TTS（设置 → TTS 配音 → 火山引擎 → API Key 必填）"})
+                        return
+                    speaker_a = (req_podcast.get("speaker_a") or
+                                 podcast_cfg.get("speaker_a") or volc.get("speaker") or
+                                 "zh_male_dongfanghaoran_moon_bigtts").strip()
+                    speaker_b = (req_podcast.get("speaker_b") or
+                                 podcast_cfg.get("speaker_b") or
+                                 "zh_female_wanqudashu_moon_bigtts").strip()
+                    speed = float(data.get("speed") or 1.0)
+
+                    seg_results = []
+                    rounds = []
+                    t0 = time.time()
+                    cur_t = 0.0
+                    for i, seg in enumerate(segments):
+                        idx = seg.get("idx", i + 1)
+                        text = (seg.get("text") or "").strip()
+                        speaker = str(seg.get("speaker") or "").strip().upper()
+                        if speaker not in ("A", "B"):
+                            speaker = "A" if i % 2 == 0 else "B"
+                        if not text:
+                            seg_results.append({"idx": idx, "ok": False, "error": "text 为空"})
+                            continue
+                        used_speaker = speaker_a if speaker == "A" else speaker_b
+                        r = _volc_tts_synthesize(volc_api_key, text, used_speaker, idx, speed)
+                        if r and r.get("ok") and r.get("audio_bytes"):
+                            audio_path = audio_dir / f"seg_{idx:03d}.mp3"
+                            audio_path.write_bytes(r["audio_bytes"])
+                            measured = probe_audio_duration(audio_path)
+                            dur = measured or round(max(1.0, len(text) * 0.18), 2)
+                            seg_results.append({
+                                "idx": idx,
+                                "ok": True,
+                                "path": str(audio_path),
+                                "url": f"/api/audio/{task_id}/seg_{idx:03d}.mp3",
+                                "duration": dur,
+                                "text": text,
+                                "speaker": speaker,
+                                "duration_source": "ffprobe" if measured else "chars_est",
+                            })
+                            rounds.append({
+                                "index": idx,
+                                "speaker": speaker,
+                                "text": text,
+                                "start": round(cur_t, 2),
+                                "end": round(cur_t + dur, 2),
+                                "duration": dur,
+                            })
+                            cur_t += dur
+                        else:
+                            err = r.get("error") if r else "未知错误"
+                            seg_results.append({"idx": idx, "ok": False, "error": err, "speaker": speaker})
+
+                    # ffmpeg concat → podcast.mp3
+                    podcast_path = task_dir / "podcast.mp3"
+                    seg_inputs = [r for r in seg_results if r.get("ok")]
+                    ffmpeg_bin = shutil.which("ffmpeg")
+                    if ffmpeg_bin and seg_inputs:
+                        list_file = task_dir / "podcast_concat.txt"
+                        list_file.write_text(
+                            "\n".join(f"file '{Path(r['path']).as_posix()}'" for r in seg_inputs),
+                            encoding="utf-8"
+                        )
+                        cmd = [ffmpeg_bin, "-y", "-f", "concat", "-safe", "0",
+                               "-i", str(list_file), "-c", "copy", str(podcast_path)]
+                        subprocess.run(cmd, capture_output=True, timeout=60, check=False)
+
+                    # 落 05-podcast.json + 05-tts-segments.json
+                    (task_dir / "05-podcast.json").write_text(
+                        json.dumps({"rounds": rounds,
+                                    "speakers": {"A": speaker_a, "B": speaker_b},
+                                    "podcast_path": str(podcast_path),
+                                    "podcast_url": f"/api/audio/{task_id}/podcast.mp3"
+                                            if podcast_path.exists() else ""},
+                                   ensure_ascii=False, indent=2),
+                        encoding="utf-8"
+                    )
+                    segment_file = task_dir / "05-tts-segments.json"
+                    previous_segments = []
+                    if segment_file.exists():
+                        try:
+                            previous_segments = json.loads(segment_file.read_text(encoding="utf-8"))
+                        except (OSError, ValueError):
+                            previous_segments = []
+                    by_index = {item["index"]: item for item in previous_segments
+                                if isinstance(item, dict) and isinstance(item.get("index"), int)}
+                    for r in seg_results:
+                        if r.get("ok"):
+                            by_index[r["idx"]] = {
+                                "index": r["idx"], "path": r["path"],
+                                "duration": r["duration"], "text": r["text"],
+                                "speaker": r.get("speaker", "A"),
+                                "duration_source": r.get("duration_source", "chars_est"),
+                            }
+                    segment_file.write_text(
+                        json.dumps([by_index[idx] for idx in sorted(by_index)], ensure_ascii=False, indent=2),
+                        encoding="utf-8"
+                    )
+                    ok_count = sum(1 for r in seg_results if r.get("ok"))
+                    self._json(200, {
+                        "results": seg_results,
+                        "task_id": task_id,
+                        "task_dir": str(task_dir),
+                        "provider": "volcengine",
+                        "mode": "podcast",
+                        "speakers": {"A": speaker_a, "B": speaker_b},
+                        "rounds": rounds,
+                        "podcast_path": str(podcast_path) if podcast_path.exists() else "",
+                        "podcast_url": f"/api/audio/{task_id}/podcast.mp3"
+                                       if podcast_path.exists() else "",
+                        "ok_count": ok_count,
+                        "total": len(segments),
+                        "elapsed": round(time.time() - t0, 1),
                     })
                     return
                 # 取配置
@@ -3220,6 +3382,7 @@ class Handler(BaseHTTPRequestHandler):
                 images = data.get("images") or []
                 videos = data.get("videos") or []
                 segments = data.get("segments") or []
+                podcast_path = (data.get("podcast_path") or "").strip()
                 title = (data.get("title") or "未命名任务").strip()
                 task_id = (data.get("task_id") or f"app074_{int(time.time())}").strip()
                 ratio = (data.get("ratio") or "9:16").strip()
@@ -3322,6 +3485,9 @@ class Handler(BaseHTTPRequestHandler):
                         "visible": True,
                     })
                     text = (sh.get("text") or "").strip()
+                    speaker = str(sh.get("speaker") or "").strip().upper()
+                    if speaker in ("A", "B") and text and not text.startswith(f"{speaker}:"):
+                        text = f"{speaker}：{text}"
                     if text:
                         subtitle_segments.append({
                             "id": f"subtitle_seg_{idx}",
@@ -3404,6 +3570,7 @@ class Handler(BaseHTTPRequestHandler):
                         "app074_version": "1.0.0",
                         "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
                         "source": "STORY-bound (U_ 41177 简化版)",
+                        "podcast_path": podcast_path,
                     },
                 }
                 # draft_meta_info.json（剪映元信息）

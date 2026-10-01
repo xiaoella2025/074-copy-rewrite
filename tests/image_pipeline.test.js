@@ -317,3 +317,63 @@ test('动态分镜=custom 时只对指定 idx 出视频', async () => {
   const draft = calls.find(c => c.path === '/api/step6_jianying_draft');
   assert.deepEqual(draft.body.videos.map(v => v.idx), [2, 4]);
 });
+
+test('双人播客 script_format=podcast 时 /api/generate 带 script_format，step5_tts mode=podcast 传 speaker', async () => {
+  const calls = [];
+  const replies = [
+    {task_id:'task_p', steps:{
+      '1':{text:'原文'}, 'meta':{title:'播客标题'},
+      '2':{shots:[
+        {idx:1,text:'你好',speaker:'A'},
+        {idx:2,text:'今天聊 AI',speaker:'B'},
+        {idx:3,text:'没错',speaker:'A'},
+      ]},
+    }},
+    {results:[
+      {idx:1,ok:true,path:'/p/1.mp3',duration:2,speaker:'A'},
+      {idx:2,ok:true,path:'/p/2.mp3',duration:2,speaker:'B'},
+      {idx:3,ok:true,path:'/p/3.mp3',duration:2,speaker:'A'},
+    ], podcast_path:'/p/podcast.mp3', podcast_url:'/api/audio/task_p/podcast.mp3',
+       speakers:{A:'voiceA',B:'voiceB'}, rounds:[{index:1,speaker:'A'}]},
+    {steps:{'3':[
+      {idx:1,desc_prompt:'p1'},{idx:2,desc_prompt:'p2'},{idx:3,desc_prompt:'p3'},
+    ]}},
+    {results:[
+      {idx:1,ok:true,url:'/i/1.png'},{idx:2,ok:true,url:'/i/2.png'},{idx:3,ok:true,url:'/i/3.png'},
+    ]},
+    {draft_dir:'draft'},
+  ];
+  const result = await runImagePipeline({
+    request: async (path, body) => { calls.push({path,body}); return replies.shift(); },
+    generate:{}, tts:{provider:'volcengine', podcast:{speaker_a:'voiceA',speaker_b:'voiceB'}},
+    image:{provider:'gpt_image',ratio:'9:16',resolution:'1k',concurrency:3},
+    scriptFormat:'podcast',
+  });
+  const generate = calls.find(c => c.path === '/api/generate');
+  assert.equal(generate.body.script_format, 'podcast');
+  const tts = calls.find(c => c.path === '/api/step5_tts');
+  assert.equal(tts.body.mode, 'podcast');
+  assert.equal(tts.body.podcast.speaker_a, 'voiceA');
+  assert.equal(tts.body.podcast.speaker_b, 'voiceB');
+  assert.deepEqual(tts.body.segments.map(s => s.speaker), ['A','B','A']);
+  const draft = calls.find(c => c.path === '/api/step6_jianying_draft');
+  assert.equal(draft.body.podcast_path, '/p/podcast.mp3');
+});
+
+test('双人播客 step5 失败时阻断，不继续出图', async () => {
+  const calls = [];
+  const replies = [
+    {task_id:'task_pf', steps:{
+      '1':{text:'原文'}, 'meta':{title:'播客标题'},
+      '2':{shots:[{idx:1,text:'你好',speaker:'A'}]},
+    }},
+    {results:[{idx:1,ok:false,error:'火山 API Key 未填'}]},
+  ];
+  await assert.rejects(runImagePipeline({
+    request: async (path, body) => { calls.push({path,body}); return replies.shift(); },
+    generate:{}, tts:{provider:'volcengine'},
+    image:{provider:'gpt_image',ratio:'9:16',resolution:'1k',concurrency:3},
+    scriptFormat:'podcast',
+  }), /火山 API Key 未填/);
+  assert.deepEqual(calls.map(c => c.path), ['/api/generate', '/api/step5_tts']);
+});
