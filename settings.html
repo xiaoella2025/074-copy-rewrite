@@ -65,20 +65,32 @@ body{font-family:var(--font-sans);background:var(--bg);color:var(--text);min-hei
 .main{overflow-y:auto;padding:20px 28px 60px;}
 .section{max-width:780px;margin:0 auto;display:none;}
 .section:not(.hidden){display:block;}
-.section-title{display:flex;align-items:center;gap:10px;margin-bottom:6px;}
-.section-title .icon{font-size:20px;}
-.section-title .title{font-size:17px;font-weight:600;}
-.section-title .spacer{flex:1;}
-.status{padding:3px 9px;border-radius:999px;font-size:11px;font-weight:500;}
-.status.ok{background:color-mix(in oklch,var(--success) 12%,transparent);color:var(--success);}
-.status.warn{background:color-mix(in oklch,var(--warning) 12%,transparent);color:var(--warning);}
-.status.bad{background:color-mix(in oklch,var(--danger) 12%,transparent);color:var(--danger);}
-.status.checking{background:var(--info);color:#fff;}
-.subtitle{font-size:13px;color:var(--text-muted);margin-bottom:18px;}
+/* === STORY 真值：settings-section-head + settings-pip 4 态（Settings.js:138-159） === */
+.settings-section-head{display:flex;align-items:center;gap:12px;margin-bottom:6px;}
+.settings-section-icon{width:32px;height:32px;border-radius:var(--radius-md);background:var(--brand-soft);color:var(--brand);display:grid;place-items:center;font-size:16px;flex-shrink:0;}
+.settings-section-icon .icon{font-size:16px;line-height:1;}
+.settings-section-title{font-size:15px;font-weight:600;color:var(--text);line-height:1.3;}
+.settings-section-sub{font-size:12px;color:var(--text-muted);margin-top:2px;line-height:1.4;}
+.settings-section-head .flex-1{flex:1;min-width:0;}
+.settings-pip{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;font-size:11.5px;font-weight:500;background:var(--bg-raised);color:var(--text-muted);border:1px solid var(--border-subtle);white-space:nowrap;flex-shrink:0;}
+.settings-pip-dot{width:7px;height:7px;border-radius:50%;background:currentColor;opacity:.65;flex-shrink:0;}
+.settings-pip.ok{background:color-mix(in oklch,var(--success) 12%,transparent);color:var(--success);border-color:color-mix(in oklch,var(--success) 22%,transparent);}
+.settings-pip.ok .settings-pip-dot{background:var(--success);opacity:1;box-shadow:0 0 0 2px color-mix(in oklch,var(--success) 18%,transparent);}
+.settings-pip.fail{background:color-mix(in oklch,var(--danger) 12%,transparent);color:var(--danger);border-color:color-mix(in oklch,var(--danger) 22%,transparent);}
+.settings-pip.fail .settings-pip-dot{background:var(--danger);opacity:1;}
+.settings-pip.filled{background:color-mix(in oklch,var(--warning) 12%,transparent);color:var(--warning);border-color:color-mix(in oklch,var(--warning) 22%,transparent);}
+.settings-pip.filled .settings-pip-dot{background:var(--warning);opacity:1;box-shadow:0 0 0 2px color-mix(in oklch,var(--warning) 18%,transparent);}
+.settings-pip.empty{background:var(--bg-raised);color:var(--text-faint);}
+.settings-pip.empty .settings-pip-dot{background:var(--text-faint);opacity:.55;}
+.subtitle{font-size:13px;color:var(--text-muted);margin:0 0 18px 44px;}
+/* === STORY 真值：settings-card（Settings.js:699） === */
+.settings-card{background:var(--bg-elevated);border:1px solid var(--border-subtle);border-radius:var(--radius-lg);padding:18px 20px;margin-bottom:14px;box-shadow:var(--shadow-sm);}
+.settings-card-footer{display:flex;align-items:center;gap:10px;margin-top:14px;padding-top:12px;border-top:1px solid var(--border-subtle);flex-wrap:wrap;}
+.card-hd{display:flex;align-items:center;gap:8px;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--border-subtle);}
+.card-hd .label{font-size:13px;font-weight:600;}
+.card-hd .hint{font-size:11.5px;color:var(--text-faint);margin-left:auto;}
+/* 兼容旧 .card 写法 */
 .card{background:var(--bg-elevated);border:1px solid var(--border-subtle);border-radius:var(--radius-lg);padding:20px;margin-bottom:14px;box-shadow:var(--shadow-sm);}
-.card .card-hd{display:flex;align-items:center;gap:8px;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--border-subtle);}
-.card .card-hd .label{font-size:13px;font-weight:600;}
-.card .card-hd .hint{font-size:11.5px;color:var(--text-faint);margin-left:auto;}
 .field-hd{display:flex;align-items:center;gap:6px;margin:14px 0 6px;}
 .field-hd .label{font-size:12px;font-weight:500;color:var(--text-muted);}
 .field-hd .hint{font-size:11px;color:var(--text-faint);}
@@ -94,7 +106,46 @@ textarea{resize:vertical;min-height:60px;font-family:var(--font-mono);font-size:
 .btn.primary{background:var(--brand);color:var(--brand-fg);border-color:var(--brand);}
 .btn.primary:hover{background:var(--brand-hover);border-color:var(--brand-hover);}
 .btn.ghost{background:transparent;border:1px dashed var(--border-strong);color:var(--text-muted);}
+.btn.ghost:hover{color:var(--text);border-color:var(--brand);background:var(--brand-soft);}
+.btn.secondary{background:var(--bg-raised);color:var(--text);border-color:var(--border);}
+.btn.secondary:hover{background:var(--bg-hover);border-color:var(--brand);color:var(--brand);}
 .btn.danger{color:var(--danger);border-color:color-mix(in oklch,var(--danger) 20%,transparent);background:color-mix(in oklch,var(--danger) 8%,transparent);}
+/* === STORY 真值：key-input 组件（Settings.js:256-296） — 显示/隐藏 + 粘贴按钮 === */
+.key-input{position:relative;display:flex;align-items:center;gap:6px;}
+.key-input-field{flex:1;}
+.key-input-actions{display:flex;gap:4px;flex-shrink:0;}
+.key-input-btn{width:28px;height:28px;display:grid;place-items:center;background:var(--bg-raised);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text-muted);cursor:pointer;transition:all .12s;font-size:13px;}
+.key-input-btn:hover{border-color:var(--brand);color:var(--brand);}
+/* === STORY 真值：help-line（Settings.js:297-314） === */
+.help-line{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--text-faint);margin-top:4px;}
+.help-line-dot{color:var(--border);}
+.help-link{color:var(--brand);text-decoration:none;transition:opacity .12s;}
+.help-link:hover{opacity:.8;text-decoration:underline;}
+.info-bar{margin-top:10px;padding:8px 12px;background:var(--brand-soft);color:var(--brand);border-radius:var(--radius-sm);font-size:12px;display:flex;align-items:center;gap:6px;}
+.info-bar a{color:var(--brand);text-decoration:underline;}
+/* === STORY 真值：profile-editor-head（Settings.js:673-697） === */
+.profile-editor-head{display:flex;align-items:center;gap:8px;padding:14px 16px;background:var(--bg-raised);border-radius:var(--radius-md);border:1px dashed var(--border-strong);margin-bottom:10px;}
+.profile-editor-head .flex-1{flex:1;}
+/* === STORY 真值：profile action menu（Settings.js:166-223）— 三点菜单 === */
+.profile-action-wrap{position:relative;}
+.profile-action-btn{width:28px;height:28px;display:grid;place-items:center;background:var(--bg-raised);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text-muted);cursor:pointer;font-size:14px;line-height:1;}
+.profile-action-btn:hover{border-color:var(--brand);color:var(--brand);}
+.profile-more-menu{position:absolute;top:calc(100% + 4px);right:0;background:var(--bg-elevated);border:1px solid var(--border);border-radius:var(--radius-md);box-shadow:var(--shadow-md);min-width:140px;padding:4px;display:flex;flex-direction:column;gap:1px;z-index:100;}
+.profile-more-menu button{display:flex;align-items:center;gap:6px;padding:7px 10px;background:transparent;border:none;color:var(--text);font-size:12.5px;text-align:left;cursor:pointer;border-radius:var(--radius-sm);transition:background .12s;width:100%;}
+.profile-more-menu button:hover{background:var(--bg-hover);}
+.profile-more-menu button.danger{color:var(--danger);}
+.profile-more-menu button.danger:hover{background:color-mix(in oklch,var(--danger) 8%,transparent);}
+.profile-more-sep{height:1px;background:var(--border-subtle);margin:3px 0;}
+/* === STORY 真值：profile status dot（Settings.js:161-164）— 替代旧 .dot === */
+.profile-status{width:8px;height:8px;border-radius:50%;display:inline-block;flex-shrink:0;}
+.profile-status-empty{background:var(--text-faint);opacity:.55;}
+.profile-status-untested{background:var(--warning);box-shadow:0 0 0 2px color-mix(in oklch,var(--warning) 18%,transparent);}
+.profile-status-ok{background:var(--success);box-shadow:0 0 0 2px color-mix(in oklch,var(--success) 18%,transparent);}
+.profile-status-fail{background:var(--danger);box-shadow:0 0 0 2px color-mix(in oklch,var(--danger) 18%,transparent);}
+/* === STORY 真值：mini-spinner（Settings.js:340-349）— 测试 / 保存反馈 === */
+@keyframes spin{to{transform:rotate(360deg)}}
+.mini-spinner{display:inline-block;width:12px;height:12px;border:2px solid var(--border-strong);border-top-color:var(--brand);border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;}
+.btn .mini-spinner{margin-right:6px;}
 .chips{display:flex;flex-wrap:wrap;gap:6px;}
 .chip{padding:6px 12px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:999px;font-size:12.5px;color:var(--text-muted);transition:all .12s;cursor:pointer;display:inline-flex;align-items:center;gap:6px;user-select:none;}
 .chip:hover{border-color:var(--border-strong);color:var(--text);}
@@ -184,19 +235,20 @@ code{background:var(--bg);padding:1px 5px;border-radius:3px;font-family:var(--fo
   <main class="main">
     <!-- ============ LLM（LIST+EDIT 双页） ============ -->
     <div class="section" id="section-llm">
-      <div class="section-title">
-        <span class="icon">🤖</span>
-        <span class="title">LLM · 文案与分镜</span>
-        <span class="spacer"></span>
-        <span class="status checking" id="st-llm">检测中…</span>
+      <div class="settings-section-head">
+        <div class="settings-section-icon"><span class="icon">🤖</span></div>
+        <div class="flex-1">
+          <div class="settings-section-title">LLM · 文案与分镜</div>
+          <div class="settings-section-sub">支持多家国产 LLM，配置独立保存，可一键切换。</div>
+        </div>
+        <span class="settings-pip" id="st-llm"><span class="settings-pip-dot"></span>检测中…</span>
       </div>
-      <div class="subtitle">支持多家国产 LLM，配置独立保存，可一键切换。</div>
 
       <!-- LIST 视图（默认） -->
       <div id="llm-list-view">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+        <div style="display:flex;align-items:center;gap:8px;margin:14px 0">
           <span style="color:var(--text-muted);font-size:13px">已保存 <strong id="llm-count" style="color:var(--text)">0</strong> 个配置</span>
-          <span class="spacer" style="flex:1"></span>
+          <span class="flex-1" style="flex:1"></span>
           <button class="btn primary" id="btn-llm-new">＋ 新建配置</button>
         </div>
         <div id="llm-profile-list" class="profile-list"></div>
@@ -207,13 +259,13 @@ code{background:var(--bg);padding:1px 5px;border-radius:3px;font-family:var(--fo
 
       <!-- EDIT 视图 -->
       <div id="llm-edit-view" style="display:none">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
-          <button class="btn" id="btn-llm-back">← 返回</button>
-          <span class="spacer" style="flex:1"></span>
-          <button class="btn primary" id="btn-llm-setactive">✓ 设为当前</button>
-          <button class="btn danger" id="btn-llm-delete">🗑 删除此配置</button>
+        <div class="profile-editor-head">
+          <button class="btn btn-ghost" id="btn-llm-back">← 返回</button>
+          <div class="flex-1"></div>
+          <button class="btn btn-secondary" id="btn-llm-setactive" style="display:none">✓ 设为当前</button>
+          <button class="btn btn-ghost" id="btn-llm-delete" style="color:var(--danger)">🗑 删除此配置</button>
         </div>
-        <div class="profile-edit">
+        <div class="settings-card">
           <div class="field-hd"><span class="label">配置名称</span><span class="hint">用于在列表里区分</span></div>
           <input type="text" id="llm-edit-name" placeholder="如：主力DeepSeek">
           <div class="field-hd"><span class="label">服务商</span></div>
@@ -224,33 +276,40 @@ code{background:var(--bg);padding:1px 5px;border-radius:3px;font-family:var(--fo
             <div class="chip" data-v="anthropic"><span class="chip-main">Anthropic 兼容</span></div>
           </div>
           <div class="field-hd"><span class="label">API Key</span><span class="hint">不回显已有 key，留空保留原值</span></div>
-          <input type="password" id="llm-edit-key" placeholder="sk-...  留空保留原值">
+          <div class="key-input">
+            <input type="password" id="llm-edit-key" class="key-input-field" placeholder="sk-...  留空保留原值">
+            <div class="key-input-actions">
+              <button type="button" class="key-input-btn" data-toggle-key="llm-edit-key" title="显示/隐藏">👁</button>
+              <button type="button" class="key-input-btn" data-paste-key="llm-edit-key" title="从剪贴板粘贴">📋</button>
+            </div>
+          </div>
           <div class="field-hd"><span class="label">默认模型</span></div>
           <div class="chips" id="llm-edit-models"></div>
           <div class="field-hd"><span class="label">备选模型（一个一行，fallback）</span></div>
-          <textarea id="llm-edit-fallbacks" placeholder="deepseek-v4-flash\nqwen3.7-flash"></textarea>
+          <textarea id="llm-edit-fallbacks" placeholder="deepseek-v4-flash&#10;qwen3.7-flash"></textarea>
           <div class="field-hd"><span class="label">Base URL</span><span class="hint">自定义服务商必填</span></div>
           <input type="text" id="llm-edit-baseurl" placeholder="https://api.deepseek.com">
           <div class="field-hd"><span class="label">代理 URL（可选）</span><span class="hint">境外模型常用</span></div>
           <input type="text" id="llm-edit-proxy" placeholder="http://127.0.0.1:7890">
-          <div style="display:flex;gap:8px;margin-top:14px">
+          <div class="settings-card-footer">
             <button class="btn" id="btn-llm-test">🔌 测试连接</button>
-            <button class="btn" id="btn-llm-test-tool">🛠 测试工具调用</button>
+            <button class="btn btn-secondary" id="btn-llm-test-tool">🛠 测试工具调用</button>
           </div>
-          <div class="field-help">返回即自动保存（无需「保存」按钮）。</div>
+          <div class="help-line">返回即自动保存（无需「保存」按钮）。</div>
         </div>
       </div>
     </div>
 
     <!-- ============ AI 绘图 ============ -->
     <div class="section hidden" id="section-image">
-      <div class="section-title">
-        <span class="icon">🎨</span>
-        <span class="title">AI 绘图 · 分镜图片</span>
-        <span class="spacer"></span>
-        <span class="status checking" id="st-image">检测中…</span>
+      <div class="settings-section-head">
+        <div class="settings-section-icon"><span class="icon">🎨</span></div>
+        <div class="flex-1">
+          <div class="settings-section-title">AI 绘图 · 分镜图片</div>
+          <div class="settings-section-sub">配置出图 API（OpenAI 兼容通道 / 即梦 / RunningHub / ModelScope）。</div>
+        </div>
+        <span class="settings-pip" id="st-image"><span class="settings-pip-dot"></span>检测中…</span>
       </div>
-      <div class="subtitle">配置出图 API（OpenAI 兼容通道 / 即梦 / RunningHub / ModelScope）。</div>
 
       <div class="card">
         <div class="card-hd"><span class="label">主出图 provider</span><span class="hint">决定默认走哪条通道</span></div>
@@ -308,13 +367,14 @@ code{background:var(--bg);padding:1px 5px;border-radius:3px;font-family:var(--fo
 
     <!-- ============ TTS 配音 ============ -->
     <div class="section hidden" id="section-tts">
-      <div class="section-title">
-        <span class="icon">🎤</span>
-        <span class="title">TTS 配音 · 每镜语音</span>
-        <span class="spacer"></span>
-        <span class="status checking" id="st-tts">检测中…</span>
+      <div class="settings-section-head">
+        <div class="settings-section-icon"><span class="icon">🎤</span></div>
+        <div class="flex-1">
+          <div class="settings-section-title">TTS 配音 · 每镜语音</div>
+          <div class="settings-section-sub">配置 TTS 服务（火山豆包 / MiniMax / 自定义）。</div>
+        </div>
+        <span class="settings-pip" id="st-tts"><span class="settings-pip-dot"></span>检测中…</span>
       </div>
-      <div class="subtitle">配置 TTS 服务（火山豆包 / MiniMax / 自定义）。</div>
 
       <div class="card">
         <div class="card-hd"><span class="label">TTS provider</span></div>
@@ -360,13 +420,14 @@ code{background:var(--bg);padding:1px 5px;border-radius:3px;font-family:var(--fo
 
     <!-- ============ 语音识别 ASR ============ -->
     <div class="section hidden" id="section-asr">
-      <div class="section-title">
-        <span class="icon">🎙</span>
-        <span class="title">语音识别 · 字幕对齐</span>
-        <span class="spacer"></span>
-        <span class="status checking" id="st-asr">检测中…</span>
+      <div class="settings-section-head">
+        <div class="settings-section-icon"><span class="icon">🎙</span></div>
+        <div class="flex-1">
+          <div class="settings-section-title">语音识别 · 字幕对齐</div>
+          <div class="settings-section-sub">用于 TTS 后返回时间戳对齐字幕（可选；不启用则按字数估算时长）。</div>
+        </div>
+        <span class="settings-pip" id="st-asr"><span class="settings-pip-dot"></span>检测中…</span>
       </div>
-      <div class="subtitle">用于 TTS 后返回时间戳对齐字幕（可选；不启用则按字数估算时长）。</div>
       <div class="card">
         <div class="card-hd"><span class="label">ASR provider</span></div>
         <div class="chips" id="asr-providers">
@@ -382,13 +443,14 @@ code{background:var(--bg);padding:1px 5px;border-radius:3px;font-family:var(--fo
 
     <!-- ============ 剪映 ============ -->
     <div class="section hidden" id="section-draft">
-      <div class="section-title">
-        <span class="icon">📦</span>
-        <span class="title">剪映 · 草稿目录 · BGM</span>
-        <span class="spacer"></span>
-        <span class="status checking" id="st-draft">检测中…</span>
+      <div class="settings-section-head">
+        <div class="settings-section-icon"><span class="icon">📦</span></div>
+        <div class="flex-1">
+          <div class="settings-section-title">剪映 · 草稿目录 · BGM</div>
+          <div class="settings-section-sub">配置剪映 JianyingPro Drafts 目录和 BGM 文件。</div>
+        </div>
+        <span class="settings-pip" id="st-draft"><span class="settings-pip-dot"></span>检测中…</span>
       </div>
-      <div class="subtitle">配置剪映 JianyingPro Drafts 目录和 BGM 文件。</div>
       <div class="card">
         <div class="field-hd"><span class="label">剪映草稿目录</span><span class="hint">如 D:\JianyingPro Drafts</span></div>
         <input type="text" id="jy-draft-path" placeholder="D:\JianyingPro Drafts">
@@ -400,13 +462,14 @@ code{background:var(--bg);padding:1px 5px;border-radius:3px;font-family:var(--fo
 
     <!-- ============ 激活与订阅 ============ -->
     <div class="section hidden" id="section-license">
-      <div class="section-title">
-        <span class="icon">🔑</span>
-        <span class="title">激活与订阅</span>
-        <span class="spacer"></span>
-        <span class="status ok" id="st-license">无需激活</span>
+      <div class="settings-section-head">
+        <div class="settings-section-icon"><span class="icon">🔑</span></div>
+        <div class="flex-1">
+          <div class="settings-section-title">激活与订阅</div>
+          <div class="settings-section-sub">本软件独立部署，不依赖官方激活码。本页仅为兼容占位。</div>
+        </div>
+        <span class="settings-pip ok" id="st-license"><span class="settings-pip-dot"></span>无需激活</span>
       </div>
-      <div class="subtitle">本软件独立部署，不依赖官方激活码。本页仅为兼容占位。</div>
       <div class="card">
         <div class="field-hd"><span class="label">激活码（占位）</span></div>
         <input type="text" id="license-key" placeholder="留空">
@@ -416,13 +479,14 @@ code{background:var(--bg);padding:1px 5px;border-radius:3px;font-family:var(--fo
 
     <!-- ============ AI 创作 · IMA ============ -->
     <div class="section hidden" id="section-ai-creation">
-      <div class="section-title">
-        <span class="icon">💡</span>
-        <span class="title">AI 创作 · IMA 知识库</span>
-        <span class="spacer"></span>
-        <span class="status checking" id="st-ai-creation">检测中…</span>
+      <div class="settings-section-head">
+        <div class="settings-section-icon"><span class="icon">💡</span></div>
+        <div class="flex-1">
+          <div class="settings-section-title">AI 创作 · IMA 知识库</div>
+          <div class="settings-section-sub">接入 IMA（腾讯智能体）知识库作为改写补充。</div>
+        </div>
+        <span class="settings-pip" id="st-ai-creation"><span class="settings-pip-dot"></span>检测中…</span>
       </div>
-      <div class="subtitle">接入 IMA（腾讯智能体）知识库作为改写补充。</div>
       <div class="card">
         <div class="field-hd"><span class="label">Client ID</span></div>
         <input type="text" id="ima-client-id" placeholder="IMA client_id">
@@ -438,13 +502,14 @@ code{background:var(--bg);padding:1px 5px;border-radius:3px;font-family:var(--fo
 
     <!-- ============ 关于 · 诊断 ============ -->
     <div class="section hidden" id="section-about">
-      <div class="section-title">
-        <span class="icon">ℹ</span>
-        <span class="title">关于 · 诊断</span>
-        <span class="spacer"></span>
-        <span class="status ok" id="st-about">✓ 正常</span>
+      <div class="settings-section-head">
+        <div class="settings-section-icon"><span class="icon">ℹ</span></div>
+        <div class="flex-1">
+          <div class="settings-section-title">关于 · 诊断</div>
+          <div class="settings-section-sub">版本信息 + 调试工具。</div>
+        </div>
+        <span class="settings-pip ok" id="st-about"><span class="settings-pip-dot"></span>✓ 正常</span>
       </div>
-      <div class="subtitle">版本信息 + 调试工具。</div>
       <div class="card">
         <div class="field-hd"><span class="label">版本</span></div>
         <code>app074 v1.0.0</code>
@@ -584,19 +649,18 @@ function renderProfileList(profiles) {
   empty.style.display = "none";
   wrap.innerHTML = profilesCache.map(p => {
     const active = p.enabled ? '<span class="active-label">使用中</span>' : "";
-    const statusDot = p.has_key
-      ? `<span class="dot ok" title="已配置"></span>`
-      : `<span class="dot bad" title="缺 API Key"></span>`;
+    // STORY 真值：profile-status-empty / profile-status-untested
+    const statusCls = p.has_key ? "profile-status-untested" : "profile-status-empty";
+    const statusTitle = p.has_key ? "已配置" : "待配置";
     return `
       <div class="profile-row ${p.enabled ? "active" : ""}" data-id="${p.id}">
-        <div class="radio"></div>
+        <span class="profile-status ${statusCls}" title="${statusTitle}"></span>
         <div class="body">
           <div class="titlerow">
             <div class="name">${escapeHtml(p.name)}</div>
             ${active}
           </div>
           <div class="meta">
-            ${statusDot}
             <span>${escapeHtml(p.provider)}</span>
             <span class="sep">·</span>
             <span>${escapeHtml(p.model)}</span>
@@ -604,27 +668,85 @@ function renderProfileList(profiles) {
             <span>${escapeHtml(p.masked_key)}</span>
           </div>
         </div>
-        <div class="actions">
-          <button data-act="edit" class="btn">编辑</button>
-          ${p.enabled ? "" : '<button data-act="set" class="btn primary">设为当前</button>'}
-          <button data-act="del" class="btn danger">删除</button>
+        <div class="profile-action-wrap">
+          <button class="profile-action-btn" data-act="more" title="更多操作">⋯</button>
         </div>
       </div>
     `;
   }).join("");
   wrap.querySelectorAll(".profile-row").forEach(row => {
     const id = row.dataset.id;
-    row.querySelectorAll("button").forEach(btn => {
-      btn.addEventListener("click", e => {
-        e.stopPropagation();
-        const act = btn.dataset.act;
-        if (act === "edit") return openEditProfile(id);
-        if (act === "set") return setActiveProfile(id);
-        if (act === "del") return deleteProfile(id);
-      });
+    const moreBtn = row.querySelector(".profile-action-btn");
+    moreBtn.addEventListener("click", e => {
+      e.stopPropagation();
+      openProfileMenu(moreBtn, id, row);
     });
     row.addEventListener("click", () => openEditProfile(id));
   });
+  document.addEventListener("click", closeAllProfileMenus);
+}
+
+// 三点菜单（STORY 真值：重命名 / 复制配置 / 删除）
+function openProfileMenu(anchor, id, row) {
+  closeAllProfileMenus();
+  const p = profilesCache.find(x => x.id === id);
+  const isActive = p && p.enabled;
+  const menu = document.createElement("div");
+  menu.className = "profile-more-menu";
+  menu.dataset.profileId = id;
+  menu.innerHTML = `
+    <button data-act="edit">✎ 编辑</button>
+    ${isActive ? "" : '<button data-act="set">★ 设为当前</button>'}
+    <button data-act="rename">✎ 重命名</button>
+    <button data-act="duplicate">⎘ 复制配置</button>
+    <div class="profile-more-sep"></div>
+    <button data-act="del" class="danger">🗑 删除</button>
+  `;
+  anchor.parentElement.appendChild(menu);
+  menu.querySelectorAll("button").forEach(b => {
+    b.addEventListener("click", e => {
+      e.stopPropagation();
+      const act = b.dataset.act;
+      menu.remove();
+      if (act === "edit") return openEditProfile(id);
+      if (act === "set") return setActiveProfile(id);
+      if (act === "del") return deleteProfile(id);
+      if (act === "rename") return renameProfile(id);
+      if (act === "duplicate") return duplicateProfile(id);
+    });
+  });
+}
+
+function closeAllProfileMenus() {
+  document.querySelectorAll(".profile-more-menu").forEach(m => m.remove());
+}
+
+async function renameProfile(id) {
+  const p = profilesCache.find(x => x.id === id);
+  if (!p) return;
+  const newName = prompt("新名称：", p.name);
+  if (!newName || newName === p.name) return;
+  p.name = newName;
+  try {
+    await api("/api/profiles", "POST", { profiles: profilesCache });
+    toast("✓ 已重命名", true);
+    await loadProfiles();
+    await refreshSettings();
+  } catch (e) { toast("❌ " + e.message, false); }
+}
+
+async function duplicateProfile(id) {
+  const p = profilesCache.find(x => x.id === id);
+  if (!p) return;
+  const newId = "p_" + Date.now();
+  const copy = { ...p, id: newId, name: p.name + " (副本)", enabled: false, apiKey: "" };
+  // 不复制 API Key，安全起见
+  const profiles = profilesCache.concat([copy]);
+  try {
+    await api("/api/profiles", "POST", { profiles });
+    toast("✓ 已复制", true);
+    await loadProfiles();
+  } catch (e) { toast("❌ " + e.message, false); }
 }
 
 function escapeHtml(s) {
@@ -757,12 +879,19 @@ async function loadProfiles() {
 // ============ 通用 helper ============
 function setDot(id, cls) {
   const el = $(id); if (!el) return;
-  el.className = "dot " + cls;
+  // STORY 真值：profile-status-{empty|untested|ok|fail}
+  const map = { ok: "ok", warn: "untested", bad: "fail", empty: "empty", checking: "empty" };
+  el.className = "profile-status profile-status-" + (map[cls] || "empty");
 }
+// settings-pip 4 态：ok / fail / filled / empty（对应 ok/warn/bad/empty）
 function setStatus(id, txt, ok) {
   const el = $(id); if (!el) return;
-  el.textContent = txt;
-  el.className = "status " + (ok ? "ok" : (ok === false ? "bad" : "checking"));
+  el.innerHTML = '<span class="settings-pip-dot"></span>' + escapeHtml(txt);
+  let cls = "empty";
+  if (ok === true) cls = "ok";
+  else if (ok === false) cls = "fail";
+  else if (ok === "warn") cls = "filled";
+  el.className = "settings-pip " + cls;
 }
 
 // ============ 出图 / TTS / ASR / 剪映 / IMA / 激活 / 关于 — 各自加载 + 保存 ============
@@ -850,6 +979,24 @@ bindChipGroup("image-resolution", () => {});
 bindChipGroup("tts-providers", () => syncTTSBlocks());
 bindChipGroup("tts-speakers", (v) => { $("tts-volc-speaker").value = v; });
 bindChipGroup("asr-providers", () => {});
+
+// ============ key-input 组件（STORY 真值 Settings.js:256-296） ============
+// 显示/隐藏 + 剪贴板粘贴（事件委托，动态 input 也生效）
+document.addEventListener("click", e => {
+  const btn = e.target.closest("[data-toggle-key], [data-paste-key]");
+  if (!btn) return;
+  e.preventDefault();
+  const id = btn.dataset.toggleKey || btn.dataset.pasteKey;
+  const input = document.getElementById(id);
+  if (!input) return;
+  if (btn.dataset.toggleKey !== undefined) {
+    input.type = input.type === "password" ? "text" : "password";
+    btn.textContent = input.type === "password" ? "👁" : "🙈";
+  } else if (btn.dataset.pasteKey !== undefined) {
+    navigator.clipboard.readText().then(t => { input.value = (t || "").trim(); input.focus(); })
+      .catch(() => toast("⚠ 无法读取剪贴板", false));
+  }
+});
 
 async function saveImage() {
   try {
