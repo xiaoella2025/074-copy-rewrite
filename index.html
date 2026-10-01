@@ -675,6 +675,11 @@ body{padding-left:220px;}
       <span class="chip" data-tts="custom">上传自定义配音</span>
     </div>
 
+    <div class="chips" id="tts-provider" style="margin-bottom:10px">
+      <span class="chip active" data-ttsp="volcengine">🔥 火山引擎（豆包）</span>
+      <span class="chip" data-ttsp="minimax">⚡ MiniMax</span>
+    </div>
+
     <div class="grid-2" style="margin-bottom:10px">
       <div>
         <div class="help" style="margin-bottom:6px">配音员</div>
@@ -685,7 +690,7 @@ body{padding-left:220px;}
         </select>
       </div>
       <div>
-        <div class="help" style="margin-bottom:6px">在「设置 → TTS 配音 → Aura Studio」添加平台克隆好的音色 ID</div>
+        <div class="help" style="margin-bottom:6px">在「设置 → TTS 配音」添加平台克隆好的音色 ID</div>
       </div>
     </div>
 
@@ -704,7 +709,7 @@ body{padding-left:220px;}
     <div class="grid-2" style="margin-bottom:10px">
       <div>
         <div class="help" style="margin-bottom:6px">配音语速</div>
-        <div class="chips">
+        <div class="chips" id="tts-speed">
           <span class="chip" data-speed="085">慢速 · 0.85x</span>
           <span class="chip active" data-speed="10">默认 · 1.0x</span>
           <span class="chip" data-speed="115">快语 · 1.15x</span>
@@ -871,6 +876,14 @@ function bindChips(containerId, onChange, single = true) {
   });
 }
 
+function getActiveChip(containerId, dataKey, fallback = "") {
+  const c = $(containerId);
+  if (!c) return fallback;
+  const active = c.querySelector(".chip.active");
+  if (!active) return fallback;
+  return active.getAttribute(dataKey) || fallback;
+}
+
 bindChips("video-form");
 bindChips("tracks");
 bindChips("hooks", null, false);
@@ -880,6 +893,8 @@ bindChips("img-source");
 bindChips("style");
 bindChips("cover-mode");
 bindChips("tts-mode");
+bindChips("tts-provider");
+bindChips("tts-speed");
 bindChips("cloned-voices");
 bindChips("process-mode");
 bindChips("pause-mode");
@@ -1346,7 +1361,12 @@ async function runPipeline() {
       step5 = await api("/api/step5_tts", "POST", {
         task_id: taskId,
         segments: shots.map(s => ({idx: s.idx, text: s.text})),
-        speed: 1.0,
+        speed: (function() {
+            const v = getActiveChip("tts-speed", "data-speed", "10");
+            const num = parseInt(v, 10);
+            return num / (v.length >= 3 ? 100 : 10);
+          })(),
+        provider: getActiveChip("tts-provider", "data-ttsp", "volcengine"),
       });
       renderStep5(step5);
     } catch (e) {
