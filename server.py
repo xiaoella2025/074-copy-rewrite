@@ -1861,6 +1861,8 @@ class Handler(BaseHTTPRequestHandler):
                     ".svg": "image/svg+xml",
                     ".png": "image/png",
                     ".jpg": "image/jpeg",
+                    ".jpeg": "image/jpeg",
+                    ".webp": "image/webp",
                     ".ico": "image/x-icon",
                 }.get(ext, "application/octet-stream")
                 self._file(f, mime)

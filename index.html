@@ -245,12 +245,16 @@ body{padding-left:220px;}
 
 .model-select{background:var(--code);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:12px;cursor:pointer;}
 
-/* Style chip with preview swatch */
-.style-chip{display:flex;align-items:center;gap:8px;padding:4px 10px 4px 4px;background:var(--panel-2);border:1px solid var(--border);border-radius:14px;cursor:pointer;font-size:12px;color:var(--text);transition:.15s;user-select:none;}
-.style-chip:hover{border-color:var(--accent);}
-.style-chip.active{background:var(--primary);border-color:var(--primary);color:white;}
-.style-chip .swatch{width:28px;height:28px;border-radius:10px;flex-shrink:0;border:1px solid rgba(0,0,0,.06);}
-.style-chip.active .swatch{border-color:rgba(255,255,255,.3);}
+/* Style chip with preview swatch + hover popover (STORY 真值) */
+.style-chip{display:flex;align-items:center;gap:8px;padding:4px 10px 4px 4px;background:var(--panel);border:1px solid var(--border);border-radius:14px;cursor:pointer;font-size:12px;color:var(--text);transition:.15s;user-select:none;position:relative;}
+.style-chip:hover{border-color:var(--border-strong);}
+.style-chip.active,.style-chip[data-active=true]{background:var(--brand);border-color:var(--brand);color:var(--brand-fg);}
+.style-chip.active .swatch,.style-chip[data-active=true] .swatch{border-color:rgba(255,255,255,.35);}
+.style-chip .swatch{width:28px;height:28px;border-radius:10px;flex-shrink:0;border:1px solid var(--border-subtle);background-size:cover;background-position:center;}
+.style-chip[data-has-preview=true]:hover::after{content:"";position:absolute;left:50%;bottom:calc(100% + 8px);transform:translateX(-50%);width:240px;height:135px;background-image:var(--preview-img);background-size:cover;background-position:center;background-repeat:no-repeat;background-color:var(--bg-elevated);border:1px solid var(--border-strong);border-radius:var(--radius-md);box-shadow:var(--shadow-lg);z-index:50;pointer-events:none;animation:stylePreviewIn .15s ease-out;}
+.style-chip[data-has-preview=true]:hover::before{content:"";position:absolute;left:50%;bottom:100%;transform:translateX(-50%);border:6px solid transparent;border-top-color:var(--border-strong);z-index:51;pointer-events:none;}
+@keyframes stylePreviewIn{from{opacity:0;transform:translateX(-50%) translateY(4px);}to{opacity:1;transform:translateX(-50%) translateY(0);}}
+.style-chip[data-has-preview=true]{cursor:help;}
 
 /* Checkbox row */
 .cb-row{display:flex;align-items:center;gap:8px;padding:5px 0;cursor:pointer;font-size:13px;}
@@ -604,24 +608,24 @@ body{padding-left:220px;}
     </div>
   </div>
 
-  <!-- 画面风格 -->
+  <!-- 画面风格 — STORY 真值：swatch 用真预览图 + hover 弹大图 -->
   <div class="section">
     <div class="section-title"><span class="icon">🎨</span> 画面风格</div>
     <div class="chips" id="style">
-      <div class="style-chip" data-style="bw"><span class="swatch" style="background:linear-gradient(135deg,#222,#555)"></span>黑白摄影 · 纪实感</div>
-      <div class="style-chip" data-style="realistic"><span class="swatch" style="background:linear-gradient(135deg,#a36b3f,#5b3920)"></span>写实彩色 · 质感照片</div>
-      <div class="style-chip" data-style="oil"><span class="swatch" style="background:linear-gradient(135deg,#d4a017,#7a4a0a)"></span>油画风格 · 印象写意</div>
-      <div class="style-chip" data-style="modern"><span class="swatch" style="background:linear-gradient(135deg,#1f3a5f,#0a1929)"></span>现代电影 · 亚洲调色</div>
-      <div class="style-chip" data-style="ancient"><span class="swatch" style="background:linear-gradient(135deg,#8b5a2b,#3e2410)"></span>古风电影 · 古代史诗</div>
-      <div class="style-chip" data-style="retro"><span class="swatch" style="background:linear-gradient(135deg,#d4a574,#8b4513)"></span>复古胶片 · 80年代怀旧</div>
-      <div class="style-chip" data-style="watercolor"><span class="swatch" style="background:linear-gradient(135deg,#ffd6e0,#c8e6f5)"></span>水彩治愈 · 柔和笔触</div>
-      <div class="style-chip" data-style="comic"><span class="swatch" style="background:linear-gradient(135deg,#ff3366,#ffcc00)"></span>杂志漫画 · 极端色块</div>
-      <div class="style-chip" data-style="pixar"><span class="swatch" style="background:linear-gradient(135deg,#7eb8ff,#ff9a5a)"></span>皮克斯 3D · 动画质感</div>
-      <div class="style-chip" data-style="ink"><span class="swatch" style="background:linear-gradient(135deg,#f5f5f0,#2c2c2c)"></span>中国水墨 · 文人雅趣</div>
-      <div class="style-chip" data-style="folk-paint"><span class="swatch" style="background:linear-gradient(135deg,#c94e1f,#3a1a0a)"></span>民间故事工笔风 · 工笔叙事</div>
-      <div class="style-chip" data-style="palace"><span class="swatch" style="background:linear-gradient(135deg,#fce8d4,#d9b48f)"></span>宫 1 十 · 治愈白漫</div>
-      <div class="style-chip" data-style="dark-flame"><span class="swatch" style="background:linear-gradient(135deg,#ff5722,#1a0a05)"></span>黑暗橙焰 · 知识申作援助</div>
-      <div class="style-chip" data-style="custom"><span class="swatch" style="background:linear-gradient(135deg,#e0e0e0,#9e9e9e)">+</span>自定义</div>
+      <div class="style-chip" data-style="bw" data-preview="black-white"><span class="swatch" style="background-image:url(/assets/style-previews/black-white.webp)"></span>黑白摄影 · 纪实感</div>
+      <div class="style-chip" data-style="realistic" data-preview="realistic"><span class="swatch" style="background-image:url(/assets/style-previews/realistic.webp)"></span>写实彩色 · 质感照片</div>
+      <div class="style-chip" data-style="oil" data-preview="oil-painting"><span class="swatch" style="background-image:url(/assets/style-previews/oil-painting.webp)"></span>油画风格 · 印象写意</div>
+      <div class="style-chip" data-style="modern" data-preview="cinematic"><span class="swatch" style="background-image:url(/assets/style-previews/cinematic.webp)"></span>现代电影 · 亚洲调色</div>
+      <div class="style-chip" data-style="ancient" data-preview="ancient-cinematic"><span class="swatch" style="background-image:url(/assets/style-previews/ancient-cinematic.webp)"></span>古风电影 · 古代史诗</div>
+      <div class="style-chip" data-style="retro" data-preview="vintage-film"><span class="swatch" style="background-image:url(/assets/style-previews/vintage-film.webp)"></span>复古胶片 · 80年代怀旧</div>
+      <div class="style-chip" data-style="watercolor" data-preview="watercolor"><span class="swatch" style="background-image:url(/assets/style-previews/watercolor.webp)"></span>水彩治愈 · 柔和笔触</div>
+      <div class="style-chip" data-style="comic" data-preview="illustration"><span class="swatch" style="background-image:url(/assets/style-previews/illustration.webp)"></span>杂志漫画 · 极端色块</div>
+      <div class="style-chip" data-style="pixar" data-preview="pixar-3d"><span class="swatch" style="background-image:url(/assets/style-previews/pixar-3d.webp)"></span>皮克斯 3D · 动画质感</div>
+      <div class="style-chip" data-style="ink" data-preview="ink-wash"><span class="swatch" style="background-image:url(/assets/style-previews/ink-wash.webp)"></span>中国水墨 · 文人雅趣</div>
+      <div class="style-chip" data-style="folk-paint" data-preview="folk-tale-gongbi"><span class="swatch" style="background-image:url(/assets/style-previews/folk-tale-gongbi.webp)"></span>民间故事工笔风 · 工笔叙事</div>
+      <div class="style-chip" data-style="palace" data-preview="ghibli"><span class="swatch" style="background-image:url(/assets/style-previews/ghibli.webp)"></span>宫崎骏治愈 · 动漫白漫</div>
+      <div class="style-chip" data-style="dark-flame" data-preview="chalkboard"><span class="swatch" style="background-image:url(/assets/style-previews/chalkboard.webp)"></span>黑板教学 · 知识科普</div>
+      <div class="style-chip" data-style="custom"><span class="swatch">+</span>自定义</div>
     </div>
   </div>
 
@@ -953,6 +957,12 @@ bindChips("pause-mode");
 
 // Style chips with preview swatch (use style-chip class, not chip)
 document.querySelectorAll("#style .style-chip").forEach(chip => {
+  // hover 大图：data-preview → /assets/style-previews/<name>.webp
+  const pv = chip.dataset.preview;
+  if (pv) {
+    chip.dataset.hasPreview = "true";
+    chip.style.setProperty("--preview-img", `url(/assets/style-previews/${pv}.webp)`);
+  }
   chip.onclick = () => {
     document.querySelectorAll("#style .style-chip").forEach(x => x.classList.toggle("active", x === chip));
   };
