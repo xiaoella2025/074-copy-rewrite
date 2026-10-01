@@ -1,4 +1,4 @@
-async function runImagePipeline({ request, generate, tts, image, cover, resume, mode = 'full',
+async function runImagePipeline({ request, generate, tts, image, cover, resume, dynamic, mode = 'full',
   pauseMode = 'never', pauseStages = [], onPause = async () => true, onStage = () => {} }) {
   const makeFormData = (fields) => {
     const fd = new FormData();
@@ -136,11 +136,34 @@ async function runImagePipeline({ request, generate, tts, image, cover, resume, 
   if (!missingImages.length) onStage('images', 'done', step4);
   else await pauseAfter('images', step4);
 
+  const dynamicMode = dynamic?.mode || 'off';
+  const dynamicResults = prior.videos || [];
+  let newVideos = [];
+  if (dynamicMode !== 'off' && taskId) {
+    const videoResp = await call('videos', '/api/step4_intro_video', {
+      task_id: taskId, mode: dynamicMode,
+      custom_idxs: dynamicMode === 'custom' ? (dynamic.custom_idxs || []) : [],
+      ratio: image.ratio,
+      shots: step4.results.map((result, i) => ({
+        idx: result?.idx ?? shots[i]?.idx,
+        image_path: result?.task_local || result?.url || '',
+        audio_path: step5.results.find(seg => seg.idx === result?.idx)?.path || '',
+        duration: step5.results.find(seg => seg.idx === result?.idx)?.duration || 0,
+      })).filter(item => item.image_path && item.audio_path && item.duration > 0),
+    });
+    newVideos = videoResp?.results || [];
+  }
+  const videoByIdx = new Map(dynamicResults.concat(newVideos)
+    .filter(item => item?.ok).map(item => [Number(item.idx), item]));
+  const step4WithVideo = {results: step4.results, videos: [...videoByIdx.values()]};
+  if (dynamicMode !== 'off' && newVideos.length) onStage('videos', 'done', step4WithVideo);
+
   const title = meta.title || generate.title || '未命名任务';
   const step6 = prior.draft?.draft_dir ? prior.draft : await call('draft', '/api/step6_jianying_draft', {
     task_id: taskId,
     shots: timedShots,
     images: step4.results,
+    videos: step4WithVideo.videos,
     segments: step5.results,
     title,
     ratio: image.ratio,

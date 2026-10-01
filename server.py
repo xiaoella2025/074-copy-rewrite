@@ -1493,6 +1493,40 @@ def probe_audio_duration(path):
         return None
 
 
+def make_intro_video(image_path, audio_path, output_path, duration, ratio="9:16"):
+    """ffmpeg 把静图 + 音频做成短视频：Ken Burns 缓慢推近 + 音轨。
+    失败抛 RuntimeError；产物 output_path 已存在则覆盖。"""
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        raise RuntimeError("动态分镜需要 ffmpeg；本机未在 PATH 中找到 ffmpeg")
+    if duration <= 0:
+        raise RuntimeError("duration 必须 > 0")
+    if ratio == "16:9":
+        canvas = "1920x1080"
+        src_w, src_h = 3840, 2160
+    else:
+        canvas = "1080x1920"
+        src_w, src_h = 2160, 3840
+    # 先把图填齐到 src 尺寸；zoompan 持续推进 d * fps 帧后循环
+    vf = (f"scale={src_w}:{src_h}:force_original_aspect_ratio=increase,"
+          f"crop={src_w}:{src_h},"
+          f"zoompan=z='1.0+0.04*on':d={int(duration * 25)}:s={canvas}:fps=25,"
+          f"format=yuv420p")
+    cmd = [ffmpeg, "-y",
+           "-loop", "1", "-i", str(image_path),
+           "-i", str(audio_path),
+           "-t", f"{duration:.2f}",
+           "-vf", vf,
+           "-c:v", "libx264", "-preset", "fast", "-crf", "23",
+           "-c:a", "aac", "-b:a", "128k",
+           "-shortest", "-pix_fmt", "yuv420p",
+           str(output_path)]
+    r = subprocess.run(cmd, capture_output=True, timeout=180, check=False)
+    if r.returncode != 0:
+        raise RuntimeError(f"ffmpeg 动态分镜失败：{r.stderr.decode('utf-8', 'replace')[:300]}")
+    return Path(output_path)
+
+
 def slice_uploaded_voice(task_dir, segments):
     """把 task_dir/uploaded-voice.mp3 按 segments 字符权重切到 audio/seg_XXX.mp3。
     返回 [{index, path, duration, text, duration_source="upload_slice"}]。
@@ -2265,6 +2299,21 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 self._json(404, {"error": "audio 不存在"})
             return
+        if self.path.startswith("/api/task_video/"):
+            # /api/task_video/<task_id>/<file>.mp4 → data/tasks/<task_id>/videos/<file>
+            rel = self.path[len("/api/task_video/"):]
+            if rel.endswith(".mp4"):
+                if rel.count("/") > 1:
+                    self._json(404, {"error": "path 不合法"})
+                    return
+                vid_path = DATA_DIR / "tasks" / rel
+                if vid_path.exists() and vid_path.is_file():
+                    self._file(vid_path, "video/mp4")
+                else:
+                    self._json(404, {"error": "视频不存在"})
+                return
+            self._json(404, {"error": "仅支持 .mp4"})
+            return
         if self.path.startswith("/tasks/"):
             # /tasks/<task_id>/<filename> — 让前端能 fetch 任务产物 JSON / 文本
             rel = self.path.lstrip("/")
@@ -2902,7 +2951,6 @@ class Handler(BaseHTTPRequestHandler):
                 audio_dir.mkdir(parents=True, exist_ok=True)
 
                 if mode == "upload":
-                    # 上传自定义配音：用 ffmpeg 按字符权重切片
                     seg_records, total_dur = slice_uploaded_voice(task_dir, segments)
                     segment_file = task_dir / "05-tts-segments.json"
                     previous_segments = []
@@ -2945,7 +2993,6 @@ class Handler(BaseHTTPRequestHandler):
                 tts = s.get("tts") or {}
                 if provider == "volcengine":
                     volc = tts.get("volcengine") or {}
-                    # 字段兼容：api_key (新) OR access_key (旧 settings)
                     api_key = (volc.get("api_key") or volc.get("access_key") or "").strip()
                     if not api_key:
                         self._json(400, {"error": "未配置火山引擎 TTS（设置 → TTS 配音 → 火山引擎 → API Key 必填）"})
@@ -2975,11 +3022,7 @@ class Handler(BaseHTTPRequestHandler):
                     self._json(400, {"error": f"暂不支持 TTS provider: {provider}"})
                     return
 
-                # 任务目录：data/tasks/<task_id>/audio/
-                task_dir = DATA_DIR / "tasks" / task_id
-                audio_dir = task_dir / "audio"
-                audio_dir.mkdir(parents=True, exist_ok=True)
-                # 保存输入元数据（参考 R6 的 SEGMENTS JSON）
+                # 保存输入元数据
                 seg_meta = [
                     {"idx": seg.get("idx"), "text": seg.get("text", ""), "speaker": speaker}
                     for seg in segments
@@ -2989,7 +3032,7 @@ class Handler(BaseHTTPRequestHandler):
                     encoding="utf-8"
                 )
 
-                # 单条 TTS 调用（参考 ZC.n 函数）
+                # 单条 TTS 调用
                 def synth_one(seg):
                     idx = seg.get("idx")
                     text = (seg.get("text") or "").strip()
@@ -3003,7 +3046,6 @@ class Handler(BaseHTTPRequestHandler):
                         return _aura_tts_synthesize(api_key, text, speaker, idx, speed, aura)
                     return {"idx": idx, "ok": False, "error": f"未知 provider: {provider}"}
 
-                # 并发合成（参考 R6 的 _ = max(3, floor(h.length/3))；上限 3 路）
                 from concurrent.futures import ThreadPoolExecutor, as_completed
                 concurrency = min(3, len(segments))
                 results = [None] * len(segments)
@@ -3016,7 +3058,6 @@ class Handler(BaseHTTPRequestHandler):
                             results[slot] = f.result()
                         except Exception as e:
                             results[slot] = {"idx": segments[slot].get("idx"), "ok": False, "error": str(e)}
-                # 落盘每段 audio 到 audio/ 目录 + 更新 url
                 seg_json = []
                 for r in results:
                     if r and r.get("ok") and r.get("audio_bytes"):
@@ -3024,16 +3065,13 @@ class Handler(BaseHTTPRequestHandler):
                         audio_path.write_bytes(r["audio_bytes"])
                         r["url"] = f"/api/audio/{task_id}/seg_{r['idx']:03d}.mp3"
                         r["path"] = str(audio_path)
-                        # 优先读取真实音频时长；本机缺 ffprobe 时按字数估算。
                         text_chars = sum(1 for ch in (r.get("text") or "") if ch.strip())
                         measured_duration = probe_audio_duration(audio_path)
                         r["duration"] = measured_duration or round(max(1.0, text_chars * 0.18), 2)
                         r["duration_source"] = "ffprobe" if measured_duration else "chars_est"
-                        # 火山 ASR 对齐（仅当 TTS provider = volcengine 且有 key 时启用；其他 provider 跳过）
                         if provider == "volcengine" and api_key:
                             try:
                                 asr_segs = _volc_asr_transcribe(api_key, audio_path, timeout_sec=45)
-                                # 取最后一个 utterance 的 end_time 作为该段总时长（utils 真实音频长度）
                                 if asr_segs:
                                     last_end = max(s["end"] for s in asr_segs)
                                     if last_end > 0.5:
@@ -3051,7 +3089,6 @@ class Handler(BaseHTTPRequestHandler):
                         r.pop("audio_bytes", None)
                     else:
                         r = r or {"ok": False, "error": "未知错误"}
-                # 保存 05-tts-segments.json（参考 R6 的 SEGMENTS 持久化）
                 segment_file = task_dir / "05-tts-segments.json"
                 previous_segments = []
                 if segment_file.exists():
@@ -3084,12 +3121,94 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         # ============================================================
-        # Step 6 剪映草稿打包（参考 STORY U_ 41177 真值结构）
-        #   body: {"shots":[...], "images":[...], "segments":[{"idx","text","duration"}],
-        #          "title":"...", "task_id":"...", "ratio":"9:16",
-        #          "bgm_path":"...", "cover_title":{...}}
-        #   输出：剪映草稿目录/<task_id>/draft_content.json + draft_meta_info.json
+        # 动态分镜 — ffmpeg Ken Burns + 配音 → task_dir/videos/seg_NNNN.mp4
+        #   body: {"task_id":"...", "mode":"3"|"all"|"custom", "custom_idxs":[1,3],
+        #          "ratio":"9:16",
+        #          "shots":[{"idx":1,"image_path":"data/tasks/<id>/covers/1.png",
+        #                    "audio_path":"data/tasks/<id>/audio/seg_001.mp3","duration":2.4}]}
+        #   输出：videos 列表 + 04-intro-videos.json
         # ============================================================
+        if self.path == "/api/step4_intro_video":
+            try:
+                task_id = (data.get("task_id") or "").strip()
+                mode = (data.get("mode") or "off").strip()
+                ratio = (data.get("ratio") or "9:16").strip()
+                custom_idxs = data.get("custom_idxs") or []
+                shots = data.get("shots") or []
+                if not task_id:
+                    self._json(400, {"error": "task_id 必填"})
+                    return
+                if mode == "off" or not shots:
+                    self._json(200, {"results": [], "mode": mode, "task_id": task_id})
+                    return
+                if mode == "3":
+                    scope = shots[:3]
+                elif mode == "all":
+                    scope = shots
+                elif mode == "custom":
+                    custom_set = {int(i) for i in custom_idxs if i is not None}
+                    scope = [s for s in shots if int(s.get("idx", -1)) in custom_set]
+                else:
+                    self._json(400, {"error": f"未支持的动态分镜模式: {mode}"})
+                    return
+                task_dir = DATA_DIR / "tasks" / task_id
+                videos_dir = task_dir / "videos"
+                videos_dir.mkdir(parents=True, exist_ok=True)
+                results = []
+                t0 = time.time()
+                for shot in scope:
+                    idx = int(shot.get("idx") or 0)
+                    image_path = shot.get("image_path") or ""
+                    audio_path = shot.get("audio_path") or ""
+                    duration = float(shot.get("duration") or 0)
+                    if not idx or not image_path or not audio_path or duration <= 0:
+                        results.append({"idx": idx, "ok": False,
+                                        "error": "image_path / audio_path / duration 缺失"})
+                        continue
+                    out_path = videos_dir / f"seg_{idx:03d}.mp4"
+                    try:
+                        make_intro_video(Path(image_path), Path(audio_path),
+                                         out_path, duration, ratio=ratio)
+                    except Exception as ex:
+                        results.append({"idx": idx, "ok": False, "error": str(ex)})
+                        continue
+                    results.append({
+                        "idx": idx,
+                        "ok": True,
+                        "video_path": str(out_path),
+                        "video_url": f"/api/task_video/{task_id}/seg_{idx:03d}.mp4",
+                        "duration": duration,
+                    })
+                # 落 04-intro-videos.json（合并既有）
+                manifest_path = task_dir / "04-intro-videos.json"
+                previous = []
+                if manifest_path.exists():
+                    try:
+                        previous = json.loads(manifest_path.read_text(encoding="utf-8"))
+                    except (OSError, ValueError):
+                        previous = []
+                by_idx = {item["idx"]: item for item in previous
+                          if isinstance(item, dict) and item.get("idx") is not None}
+                for item in results:
+                    if item.get("ok"):
+                        by_idx[item["idx"]] = item
+                manifest_path.write_text(
+                    json.dumps([by_idx[k] for k in sorted(by_idx)], ensure_ascii=False, indent=2),
+                    encoding="utf-8"
+                )
+                ok_count = sum(1 for r in results if r.get("ok"))
+                self._json(200, {
+                    "results": results,
+                    "mode": mode,
+                    "task_id": task_id,
+                    "ok_count": ok_count,
+                    "total": len(scope),
+                    "elapsed": round(time.time() - t0, 1),
+                })
+            except (ValueError, RuntimeError) as e:
+                self._json(400, {"error": str(e)})
+            return
+
         if self.path == "/api/step6_jianying_draft":
             try:
                 s = load_settings()
@@ -3099,6 +3218,7 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 shots = data.get("shots") or []
                 images = data.get("images") or []
+                videos = data.get("videos") or []
                 segments = data.get("segments") or []
                 title = (data.get("title") or "未命名任务").strip()
                 task_id = (data.get("task_id") or f"app074_{int(time.time())}").strip()
@@ -3118,6 +3238,7 @@ class Handler(BaseHTTPRequestHandler):
                 # 把 idx 序对齐
                 seg_by_idx = {seg.get("idx"): seg for seg in segments if seg.get("idx") is not None}
                 img_by_idx = {img.get("idx"): img for img in images if img.get("idx") is not None}
+                vid_by_idx = {vid.get("idx"): vid for vid in videos if vid.get("idx") is not None}
                 # 构建时间轴（参考 U_ 中 x payload 的 assignments/lyrics 结构）
                 tracks = []
                 # 视频轨：每个分镜一张图 + 时长（按 Step 5 配音时长，无则按字数 * 0.18 + 1s）
@@ -3127,24 +3248,35 @@ class Handler(BaseHTTPRequestHandler):
                 for i, sh in enumerate(shots):
                     idx = sh.get("idx", i + 1)
                     img = img_by_idx.get(idx) or {}
+                    vid = vid_by_idx.get(idx) or {}
                     seg = seg_by_idx.get(idx) or {}
                     dur = float(seg.get("duration") or 0)
                     if dur <= 0:
                         # 兜底：按字数估算（中文 ~3.3 字/秒）
                         chars = len((sh.get("text") or "").strip())
                         dur = max(2.0, round(chars / 3.3, 2))
-                    img_url = img.get("url") or ""
-                    img_local = ""
-                    if img_url.startswith("/covers/"):
-                        img_local = str(DATA_DIR / img_url.lstrip("/"))
-                    elif img_url.startswith(f"/api/task_image/{task_id}/"):
-                        img_local = str(_tasks_root() / task_id / "covers" / Path(img_url).name)
+                    if vid.get("video_path"):
+                        material_path = vid["video_path"]
+                        material_url = vid.get("video_url") or ""
+                        material_id = f"video_{idx}"
+                        seg_type = "video"
+                    else:
+                        img_url = img.get("url") or ""
+                        material_id = f"img_{idx}"
+                        seg_type = "video"
+                        if img_url.startswith("/covers/"):
+                            material_path = str(DATA_DIR / img_url.lstrip("/"))
+                        elif img_url.startswith(f"/api/task_image/{task_id}/"):
+                            material_path = str(_tasks_root() / task_id / "covers" / Path(img_url).name)
+                        else:
+                            material_path = ""
+                        material_url = img_url
                     video_segments.append({
                         "id": f"video_seg_{idx}",
-                        "type": "video",
-                        "material_id": f"img_{idx}",
-                        "material_path": img_local,
-                        "material_url": img_url,
+                        "type": seg_type,
+                        "material_id": material_id,
+                        "material_path": material_path,
+                        "material_url": material_url,
                         "target_timerange": {
                             "start": round(cur_t * 1_000_000),
                             "duration": round(dur * 1_000_000),

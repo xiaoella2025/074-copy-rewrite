@@ -568,9 +568,13 @@ body{padding-left:220px;}
         <div class="help" style="margin-bottom:6px">动态分镜</div>
         <div class="chips" id="dynamic-shots">
           <span class="chip active" data-dynamic="off">关闭</span>
-          <span class="chip disabled" data-dynamic="3" aria-disabled="true">前 3 张 · 暂未接入</span>
-          <span class="chip disabled" data-dynamic="all" aria-disabled="true">全部 · 暂未接入</span>
-          <span class="chip disabled" data-dynamic="custom" aria-disabled="true">自定义 · 暂未接入</span>
+          <span class="chip" data-dynamic="3">前 3 张（Ken Burns 推近 + 配音）</span>
+          <span class="chip" data-dynamic="all">全部</span>
+          <span class="chip" data-dynamic="custom">自定义（填镜头号）</span>
+        </div>
+        <div id="dynamic-custom-area" style="display:none;margin-top:6px">
+          <div class="help" style="margin-bottom:4px">镜头号（逗号分隔，例如 1,3,5）</div>
+          <input type="text" id="dynamic-custom-idxs" placeholder="1,3,5" style="width:100%;padding:6px 10px">
         </div>
       </div>
     </div>
@@ -923,7 +927,9 @@ bindChips("hooks", null, false);
 bindChips("viewpoints");
 bindChips("sources", null, false);
 bindChips("img-source");
-bindChips("dynamic-shots");
+bindChips("dynamic-shots", (chip) => {
+  $("dynamic-custom-area").style.display = chip.dataset.dynamic === "custom" ? "" : "none";
+});
 bindChips("img-ratio");
 bindChips("style");
 bindChips("cover-mode");
@@ -1422,8 +1428,9 @@ async function runPipeline() {
     if (getActiveChip("video-form", "data-form", "narrator") !== "narrator") {
       throw new Error("双人播客需要双音色分镜，当前任务链路尚未接入，请选择旁白视频");
     }
-    if (getActiveChip("dynamic-shots", "data-dynamic", "off") !== "off") {
-      throw new Error("动态分镜尚未接入剪映草稿生成，请先选择关闭");
+    if (getActiveChip("dynamic-shots", "data-dynamic", "off") !== "off"
+      && !$("img-source")?.classList) {  /* placeholder so the script keeps shape */
+      /* 动态分镜已接入；调用 /api/step4_intro_video */
     }
     if ($("prod-file").files?.length) {
       throw new Error("产品参考图编辑尚未接入当前出图接口，请移除参考图后继续");
@@ -1493,6 +1500,13 @@ async function runPipeline() {
         retry: $("toggle-retry").classList.contains("on"),
       },
       cover: {mode: coverMode, style: styleLabel, dataUrl: coverDataUrl},
+      dynamic: {
+        mode: getActiveChip("dynamic-shots", "data-dynamic", "off"),
+        custom_idxs: (() => {
+          const raw = $("dynamic-custom-idxs").value || "";
+          return raw.split(",").map(s => Number(s.trim())).filter(n => Number.isFinite(n) && n > 0);
+        })(),
+      },
       onStage: (stage, status, data) => {
         const names = {generate:"文案与分镜", tts:"Step 5 配音", prompts:"Step 3 绘图提示词", images:"Step 4 出图", draft:"Step 6 剪映草稿", cover:"封面海报"};
         if (status === "running") btns.forEach(btn => btn.innerHTML = `<span class="spinner"></span> ${names[stage] || stage}中...`);

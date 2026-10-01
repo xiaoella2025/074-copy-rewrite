@@ -206,3 +206,114 @@ test('上传配音模式缺文件立即报错，不发起付费调用', async ()
   }), /需要选择本地音频文件/);
   assert.deepEqual(calls, ['/api/generate']);  // generate 已调，但 upload_voice 没调
 });
+
+test('动态分镜 off 时不调用 step4_intro_video，step6 拿不到 videos', async () => {
+  const calls = [];
+  const replies = [firstGeneration(),
+    {results:[{idx:1,ok:true,path:'audio.mp3',duration:2}]},
+    {steps:{'3':[{idx:1,desc_prompt:'画面'}]}},
+    {results:[{idx:1,ok:true,url:'/covers/a.png'}]},
+    {draft_dir:'draft'}];
+  await runImagePipeline({
+    request: async (path, body) => { calls.push({path,body}); return replies.shift(); },
+    generate:{reference:'原文'}, tts:{provider:'aura'},
+    image:{provider:'gpt_image',ratio:'9:16'},
+    dynamic:{mode:'off'},
+  });
+  const paths = calls.map(c => c.path);
+  assert.ok(!paths.includes('/api/step4_intro_video'));
+  const draft = calls.find(c => c.path === '/api/step6_jianying_draft');
+  assert.deepEqual(draft.body.videos, []);
+});
+
+test('动态分镜=3 时调 step4_intro_video 把前 3 镜转视频，step6 优先 video material', async () => {
+  const calls = [];
+  const replies = [
+    {task_id:'task_dyn', steps:{
+      '1':{text:'原文'}, 'meta':{title:'标题'},
+      '2':{shots:[
+        {idx:1,text:'一'},{idx:2,text:'二'},{idx:3,text:'三'},{idx:4,text:'四'},
+      ]},
+    }},
+    {results:[
+      {idx:1,ok:true,path:'/a/seg_001.mp3',duration:2,text:'一'},
+      {idx:2,ok:true,path:'/a/seg_002.mp3',duration:2,text:'二'},
+      {idx:3,ok:true,path:'/a/seg_003.mp3',duration:2,text:'三'},
+      {idx:4,ok:true,path:'/a/seg_004.mp3',duration:2,text:'四'},
+    ]},
+    {steps:{'3':[
+      {idx:1,desc_prompt:'p1'},{idx:2,desc_prompt:'p2'},
+      {idx:3,desc_prompt:'p3'},{idx:4,desc_prompt:'p4'},
+    ]}},
+    {results:[
+      {idx:1,ok:true,url:'/i/1.png',task_local:'/tmp/1.png'},
+      {idx:2,ok:true,url:'/i/2.png',task_local:'/tmp/2.png'},
+      {idx:3,ok:true,url:'/i/3.png',task_local:'/tmp/3.png'},
+      {idx:4,ok:true,url:'/i/4.png',task_local:'/tmp/4.png'},
+    ]},
+    {results:[
+      {idx:1,ok:true,video_path:'/v/1.mp4',video_url:'/v/1.mp4',duration:2},
+      {idx:2,ok:true,video_path:'/v/2.mp4',video_url:'/v/2.mp4',duration:2},
+      {idx:3,ok:true,video_path:'/v/3.mp4',video_url:'/v/3.mp4',duration:2},
+    ]},
+    {draft_dir:'draft'},
+  ];
+  await runImagePipeline({
+    request: async (path, body) => { calls.push({path,body}); return replies.shift(); },
+    generate:{}, tts:{provider:'aura'},
+    image:{provider:'gpt_image',ratio:'9:16',resolution:'1k',concurrency:3},
+    dynamic:{mode:'3'},
+  });
+  const paths = calls.map(c => c.path);
+  assert.ok(paths.includes('/api/step4_intro_video'));
+  const intro = calls.find(c => c.path === '/api/step4_intro_video');
+  assert.equal(intro.body.mode, '3');
+  assert.equal(intro.body.shots.length, 4);  // 传全部让它自己裁前 3
+  const draft = calls.find(c => c.path === '/api/step6_jianying_draft');
+  assert.equal(draft.body.videos.length, 3);
+  assert.deepEqual(draft.body.videos.map(v => v.idx), [1, 2, 3]);
+});
+
+test('动态分镜=custom 时只对指定 idx 出视频', async () => {
+  const calls = [];
+  const replies = [
+    {task_id:'task_c', steps:{
+      '1':{text:'原文'}, 'meta':{title:'标题'},
+      '2':{shots:[
+        {idx:1,text:'一'},{idx:2,text:'二'},{idx:3,text:'三'},{idx:4,text:'四'},
+      ]},
+    }},
+    {results:[
+      {idx:1,ok:true,path:'/a/1.mp3',duration:2},
+      {idx:2,ok:true,path:'/a/2.mp3',duration:2},
+      {idx:3,ok:true,path:'/a/3.mp3',duration:2},
+      {idx:4,ok:true,path:'/a/4.mp3',duration:2},
+    ]},
+    {steps:{'3':[
+      {idx:1,desc_prompt:'p1'},{idx:2,desc_prompt:'p2'},
+      {idx:3,desc_prompt:'p3'},{idx:4,desc_prompt:'p4'},
+    ]}},
+    {results:[
+      {idx:1,ok:true,url:'/i/1.png',task_local:'/tmp/1.png'},
+      {idx:2,ok:true,url:'/i/2.png',task_local:'/tmp/2.png'},
+      {idx:3,ok:true,url:'/i/3.png',task_local:'/tmp/3.png'},
+      {idx:4,ok:true,url:'/i/4.png',task_local:'/tmp/4.png'},
+    ]},
+    {results:[
+      {idx:2,ok:true,video_path:'/v/2.mp4',video_url:'/v/2.mp4',duration:2},
+      {idx:4,ok:true,video_path:'/v/4.mp4',video_url:'/v/4.mp4',duration:2},
+    ]},
+    {draft_dir:'draft'},
+  ];
+  await runImagePipeline({
+    request: async (path, body) => { calls.push({path,body}); return replies.shift(); },
+    generate:{}, tts:{provider:'aura'},
+    image:{provider:'gpt_image',ratio:'9:16',resolution:'1k',concurrency:3},
+    dynamic:{mode:'custom', custom_idxs:[2,4]},
+  });
+  const intro = calls.find(c => c.path === '/api/step4_intro_video');
+  assert.equal(intro.body.mode, 'custom');
+  assert.deepEqual(intro.body.custom_idxs, [2, 4]);
+  const draft = calls.find(c => c.path === '/api/step6_jianying_draft');
+  assert.deepEqual(draft.body.videos.map(v => v.idx), [2, 4]);
+});
