@@ -779,31 +779,29 @@ code{background:var(--bg);padding:1px 5px;border-radius:3px;font-family:var(--fo
       <div class="settings-section-head">
         <div class="settings-section-icon"><span class="icon">🎙</span></div>
         <div class="flex-1">
-          <div class="settings-section-title">语音识别 · 字幕对齐</div>
-          <div class="settings-section-sub">用于配音分段与字幕时间轴的识别引擎。</div>
+          <div class="settings-section-title">语音识别</div>
+          <div class="settings-section-sub">歌词逐字对齐 / 字幕时间轴的识别引擎</div>
         </div>
         <span class="settings-pip" id="st-asr"><span class="settings-pip-dot"></span>检测中…</span>
       </div>
       <div class="chips" id="asr-providers" style="margin-bottom:14px">
-        <div class="chip" data-v="local"><span class="chip-main">本地识别</span><span class="chip-hint">免费 · 离线 · 占 CPU</span></div>
-        <div class="chip" data-v="volcengine"><span class="chip-main">云端识别（火山）</span><span class="chip-hint">付费 · 复用配音凭证</span></div>
+        <div class="chip" data-v="local"><span class="chip-main">本地识别</span><span class="chip-hint">免费 · 离线 · 占 CPU（sherpa SenseVoice）</span></div>
+        <div class="chip" data-v="volcengine"><span class="chip-main">云端识别（火山）</span><span class="chip-hint">付费 · 省心 · 复用配音凭证</span></div>
       </div>
+      <div class="field-help" style="margin:-4px 0 12px">点选后立即保存当前识别方式。</div>
       <div class="card" id="asr-local-block" style="display:none">
         <div class="card-hd"><span class="label">本地语音模型</span><span class="hint" id="asr-local-state">检测中…</span></div>
-        <div class="info-bar">将 SenseVoice 模型的 <code>model.int8.onnx</code>、<code>tokens.txt</code>、<code>silero_vad.onnx</code> 放到以下目录。还需本机安装 <code>sherpa-onnx</code> 并可运行 ffmpeg。<a href="https://k2-fsa.github.io/sherpa/onnx/sense-voice/pretrained.html" target="_blank" rel="noopener noreferrer">模型下载说明 ↗</a></div>
+        <button type="button" class="info-bar" id="btn-asr-manual" style="width:100%;text-align:left;cursor:pointer;border:1px solid var(--brand)">📖 模型下载地址 + 图文教程在手册「3.6 语音识别模型」板块 → 点此打开</button>
+        <div class="field-help" id="asr-setup-help" style="margin-top:8px">打开手册，在「3.6 语音识别模型」下载 models 压缩包，解压后把模型文件放进下面的文件夹，再点「重新检测」。</div>
         <div class="field-help" style="margin-top:12px">存放位置：<code id="asr-model-dir"></code></div>
         <div class="row" style="margin-top:10px">
           <button type="button" class="btn btn-secondary" id="btn-asr-open-models">📁 打开文件夹</button>
           <button type="button" class="btn btn-ghost" id="btn-asr-refresh">重新检测</button>
         </div>
         <div class="field-help" id="asr-local-detail" style="margin-top:10px"></div>
+        <div class="field-help" style="margin-top:6px">本地识别基于 SenseVoice；改变 074 数据目录时，模型文件也需随之移动。</div>
       </div>
-      <div class="card" id="asr-cloud-block" style="display:none">
-        <div class="card-hd"><span class="label">云端识别（火山引擎）</span><span class="hint">复用配音凭证</span></div>
-        <div class="field-help">使用「TTS 配音 → 火山引擎」中保存的 API Key，需在火山控制台开通「录音文件识别 2.0」权限。无需另填 App ID 或 Token。</div>
-        <div class="field-help" id="asr-cloud-detail" style="margin-top:10px"></div>
-      </div>
-      <div class="settings-card-footer"><button class="btn primary" id="btn-asr-save">💾 保存识别引擎</button></div>
+      <div class="field-help" id="asr-cloud-block" style="display:none;margin-top:12px">复用「TTS 配音 → 火山引擎」的 API Key，需在火山控制台开通「录音文件识别 2.0」权限。<span id="asr-cloud-detail"></span></div>
     </div>
 
     <!-- ============ 剪映 ============ -->
@@ -957,6 +955,8 @@ const MODEL_HINTS = {
 const SECTIONS = ["llm","image","tts","asr","draft","ai-creation","about"];
 let editingProfileId = null;
 let profilesCache = [];
+let asrState = null;
+let asrSaving = false;
 
 function toast(msg, ok) {
   const t = $("toast");
@@ -1622,18 +1622,20 @@ async function refreshSettings() {
     setStatus("st-tts", ttsOk ? "✓ " + s.tts.provider : "未配置", ttsOk);
     setDot("dot-tts", ttsOk ? "ok" : "bad");
     // ASR
+    asrState = s.asr;
     setChip("asr-providers", s.asr.provider);
-    syncASRBlocks();
     $("asr-model-dir").textContent = s.asr.model_dir || "";
-    $("asr-local-state").textContent = s.asr.local_model_present && s.asr.local_runtime_ready && s.asr.local_ffmpeg_ready ? "✓ 已就绪" : "未就绪";
+    const localReady = !!(s.asr.local_model_present && s.asr.local_runtime_ready && s.asr.local_ffmpeg_ready);
+    $("asr-local-state").textContent = localReady ? "✓ 已就绪" : s.asr.local_model_present ? "未就绪" : "未下载";
+    $("btn-asr-manual").style.display = localReady ? "none" : "";
+    $("asr-setup-help").style.display = localReady ? "none" : "";
     const missing = [];
     if (!s.asr.local_model_present) missing.push("缺少模型文件：" + (s.asr.missing_model_files || []).join("、"));
     if (!s.asr.local_runtime_ready) missing.push("未安装 sherpa-onnx（运行 python -m pip install sherpa-onnx）");
     if (!s.asr.local_ffmpeg_ready) missing.push("未找到 ffmpeg");
     $("asr-local-detail").textContent = missing.length ? missing.join("；") : "模型文件与运行环境已就绪。";
     $("asr-cloud-detail").textContent = s.asr.cloud_key_configured ? "火山配音 API Key 已保存；识别权限需实际调用验证。" : "火山配音 API Key 尚未保存。";
-    setStatus("st-asr", s.asr.configured ? "✓ 已配置" : "未配置", s.asr.configured);
-    setDot("dot-asr", s.asr.configured ? "ok" : "bad");
+    syncASRBlocks();
     // 剪映
     $("jy-draft-path").value = s.jianying.draft_path || "";
     $("jy-bgm-path").value = s.jianying.bgm_path || "";
@@ -1733,8 +1735,21 @@ function syncASRBlocks() {
   const provider = getChip("asr-providers") || "volcengine";
   $("asr-local-block").style.display = provider === "local" ? "" : "none";
   $("asr-cloud-block").style.display = provider === "volcengine" ? "" : "none";
+  if (!asrState) return;
+  const ready = provider === "local"
+    ? !!(asrState.local_model_present && asrState.local_runtime_ready && asrState.local_ffmpeg_ready)
+    : !!asrState.cloud_key_configured;
+  setStatus("st-asr", ready ? "✓ 已配置" : "待配置", ready ? true : null);
+  setDot("dot-asr", ready ? "ok" : "bad");
 }
-bindChipGroup("asr-providers", syncASRBlocks);
+bindChipGroup("asr-providers", async () => {
+  if (asrSaving) {
+    setChip("asr-providers", asrState?.provider || "volcengine");
+    return;
+  }
+  syncASRBlocks();
+  await saveASR();
+});
 
 // STORY 真值：思考模式切换（Settings.js:1175-1180）
 document.querySelectorAll("#thinking-mode-chips .chip").forEach(c => {
@@ -2091,13 +2106,21 @@ async function saveTTS() {
 }
 
 async function saveASR() {
+  asrSaving = true;
+  $("asr-providers").style.pointerEvents = "none";
   try {
     await api("/api/settings", "POST", {
       asr_provider: getChip("asr-providers") || KEEP,
     });
-    toast("✓ 语音识别引擎已保存", true);
+    toast("✓ 识别方式已保存", true);
     await refreshSettings();
-  } catch (e) { toast("❌ " + e.message, false); }
+  } catch (e) {
+    toast("❌ " + e.message, false);
+    await refreshSettings();
+  } finally {
+    asrSaving = false;
+    $("asr-providers").style.pointerEvents = "";
+  }
 }
 
 async function saveJY() {
@@ -2229,8 +2252,11 @@ $("btn-llm-test").onclick = testLLM;
 $("btn-llm-test-tool").onclick = () => toast("工具调用测试：同测试连接", true);
 $("btn-tts-save").onclick = saveTTS;
 $("btn-tts-test").onclick = testTTS;
-$("btn-asr-save").onclick = saveASR;
 $("btn-asr-refresh").onclick = refreshSettings;
+$("btn-asr-manual").onclick = async () => {
+  try { await api("/api/open_asr_manual", "POST", {}); }
+  catch (e) { toast("⚠ 无法打开手册：" + e.message, false); }
+};
 $("btn-asr-open-models").onclick = async () => {
   try { await api("/api/open_asr_models", "POST", {}); }
   catch (e) { toast("⚠ 打开模型目录失败：" + e.message, false); }

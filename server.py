@@ -815,7 +815,15 @@ def asr_model_dir():
     return DATA_DIR / "models" / "asr"
 
 
+def ensure_asr_runtime_path():
+    """Load optional sherpa-onnx from this app's ignored data directory."""
+    runtime = DATA_DIR / "runtime"
+    if runtime.is_dir() and str(runtime) not in sys.path:
+        sys.path.append(str(runtime))
+
+
 def asr_public_status(settings):
+    ensure_asr_runtime_path()
     provider = (settings.get("asr") or {}).get("provider", "volcengine")
     volc = ((settings.get("tts") or {}).get("volcengine") or {})
     cloud_key = bool((volc.get("api_key") or volc.get("access_key") or "").strip())
@@ -3127,6 +3135,19 @@ class Handler(BaseHTTPRequestHandler):
                 os.startfile(str(model_dir))
             except (AttributeError, OSError) as error:
                 self._json(500, {"error": str(error)})
+                return
+            self._json(200, {"ok": True})
+            return
+
+        if self.path == "/api/open_asr_manual":
+            manual = ROOT.parent / "软件" / "Storybound_使用教程New-9-4日修改.pdf"
+            if not manual.is_file():
+                self._json(404, {"error": "本机未找到 3.6 语音识别模型使用手册"})
+                return
+            try:
+                os.startfile(str(manual))
+            except (AttributeError, OSError):
+                self._json(500, {"error": "手册打开失败"})
                 return
             self._json(200, {"ok": True})
             return
