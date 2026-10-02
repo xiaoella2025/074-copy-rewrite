@@ -14,6 +14,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import base64
+import importlib.util
 import difflib
 import shutil
 import socket
@@ -706,10 +707,14 @@ def _merged(values):
 
     # 语音识别（ASR）—— 图文 Step 5 配音对时间戳用
     asr_cur = cur.get("asr", {}) or {}
+    asr_provider = _val(values.get("asr_provider"), asr_cur.get("provider", "volcengine"))
+    if asr_provider not in ("local", "volcengine"):
+        raise ValueError("未知语音识别引擎")
     asr = {
-        "provider":   _val(values.get("asr_provider"),   asr_cur.get("provider", "volcengine")),
-        "app_id":     _val(values.get("asr_app_id"),     asr_cur.get("app_id", "")),
-        "access_key": _val(values.get("asr_access"),     asr_cur.get("access_key", "")),
+        "provider": asr_provider,
+        # 旧版独立凭证只为读取历史配置保留；云端识别使用 TTS 火山引擎 API Key。
+        "app_id": asr_cur.get("app_id", ""),
+        "access_key": asr_cur.get("access_key", ""),
     }
 
     # STORY 真值：思考模式（Settings.js:1175-1235）— auto / off / model_default
@@ -763,6 +768,34 @@ def save_settings(values):
     finally:
         if temp and temp.exists():
             temp.unlink()
+
+
+ASR_MODEL_FILES = ("model.int8.onnx", "tokens.txt", "silero_vad.onnx")
+
+
+def asr_model_dir():
+    return DATA_DIR / "models" / "asr"
+
+
+def asr_public_status(settings):
+    provider = (settings.get("asr") or {}).get("provider", "volcengine")
+    volc = ((settings.get("tts") or {}).get("volcengine") or {})
+    cloud_key = bool((volc.get("api_key") or volc.get("access_key") or "").strip())
+    model_dir = asr_model_dir()
+    missing_files = [name for name in ASR_MODEL_FILES if not (model_dir / name).is_file()]
+    runtime_ready = importlib.util.find_spec("sherpa_onnx") is not None
+    ffmpeg_ready = shutil.which("ffmpeg") is not None
+    local_ready = not missing_files and runtime_ready and ffmpeg_ready
+    return {
+        "provider": provider,
+        "configured": local_ready if provider == "local" else cloud_key,
+        "cloud_key_configured": cloud_key,
+        "model_dir": str(model_dir),
+        "local_model_present": not missing_files,
+        "local_runtime_ready": runtime_ready,
+        "local_ffmpeg_ready": ffmpeg_ready,
+        "missing_model_files": missing_files,
+    }
 
 
 def public_settings():
@@ -870,11 +903,7 @@ def public_settings():
             "notebook_name": ima.get("notebook_name", ""),
             "notebook_id":   ima.get("notebook_id", ""),
         },
-        "asr": {
-            "provider": (s.get("asr") or {}).get("provider", "volcengine"),
-            "app_id": (s.get("asr") or {}).get("app_id", ""),
-            "configured": bool((s.get("asr") or {}).get("app_id")),
-        },
+        "asr": asr_public_status(s),
     }
 
 
@@ -1859,6 +1888,67 @@ def slice_uploaded_voice(task_dir, segments, asr_segments=None, only_indices=Non
 VOLC_ASR_SUBMIT_URL = "https://openspeech.bytedance.com/api/v3/auc/bigmodel/submit"
 VOLC_ASR_QUERY_URL = "https://openspeech.bytedance.com/api/v3/auc/bigmodel/query"
 VOLC_ASR_RESOURCE_ID = "volc.seedasr.auc"
+
+def _local_asr_transcribe(audio_path, timeout_sec=300):
+    """使用本机 SenseVoice + Silero VAD 返回带起止时间的语音片段。"""
+    status = asr_public_status({"asr": {"provider": "local"}})
+    if not status["configured"]:
+        raise RuntimeError("本地语音模型未就绪：请检查 models/asr 三个模型文件、sherpa-onnx 和 ffmpeg")
+    import numpy as np
+    import sherpa_onnx
+
+    model_dir = asr_model_dir()
+    recognizer = sherpa_onnx.OfflineRecognizer.from_sense_voice(
+        model=str(model_dir / "model.int8.onnx"),
+        tokens=str(model_dir / "tokens.txt"), num_threads=2, use_itn=True, debug=False)
+    vad_config = sherpa_onnx.VadModelConfig()
+    vad_config.silero_vad.model = str(model_dir / "silero_vad.onnx")
+    vad_config.silero_vad.threshold = 0.2
+    vad_config.silero_vad.min_silence_duration = 0.25
+    vad_config.silero_vad.min_speech_duration = 0.25
+    vad_config.silero_vad.max_speech_duration = 5
+    vad_config.sample_rate = 16000
+    vad = sherpa_onnx.VoiceActivityDetector(vad_config, buffer_size_in_seconds=100)
+    command = [shutil.which("ffmpeg"), "-v", "error", "-i", str(audio_path),
+               "-f", "s16le", "-acodec", "pcm_s16le", "-ac", "1", "-ar", "16000", "pipe:1"]
+    try:
+        decoded = subprocess.run(command, capture_output=True, timeout=timeout_sec, check=False)
+    except subprocess.TimeoutExpired as error:
+        raise RuntimeError("本地语音识别音频转码超时") from error
+    if decoded.returncode or not decoded.stdout:
+        raise RuntimeError("本地语音识别音频转码失败：" + decoded.stderr.decode("utf-8", errors="replace")[:160])
+    samples = np.frombuffer(decoded.stdout, dtype=np.int16).astype(np.float32) / 32768
+    window = vad_config.silero_vad.window_size
+    for offset in range(0, len(samples), window):
+        frame = samples[offset:offset + window]
+        if len(frame) < window:
+            frame = np.pad(frame, (0, window - len(frame)))
+        vad.accept_waveform(frame)
+    vad.flush()
+    segments = []
+    while not vad.empty():
+        part = vad.front
+        stream = recognizer.create_stream()
+        stream.accept_waveform(16000, part.samples)
+        recognizer.decode_stream(stream)
+        content = stream.result.text.strip()
+        if content and content not in (".", "The."):
+            start = part.start / 16000
+            segments.append({"text": content, "start": round(start, 3),
+                             "end": round(start + len(part.samples) / 16000, 3)})
+        vad.pop()
+    return segments
+
+
+def transcribe_with_selected_asr(settings, audio_path, timeout_sec=60):
+    provider = (settings.get("asr") or {}).get("provider", "volcengine")
+    if provider == "local":
+        return _local_asr_transcribe(audio_path, timeout_sec=max(300, timeout_sec))
+    if provider == "volcengine":
+        volc = ((settings.get("tts") or {}).get("volcengine") or {})
+        api_key = (volc.get("api_key") or volc.get("access_key") or "").strip()
+        return _volc_asr_transcribe(api_key, audio_path, timeout_sec=timeout_sec)
+    raise RuntimeError("未知语音识别引擎")
 
 def _volc_asr_transcribe(api_key, audio_path, timeout_sec=60):
     """调火山录音文件识别（bigmodel），返回 segments[{text, start, end}] 秒。
@@ -2944,6 +3034,17 @@ class Handler(BaseHTTPRequestHandler):
             })
             return
 
+        if self.path == "/api/open_asr_models":
+            model_dir = asr_model_dir()
+            model_dir.mkdir(parents=True, exist_ok=True)
+            try:
+                os.startfile(str(model_dir))
+            except (AttributeError, OSError) as error:
+                self._json(500, {"error": str(error)})
+                return
+            self._json(200, {"ok": True})
+            return
+
         if self.path == "/api/browse_folder":
             # 用 Windows 资源管理器原生选目录对话框
             initial = (data.get("initial") or "").strip()
@@ -3651,14 +3752,13 @@ class Handler(BaseHTTPRequestHandler):
                 audio_dir.mkdir(parents=True, exist_ok=True)
 
                 if mode == "upload":
-                    asr_cfg = s.get("asr") or {}
                     asr_segments = None
                     asr_error = ""
-                    if asr_cfg.get("provider", "volcengine") == "volcengine" and asr_cfg.get("access_key"):
+                    if asr_public_status(s)["configured"]:
                         try:
-                            asr_segments = _volc_asr_transcribe(
-                                asr_cfg["access_key"], task_dir / "uploaded-voice.mp3")
-                        except RuntimeError as exc:
+                            asr_segments = transcribe_with_selected_asr(
+                                s, task_dir / "uploaded-voice.mp3")
+                        except Exception as exc:
                             asr_error = str(exc)
                     seg_records, total_dur = slice_uploaded_voice(
                         task_dir, segments, asr_segments=asr_segments,
@@ -3917,14 +4017,14 @@ class Handler(BaseHTTPRequestHandler):
                         measured_duration = probe_audio_duration(audio_path)
                         r["duration"] = measured_duration or round(max(1.0, text_chars * 0.18), 2)
                         r["duration_source"] = "ffprobe" if measured_duration else "chars_est"
-                        if provider == "volcengine" and api_key:
+                        if asr_public_status(s)["configured"]:
                             try:
-                                asr_segs = _volc_asr_transcribe(api_key, audio_path, timeout_sec=45)
+                                asr_segs = transcribe_with_selected_asr(s, audio_path, timeout_sec=45)
                                 if asr_segs:
                                     last_end = max(s["end"] for s in asr_segs)
                                     if last_end > 0.5:
                                         r["duration"] = round(last_end, 2)
-                                        r["duration_source"] = "volc_asr"
+                                        r["duration_source"] = "local_asr" if (s.get("asr") or {}).get("provider") == "local" else "volc_asr"
                                         r["asr_segments"] = asr_segs
                             except Exception as asr_e:
                                 r["asr_error"] = str(asr_e)
