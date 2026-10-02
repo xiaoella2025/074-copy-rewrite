@@ -268,9 +268,11 @@ async function runImagePipeline({ request, generate, tts, image, cover, resume, 
   if (coverResult) onStage('cover', 'done', coverResult);
   else if (cover && ['ai', 'title', 'blank'].includes(cover.mode)) {
     coverResult = await call('cover', '/api/cover', {
-      task_id: taskId, provider: image.provider, title, content: rewritten,
+      task_id: taskId, provider: image.provider, title: cover.title || title,
+      subtitle: cover.subtitle || '', content: rewritten,
       style: cover.style || generate.style, hooks: generate.hooks || [],
-      cover_mode: cover.mode,
+      cover_mode: cover.mode, cover_template: cover.template || 'movie',
+      ratio: cover.ratio || '3:4',
     });
     if (!coverResult?.url) throw new Error('封面生成未返回图片地址');
   } else if (cover?.mode === 'upload') {

@@ -42,7 +42,12 @@
   --shadow-lg:0 12px 32px -8px rgba(15,20,28,.12);
 }
 *{box-sizing:border-box;margin:0;padding:0;}
-body{font-family:var(--font-sans);background:var(--bg);color:var(--text);padding:20px;min-height:100vh;}
+body{font-family:var(--font-sans);background:var(--bg);color:var(--text);padding:70px 24px 24px 264px;min-height:100vh;}
+.app-titlebar{position:fixed;z-index:20;top:0;left:0;right:0;height:36px;display:flex;align-items:center;padding:0 15px;background:var(--bg-sunken);border-bottom:1px solid var(--border-subtle);font-size:12px;color:var(--muted)}
+.app-titlebar strong{color:var(--brand);margin-right:8px}
+.app-sidebar{position:fixed;z-index:19;top:36px;bottom:0;left:0;width:240px;padding:16px 12px;background:var(--sidebar-bg);border-right:1px solid var(--border-subtle);display:flex;flex-direction:column;gap:5px}
+.app-brand{display:flex;align-items:center;gap:11px;padding:4px 8px 18px;font-weight:700}.app-logo{display:grid;place-items:center;width:34px;height:34px;background:var(--brand-soft);border-radius:10px;color:var(--brand);font-size:20px}
+.app-brand small{display:block;color:var(--muted);font-size:11px;font-weight:400;margin-top:2px}.app-sidebar a{display:block;text-decoration:none;color:var(--muted);font-size:13px;padding:10px 12px;border-radius:7px}.app-sidebar a:hover,.app-sidebar a.active{background:var(--bg-hover);color:var(--text)}.app-sidebar a.new{background:var(--brand-soft);color:var(--brand);font-weight:650;margin-bottom:14px}.app-side-label{font-size:10px;color:var(--text-faint);padding:16px 12px 4px}.app-side-bottom{margin-top:auto;border-top:1px solid var(--border-subtle);padding-top:12px}
 .header{display:flex;align-items:center;gap:12px;margin-bottom:18px;}
 .header h1{font-size:18px;font-weight:600;}
 .header .badge{background:var(--panel-2);color:var(--muted);padding:4px 10px;border-radius:6px;font-size:12px;}
@@ -53,7 +58,7 @@ body{font-family:var(--font-sans);background:var(--bg);color:var(--text);padding
 .btn.primary:hover,.btn.btn-primary:hover{background:var(--brand-hover);border-color:var(--brand-hover);}
 .btn.danger{color:var(--err);border-color:color-mix(in oklch,var(--err) 22%,transparent);}
 .btn.ghost,.btn.btn-ghost{background:transparent;color:var(--text-muted);}
-.layout{display:grid;grid-template-columns:340px 1fr;gap:18px;height:calc(100vh - 100px);}
+.layout{display:grid;grid-template-columns:minmax(260px,320px) minmax(0,1fr);gap:18px;height:calc(100vh - 128px);}
 .list-panel{background:var(--panel);border:1px solid var(--border-subtle);border-radius:var(--radius-lg);padding:10px;overflow-y:auto;box-shadow:var(--shadow-sm);}
 .detail-panel{background:var(--panel);border:1px solid var(--border-subtle);border-radius:var(--radius-lg);padding:18px;overflow-y:auto;box-shadow:var(--shadow-sm);}
 /* === 任务列表卡片 — STORY 真值 === */
@@ -106,9 +111,20 @@ body{font-family:var(--font-sans);background:var(--bg);color:var(--text);padding
 .settings-pip.ok .settings-pip-dot{background:var(--ok);opacity:1;box-shadow:0 0 0 2px color-mix(in oklch,var(--ok) 18%,transparent);}
 .settings-pip.warn{background:color-mix(in oklch,var(--warn) 14%,transparent);color:var(--warn);border-color:color-mix(in oklch,var(--warn) 24%,transparent);}
 .settings-pip.bad{background:color-mix(in oklch,var(--err) 14%,transparent);color:var(--err);border-color:color-mix(in oklch,var(--err) 24%,transparent);}
+@media(max-width:900px){body{padding-left:20px;padding-top:58px}.app-sidebar{display:none}.layout{grid-template-columns:280px minmax(0,1fr)}}
+@media(max-width:640px){body{padding:56px 10px 10px}.layout{display:block;height:auto}.list-panel{max-height:210px;margin-bottom:10px}.detail-panel{min-height:50vh}.settings-section-head{flex-wrap:wrap}}
 </style>
 </head>
 <body data-theme="dark">
+<div class="app-titlebar"><strong>▣</strong> app074 · 图文创作</div>
+<aside class="app-sidebar" aria-label="主导航">
+  <div class="app-brand"><span class="app-logo">07</span><span>app074<small>图文工作台</small></span></div>
+  <a class="new" href="/index.html?new=1">＋ 新建任务</a>
+  <a class="active" href="/tasks.html" aria-current="page">☷ 任务列表</a>
+  <div class="app-side-label">工作区</div>
+  <a href="/index.html">▧ 三工作流入口</a>
+  <div class="app-side-bottom"><a href="/settings.html">⚙ 系统设置</a></div>
+</aside>
 <div class="settings-section-head">
   <div class="settings-section-icon">📋</div>
   <div class="flex-1">
@@ -173,12 +189,15 @@ async function loadList() {
       return;
     }
     $("list-panel").innerHTML = tasks.map(t => `
-      <div class="task-card ${t.task_id === currentTaskId ? 'active' : ''}" data-id="${escapeHtml(t.task_id)}" onclick="selectTask('${escapeHtml(t.task_id)}')">
+      <div class="task-card ${t.task_id === currentTaskId ? 'active' : ''}" data-id="${escapeHtml(t.task_id)}">
         <div class="title">${escapeHtml(t.title || t.task_id)}</div>
         <div class="meta">${t.created_at} · ${t.shot_count} 镜 · ${t.image_count} 图 · ${t.audio_count} 音频${t.total_duration_sec ? ' · ' + t.total_duration_sec + 's' : ''}</div>
         <div class="steps">${renderStepPills(t.completed_steps)}</div>
       </div>
     `).join("");
+    $("list-panel").querySelectorAll(".task-card").forEach(card => card.onclick = () => selectTask(card.dataset.id));
+    const requested = new URLSearchParams(location.search).get("task");
+    if (!currentTaskId) selectTask(requested && tasks.some(t => t.task_id === requested) ? requested : tasks[0].task_id);
   } catch (e) {
     $("list-panel").innerHTML = `<div class="empty-state" style="color:var(--err)">❌ ${escapeHtml(e.message)}</div>`;
   }
@@ -208,6 +227,7 @@ function renderDetail(d) {
     <span class="badge">${info.completed_steps.length}/8 步完成</span>
     <span class="badge">${info.created_at}</span>
     ${info.draft_dir ? `<span class="badge" title="剪映草稿路径">📁 ${escapeHtml(info.draft_dir)}</span>` : ''}
+    <a class="btn" href="/result.html?task=${encodeURIComponent(info.task_id)}">查看独立结果</a>
     ${!info.completed_steps.includes(6) && info.shot_count ? `<button type="button" class="btn" data-resume-id="${escapeHtml(info.task_id)}">▶ 继续未完成阶段</button>` : ''}
   </div>`);
   // 统计
@@ -356,10 +376,10 @@ function renderDetail(d) {
 function toggleTheme() {
   const b = document.body;
   b.dataset.theme = b.dataset.theme === "dark" ? "light" : "dark";
-  try { localStorage.setItem("app074-theme", b.dataset.theme); } catch {}
+  try { localStorage.setItem("app074-theme-v2", b.dataset.theme); } catch {}
 }
 try {
-  const t = localStorage.getItem("app074-theme");
+  const t = localStorage.getItem("app074-theme-v2");
   if (t) document.body.dataset.theme = t;
 } catch {}
 $("btn-toggle-theme").onclick = toggleTheme;

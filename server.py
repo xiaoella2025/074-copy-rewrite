@@ -2509,15 +2509,20 @@ def save_task_record(record):
     save_tasks(data)
 
 
-def build_cover_prompt(llm_settings, title, content, style, hooks, cover_mode="ai"):
+def build_cover_prompt(llm_settings, title, content, style, hooks, cover_mode="ai", subtitle="", template="movie"):
     """让 LLM 根据标题/文案/风格/钩子写一段英文出图 prompt。"""
     hooks_str = " / ".join(hooks) if hooks else ""
     style_str = style or "现代电影"
+    template_names = {"movie": "电影海报感", "minimal": "极简留白", "emotional": "人物情绪", "impact": "文字冲击", "chinese": "国风古韵"}
+    template_str = template[7:].strip()[:120] if template.startswith("custom:") else template_names.get(template, template_names["movie"])
+    template_str = template_str or template_names["movie"]
     sys_p = "你是一名短视频封面 prompt 工程师，根据用户提供的中文信息写一段适合图像生成的英文 prompt。直接返回 prompt 文本，不要任何解释、Markdown、引号。"
     user_p = (
         f"## 标题\n{title.strip() or '(未填)'}\n\n"
         f"## 内容赛道\n自动\n\n"
         f"## 画面风格\n{style_str}\n\n"
+        f"## 封面模板\n{template_str}\n\n"
+        f"## 副标题（可选）\n{subtitle.strip()[:120] or '(未填)'}\n\n"
         f"## 黄金 3 秒钩子\n{hooks_str}\n\n"
         f"## 文案片段（前 200 字）\n{content.strip()[:200]}\n\n"
         f"要求：\n"
@@ -2527,6 +2532,8 @@ def build_cover_prompt(llm_settings, title, content, style, hooks, cover_mode="a
     )
     if cover_mode == "title":
         user_p += f"4. 为画面保留清晰标题区，并在画面中呈现标题文字：{title.strip()}\n"
+        if subtitle.strip():
+            user_p += f"5. 在标题下呈现副标题：{subtitle.strip()[:120]}\n"
     elif cover_mode == "blank":
         user_p += "4. 画面不包含任何文字、字母、标识或水印，保留可后期添加标题的留白区域。\n"
     text = call_llm(llm_settings, sys_p, user_p)
@@ -2769,6 +2776,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         if self.path == "/tasks.html" or self.path == "/tasks":
             self._file(ROOT / "tasks.html", "text/html; charset=utf-8")
+            return
+        if self.path == "/result.html" or self.path == "/result":
+            self._file(ROOT / "result.html", "text/html; charset=utf-8")
             return
         if self.path.startswith("/assets/"):
             # /assets/<sub>/<file> — 静态资源（CSS / JS / 图标）
@@ -3267,7 +3277,11 @@ class Handler(BaseHTTPRequestHandler):
                 if provider == "runninghub" and not image_cfg.get("api_key"):
                     self._json(400, {"error": "未配置 RunningHub API Key"})
                     return
-                ratio = image_cfg.get("ratio") or "9:16"
+                requested_ratio = str(data.get("ratio") or "").strip()
+                if requested_ratio and requested_ratio not in ("3:4", "9:16", "1:1", "4:3", "16:9"):
+                    self._json(400, {"error": "不支持的封面比例"})
+                    return
+                ratio = requested_ratio or image_cfg.get("ratio") or "9:16"
                 resolution = image_cfg.get("resolution") or "1k"
 
                 title = (data.get("title") or "").strip()
@@ -3279,7 +3293,8 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 t0 = time.time()
                 prompt = prompt_override or build_cover_prompt(
-                    llm, title, content, style, hooks, data.get("cover_mode") or "ai")
+                    llm, title, content, style, hooks, data.get("cover_mode") or "ai",
+                    str(data.get("subtitle") or ""), str(data.get("cover_template") or "movie"))
                 result = image_dispatcher(image_cfg, prompt, ratio=ratio, resolution=resolution)
                 if "b64" in result:
                     cover_url = save_cover_image(result["b64"], result.get("mime", "image/png"))

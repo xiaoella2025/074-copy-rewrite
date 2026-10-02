@@ -12,6 +12,31 @@ import server
 
 
 class ImageWorkflowHttpTests(unittest.TestCase):
+    def test_result_page_is_separate_from_new_task_form(self):
+        httpd = ThreadingHTTPServer(("127.0.0.1", 0), server.Handler)
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        try:
+            conn = http.client.HTTPConnection("127.0.0.1", httpd.server_port, timeout=5)
+            conn.request("GET", "/result.html?task=example")
+            response = conn.getresponse()
+            page = response.read().decode("utf-8")
+            self.assertEqual(response.status, 200)
+            self.assertIn("一键全链路结果", page)
+            self.assertIn("/api/task/", page)
+            conn.close()
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+
+    def test_cover_prompt_uses_selected_layout_and_subtitle(self):
+        with patch.object(server, "call_llm", return_value="cover prompt") as llm:
+            prompt = server.build_cover_prompt({}, "主标题", "文案", "写实", [],
+                                               "title", "副标题", "emotional")
+        self.assertEqual(prompt, "cover prompt")
+        self.assertIn("人物情绪", llm.call_args.args[2])
+        self.assertIn("副标题", llm.call_args.args[2])
+
     def test_runninghub_probe_accepts_unsaved_key_without_writing_settings(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -104,6 +129,7 @@ class ImageWorkflowHttpTests(unittest.TestCase):
             ]
             for p in patches:
                 p.start()
+            mock_image_dispatcher = server.image_dispatcher
             httpd = ThreadingHTTPServer(("127.0.0.1", 0), server.Handler)
             worker = threading.Thread(target=httpd.serve_forever, daemon=True)
             worker.start()
@@ -137,8 +163,10 @@ class ImageWorkflowHttpTests(unittest.TestCase):
                 self.assertEqual(len(server.load_tasks()["tasks"]), 1)
                 self.assertIn(0, server.get_task_detail(task_id)["info"]["completed_steps"])
                 self.assertEqual(speech["results"][0]["duration_source"], "ffprobe")
-                cover = post("/api/cover", {"prompt": "自己修改的封面提示词", "provider": "gpt_image"})
+                cover = post("/api/cover", {"prompt": "自己修改的封面提示词", "provider": "gpt_image",
+                                              "ratio": "3:4"})
                 self.assertEqual(cover["prompt"], "自己修改的封面提示词")
+                self.assertEqual(mock_image_dispatcher.call_args.kwargs["ratio"], "3:4")
                 upload = post("/api/cover_upload", {"task_id": task_id,
                     "data_url": "data:image/png;base64," + base64.b64encode(b"fake-image").decode("ascii")})
                 self.assertTrue(upload["url"].startswith("/covers/"))

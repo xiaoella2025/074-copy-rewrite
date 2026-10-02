@@ -156,10 +156,15 @@ test('选择 AI 封面时草稿完成后生成封面并沿用所选绘图引擎'
   const result = await runImagePipeline({
     request: async (path, body) => { calls.push({path,body}); return replies.shift(); },
     generate:{reference:'原文'}, tts:{provider:'aura'},
-    image:{provider:'modelscope',ratio:'9:16'}, cover:{mode:'ai',style:'写实'},
+    image:{provider:'modelscope',ratio:'9:16'},
+    cover:{mode:'title',style:'写实',title:'封面题字',subtitle:'副标题',template:'emotional',ratio:'3:4'},
   });
   assert.equal(calls.at(-1).path, '/api/cover');
   assert.equal(calls.at(-1).body.provider, 'modelscope');
+  assert.equal(calls.at(-1).body.title, '封面题字');
+  assert.equal(calls.at(-1).body.subtitle, '副标题');
+  assert.equal(calls.at(-1).body.cover_template, 'emotional');
+  assert.equal(calls.at(-1).body.ratio, '3:4');
   assert.equal(result.cover.url, '/covers/cover.png');
 });
 

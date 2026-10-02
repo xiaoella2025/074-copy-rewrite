@@ -285,9 +285,76 @@ body{padding-left:220px;}
 .shot-item .idx,.prompt-item .idx{flex-shrink:0;width:24px;height:24px;background:var(--accent-soft);color:var(--accent-2);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;}
 .shot-item .txt,.prompt-item .txt{flex:1;white-space:pre-wrap;word-break:break-word;}
 .prompt-item .txt{color:var(--text);font-family:"SF Mono","Cascadia Code",Consolas,monospace;font-size:11.5px;}
+
+/* New-task layout, following the 1.24.0 home and image-story form. */
+body{padding:38px 0 0 240px;background:var(--bg);}
+.app-titlebar{position:fixed;inset:0 0 auto 0;height:38px;z-index:20;display:flex;align-items:center;padding:0 16px;background:var(--titlebar-bg);border-bottom:1px solid var(--border-subtle);font-size:12px;font-weight:600;}
+.app-titlebar .mark{display:inline-grid;place-items:center;width:17px;height:17px;margin-right:8px;border-radius:4px;background:var(--brand-soft);color:var(--brand);font-weight:800;}
+.sidebar{top:38px;width:240px;padding:14px 10px;background:var(--sidebar-bg);border-color:var(--border-subtle);}
+.sidebar .brand{border-color:var(--border-subtle);padding-bottom:16px;}
+.sidebar .brand .logo{background:var(--brand-soft);color:var(--brand);font-size:20px;}
+.sidebar .brand .name{font-size:14px;}
+.sidebar .brand .ver{color:var(--text-faint);}
+.sidebar .new-btn{background:var(--brand-soft);color:var(--brand);text-align:left;font-weight:600;padding:10px 12px;}
+.sidebar .new-btn:hover{background:var(--bg-hover);}
+.sidebar .new-btn .kbd{background:var(--bg-sunken);color:var(--brand);}
+.nav-group{padding:8px 0;border-bottom:1px solid var(--border-subtle);}
+.nav-item{font-size:13px;padding:8px 11px;}
+.nav-item .ico{width:17px;}
+.sidebar-bottom{background:var(--sidebar-bg);border-color:var(--border-subtle);}
+.user-box{border-color:var(--border-subtle);}
+.home-screen{max-width:1050px;margin:0 auto;min-height:calc(100vh - 38px);padding:70px 32px 80px;}
+.home-head{text-align:center;margin-bottom:48px;}
+.home-head .eyebrow{font-size:13px;font-weight:700;color:var(--brand);letter-spacing:.07em;}
+.home-head h1{font-size:34px;line-height:1.25;margin:20px 0 12px;letter-spacing:.02em;}
+.home-head p{font-size:15px;color:var(--text-muted);margin:0;}
+.workflow-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px;}
+.workflow-card{display:flex;flex-direction:column;min-height:310px;padding:26px 24px;border:1px solid var(--border-subtle);border-radius:22px;background:var(--bg-elevated);text-align:left;color:var(--text);cursor:pointer;box-shadow:var(--shadow-sm);transition:transform .16s,border-color .16s,box-shadow .16s;}
+.workflow-card:hover{transform:translateY(-3px);border-color:var(--border-strong);box-shadow:var(--shadow-md);}
+.workflow-card .workflow-icon{display:grid;place-items:center;width:54px;height:54px;border-radius:16px;font-size:25px;background:var(--brand-soft);color:var(--brand);margin-bottom:21px;}
+.workflow-card.video .workflow-icon{background:color-mix(in oklch,var(--info) 13%,transparent);color:var(--info);}
+.workflow-card.music .workflow-icon{background:color-mix(in oklch,oklch(.72 .18 310) 13%,transparent);color:oklch(.72 .18 310);}
+.workflow-card h2{font-size:22px;line-height:1.3;margin:0 0 3px;}
+.workflow-card .subtitle{font-size:11px;color:var(--text-faint);letter-spacing:.12em;}
+.workflow-card p{color:var(--text-muted);font-size:13px;line-height:1.7;margin:17px 0 14px;}
+.workflow-card .tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:auto;}
+.workflow-card .tags span{font-size:11px;padding:3px 9px;border:1px solid var(--border);border-radius:999px;color:var(--text-muted);background:var(--bg-sunken);}
+.workflow-card .bottom{display:flex;align-items:center;justify-content:space-between;gap:8px;border-top:1px solid var(--border-subtle);padding-top:17px;margin-top:20px;color:var(--brand);font-size:12px;font-weight:600;}
+.workflow-card.video .bottom{color:var(--info);}.workflow-card.music .bottom{color:oklch(.72 .18 310);}
+.workflow-card .bottom small{color:var(--text-faint);font-size:10px;font-weight:400;}
+.container#task-editor{max-width:980px;margin:38px auto 0;padding:0 0 120px;background:var(--bg-elevated);border:1px solid var(--border-subtle);border-radius:18px;overflow:hidden;}
+#task-editor .section[id]{scroll-margin-top:55px;}
+#back-home{display:inline-flex;align-items:center;gap:6px;background:transparent;border:0;color:var(--text-muted);cursor:pointer;font-size:12px;padding:0 0 10px;}
+#back-home:hover{color:var(--brand);}
+#task-editor .page-hd{margin:0;padding:24px 28px 20px;border-bottom:1px solid var(--border-subtle);}
+#task-editor .section{background:transparent;border:0;border-bottom:1px solid var(--border-subtle);border-radius:0;padding:22px 28px;margin:0;}
+#task-editor .section-title{font-size:15px;margin-bottom:14px;}
+#task-editor .section-title .badge{font-size:11px;}
+#task-editor .big-cards{gap:10px;}
+#task-editor .big-card{background:var(--bg-sunken);border-color:var(--border);border-radius:9px;padding:14px 18px;}
+#task-editor .big-card.active{background:var(--brand-soft);border-color:var(--brand);}
+textarea,input[type=text],.model-select{background:var(--bg-sunken);color:var(--text);}
+.radio-card{background:var(--bg-sunken);}
+.chip.active,.chip[data-active=true]{background:var(--text);color:var(--bg);}
+.actionbar{border:0;border-bottom:1px solid var(--border-subtle);border-radius:0;background:transparent;padding:14px 28px;margin:0;}
+.footer{left:240px;background:var(--bg-elevated);border-color:var(--border-subtle);box-shadow:0 -8px 26px rgba(0,0,0,.18);}
+.footer .inner{max-width:980px;}
+.btn.primary,.btn.btn-primary{color:var(--bg);}
+.btn.primary:hover,.btn.btn-primary:hover{background:var(--text-muted);border-color:var(--text-muted);}
+.modal,.meta-v,.shot-item,.prompt-item{background:var(--bg-elevated);}
+.cover-fields{display:grid;gap:9px;margin:14px 0;}
+.cover-fields textarea{min-height:60px;}
+.cover-extra{border:1px dashed var(--brand);border-radius:8px;color:var(--brand);background:var(--brand-soft);padding:9px 14px;cursor:pointer;}
+.cover-preview-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px;}
+body[data-view="home"] #task-editor,body[data-view="home"] .footer{display:none;}
+body[data-view="editor"] #home-screen{display:none;}
+@media(max-width:1100px){.workflow-cards{gap:12px}.workflow-card{padding:20px 18px;min-height:320px}.home-screen{padding:60px 20px}}
+@media(max-width:800px){body{padding-left:0}.sidebar{display:none}.footer{left:0}.workflow-cards{grid-template-columns:1fr}.workflow-card{min-height:240px}.home-screen{padding:44px 16px}.container#task-editor{margin:10px 8px 0}#task-editor .section,#task-editor .page-hd{padding-left:16px;padding-right:16px}.grid-2{grid-template-columns:1fr}.footer .inner{flex-wrap:wrap}.footer .cost{display:none}}
 </style>
 </head>
-<body>
+<body data-theme="dark" data-style="linear" data-view="home">
+
+<div class="app-titlebar"><span class="mark">07</span>app074</div>
 
 <!-- Sidebar -->
 <aside class="sidebar">
@@ -306,6 +373,13 @@ body{padding-left:220px;}
   </div>
 
   <div class="nav-group">
+    <a class="nav-item" href="/index.html?new=1#reference-section"><span class="ico">✎</span>文案工作台</a>
+    <a class="nav-item" href="/index.html?new=1#image-section"><span class="ico">◈</span>画图实验室</a>
+    <a class="nav-item" href="/index.html?new=1#cover-section"><span class="ico">▧</span>封面海报</a>
+    <a class="nav-item" href="/index.html?new=1#tts-section"><span class="ico">♫</span>配音实验室</a>
+  </div>
+
+  <div class="nav-group">
     <a class="nav-item" href="/settings.html"><span class="ico">⚙️</span>系统设置</a>
   </div>
 
@@ -317,10 +391,21 @@ body{padding-left:220px;}
   </div>
 </aside>
 
-<div class="container">
+<main class="home-screen" id="home-screen">
+  <div class="home-head"><div class="eyebrow">开始创作</div><h1>想做点什么？</h1><p>选择一种任务类型，一句话或一段文案，即可开始创作。</p></div>
+  <div class="workflow-cards">
+    <button type="button" class="workflow-card image" data-workflow="image"><span class="workflow-icon">▧</span><h2>图文任务</h2><span class="subtitle">IMAGE · STORY</span><p>经典图文成片：AI 分镜配图 + 文案朗读 + 字幕，适合口播和故事视频。</p><span class="tags"><span>人物故事</span><span>健康图书</span><span>带货口播</span></span><span class="bottom"><small>支持双人播客 / 素材库</small><span>开始创建 →</span></span></button>
+    <button type="button" class="workflow-card video" data-workflow="video"><span class="workflow-icon">▣</span><h2>HTML 动画视频</h2><span class="subtitle">MOTION · CODE</span><p>代码驱动的动效成片：知识卡片、金句排版与动态强调。</p><span class="tags"><span>知识科普</span><span>财富写作</span><span>命题创作</span></span><span class="bottom"><small>工作流接入中</small><span>查看状态 →</span></span></button>
+    <button type="button" class="workflow-card music" data-workflow="music"><span class="workflow-icon">♫</span><h2>音乐 MV</h2><span class="subtitle">MUSIC · VIDEO</span><p>歌词卡点和情绪向画面成片，可搭配音乐与节奏剪辑。</p><span class="tags"><span>情感氛围</span><span>歌词卡点</span><span>节日祝福</span></span><span class="bottom"><small>工作流接入中</small><span>查看状态 →</span></span></button>
+  </div>
+  <p class="help" id="workflow-message" role="status" style="margin-top:18px;text-align:center;min-height:18px"></p>
+</main>
+
+<main class="container" id="task-editor">
 
   <!-- Page header (STORY 真值：settings-section-head + status pip only) -->
   <div class="page-hd">
+    <button type="button" id="back-home">← 返回任务类型</button>
     <div class="settings-section-head">
       <div class="settings-section-icon"><span class="ico">🎬</span></div>
       <div class="flex-1">
@@ -376,7 +461,7 @@ body{padding-left:220px;}
   </div>
 
   <!-- 文案内容 -->
-  <div class="section">
+  <div class="section" id="reference-section">
     <div class="section-title">
       <span class="icon">📄</span> 文案内容
       <span style="margin-left:auto;font-size:11px;color:var(--muted);font-weight:400" id="ref-stats">0 字 · 配音 约 0s</span>
@@ -563,7 +648,7 @@ body{padding-left:220px;}
   </div>
 
   <!-- 出图 -->
-  <div class="section">
+  <div class="section" id="image-section">
     <div class="section-title"><span class="icon">🖼️</span> 出图 <span class="badge" style="background:var(--panel-2);color:var(--muted)">素材来源·绘图引擎·比例·参考图</span></div>
 
     <div style="margin-bottom:10px">
@@ -693,21 +778,33 @@ body{padding-left:220px;}
   </div>
 
   <!-- 封面海报 -->
-  <div class="section">
+  <div class="section" id="cover-section">
     <div class="section-title"><span class="icon">🖼️</span> 封面海报 <span class="badge" style="background:var(--panel-2);color:var(--muted)">发布时上传的封面，独立于成片（素材库模式也是 AI 画封面）</span></div>
     <div class="chips" id="cover-mode" style="margin-bottom:10px">
-      <span class="chip" data-cv="none">封面海报 不生成</span>
-      <span class="chip active" data-cv="ai">AI 生成封面</span>
+      <span class="chip active" data-cv="none">不生成</span>
       <span class="chip" data-cv="title">带标题文字</span>
       <span class="chip" data-cv="blank">留白不带字</span>
       <span class="chip" data-cv="upload">本地上传</span>
     </div>
 
-    <!-- AI 生成 -->
-    <div id="cover-ai-area">
-      <div class="help" style="margin-bottom:8px">由 LLM 根据标题/文案/画面风格/钩子写英文出图 prompt，再调出图 API 生成 9:16 竖图</div>
-      <div style="display:flex;gap:8px;margin-bottom:10px">
-        <button class="btn primary" id="btn-gen-cover" style="flex:1">🎨 生成封面</button>
+    <!-- AI cover options; actual generation remains a deliberate button or part of the workflow. -->
+    <div id="cover-ai-area" style="display:none">
+      <div class="help" style="margin-bottom:9px">任务运行时生成一张发布封面；单独预览会调用已配置的出图服务。</div>
+      <div id="cover-text-fields" class="cover-fields">
+        <input type="text" id="cover-title" placeholder="封面大字标题（选填）——留空由 AI 根据文案自动起">
+        <textarea id="cover-subtitle" placeholder="副标题（选填，一行一句，最多 2 句）——留空不指定副标题"></textarea>
+      </div>
+      <div class="help" style="margin:11px 0 6px">封面模板</div>
+      <div class="chips" id="cover-template" style="margin-bottom:13px">
+        <span class="chip active" data-template="movie">电影海报感</span><span class="chip" data-template="minimal">极简留白</span><span class="chip" data-template="emotional">人物情绪</span><span class="chip" data-template="impact">文字冲击</span><span class="chip" data-template="chinese">国风古韵</span><span class="chip" data-template="custom">＋ 自定义</span>
+      </div>
+      <input type="text" id="cover-template-custom" placeholder="描述你想要的封面构图" style="display:none;margin:-4px 0 13px">
+      <div class="help" style="margin-bottom:6px">封面比例</div>
+      <div class="chips" id="cover-ratio" style="margin-bottom:13px">
+        <span class="chip active" data-cover-ratio="3:4">3:4 封面</span><span class="chip" data-cover-ratio="9:16">9:16 全屏</span><span class="chip" data-cover-ratio="1:1">1:1 方形</span><span class="chip" data-cover-ratio="4:3">4:3 横版</span><span class="chip" data-cover-ratio="16:9">16:9 宽屏</span>
+      </div>
+      <div class="cover-preview-actions">
+        <button class="btn" id="btn-gen-cover">🎨 预生成封面</button>
         <button class="btn" id="btn-regen-cover">🔄 重画</button>
       </div>
       <div id="cover-prompt-box" style="display:none;margin-bottom:10px">
@@ -727,9 +824,9 @@ body{padding-left:220px;}
 
     <!-- 本地上传（默认隐藏） -->
     <div id="cover-upload-area" style="display:none">
-      <div class="help" style="margin-bottom:8px">自己上传一张图作为发布封面；草稿生成后可在剪映中设置封面。</div>
+      <div class="help" style="margin-bottom:8px">自己上传一张图当封面；出片自动带入剪映。不会调用 AI 画图。</div>
       <label class="dropzone" id="cover-drop" style="display:block">
-        📁 拖封面图拖到框里，或点击选择 · 支持 png / jpg / webp · 建议竖图
+        📁 把封面图拖到这里，或点击选择 · 支持 png / jpg / webp · 建议竖图
         <input type="file" id="cover-file" class="file-hidden" accept="image/*">
       </label>
       <div class="upload-result" id="cover-result"></div>
@@ -746,7 +843,7 @@ body{padding-left:220px;}
   </div>
 
   <!-- 配音 -->
-  <div class="section">
+  <div class="section" id="tts-section">
     <div class="section-title"><span class="icon">🎙️</span> 配音 <span class="badge" style="background:var(--panel-2);color:var(--muted)">音色·语速·背景音乐</span></div>
 
     <div class="chips" id="tts-mode" style="margin-bottom:10px">
@@ -818,7 +915,7 @@ body{padding-left:220px;}
     </div>
   </div>
 
-  <!-- 一键全链路（Step 0-6）结果面板，默认隐藏 -->
+  <!-- 内部阶段状态容器；完成后打开独立结果页 -->
   <div class="section" id="full-result" style="display:none">
     <div class="section-title">
       <span class="icon">🎬</span> 一键全链路结果
@@ -902,7 +999,7 @@ body{padding-left:220px;}
     </div>
   </div>
 
-</div>
+</main>
 
 <!-- Footer -->
 <div class="footer">
@@ -929,6 +1026,24 @@ const $ = id => document.getElementById(id);
 let currentLine = "story";
 let currentLevel = { story: "standard", user: "surface" };
 let settings = {};
+
+function showTaskView(view) {
+  document.body.dataset.view = view;
+  if (view === "editor") {
+    if (!new URLSearchParams(location.search).has("resume")) history.replaceState(null, "", "/index.html?new=1");
+  } else {
+    history.replaceState(null, "", "/index.html");
+  }
+  scrollTo(0, 0);
+}
+document.querySelectorAll("[data-workflow]").forEach(card => card.onclick = () => {
+  if (card.dataset.workflow === "image") showTaskView("editor");
+  else $("workflow-message").textContent = card.dataset.workflow === "video"
+    ? "HTML 动画视频工作流仍在接入；当前可使用图文任务。"
+    : "音乐 MV 工作流仍在接入；当前可使用图文任务。";
+});
+$("back-home").onclick = () => showTaskView("home");
+if (new URLSearchParams(location.search).has("resume") || new URLSearchParams(location.search).has("new")) document.body.dataset.view = "editor";
 
 // Big cards (entry mode)
 document.querySelectorAll(".big-card").forEach(c => c.onclick = () => {
@@ -1003,6 +1118,10 @@ bindChips("dynamic-shots", (chip) => {
 bindChips("img-ratio");
 bindChips("style");
 bindChips("cover-mode");
+bindChips("cover-template", chip => {
+  $("cover-template-custom").style.display = chip.dataset.template === "custom" ? "" : "none";
+});
+bindChips("cover-ratio");
 bindChips("tts-mode", (chip) => {
   $("tts-upload-area").style.display = chip.dataset.tts === "custom" ? "" : "none";
 });
@@ -1082,11 +1201,16 @@ $("prod-clear").onclick = () => {
 // 封面模式切换
 function syncCoverMode() {
   const active = document.querySelector("#cover-mode .chip.active");
-  const mode = active ? active.dataset.cv : "ai";
+  const mode = active ? active.dataset.cv : "none";
   const ai = $("cover-ai-area");
   const up = $("cover-upload-area");
-  if (ai) ai.style.display = (mode === "upload") ? "none" : "";
+  if (ai) ai.style.display = (mode === "title" || mode === "blank") ? "" : "none";
   if (up) up.style.display = (mode === "upload") ? "" : "none";
+  $("cover-text-fields").style.display = mode === "title" ? "" : "none";
+}
+function selectedCoverTemplate() {
+  const chosen = getActiveChip("cover-template", "data-template", "movie");
+  return chosen === "custom" ? "custom:" + $("cover-template-custom").value.trim() : chosen;
 }
 document.querySelectorAll("#cover-mode .chip").forEach(c => {
   c.addEventListener("click", () => setTimeout(syncCoverMode, 0));
@@ -1106,13 +1230,16 @@ async function callCover(promptOverride) {
     const styleActive = document.querySelector("#style .style-chip.active");
     const styleLabel = styleActive ? styleActive.textContent.trim().split("·")[1]?.trim() || styleActive.textContent.trim() : "";
     const r = await api("/api/cover", "POST", {
-      title: $("title").value,
+      title: $("cover-title").value || $("title").value,
+      subtitle: $("cover-subtitle").value,
       content: $("reference").value,
       style: styleLabel,
       hooks: hooks,
       prompt: promptOverride || "",
       provider: $("img-engine").value,
-      cover_mode: getActiveChip("cover-mode", "data-cv", "ai"),
+      cover_mode: getActiveChip("cover-mode", "data-cv", "none"),
+      cover_template: selectedCoverTemplate(),
+      ratio: getActiveChip("cover-ratio", "data-cover-ratio", "3:4"),
     });
     $("cover-img").src = r.url + "?t=" + Date.now();
     $("cover-img").dataset.url = r.url;
@@ -1468,7 +1595,7 @@ async function runFull() {
   const btn = document.activeElement;
   const btns = [$("btn-run-full"), $("btn-run-full-footer")].filter(b => b);
   btns.forEach(b => { b.disabled = true; b.dataset.orig = b.innerHTML; b.innerHTML = '<span class="spinner"></span>生成中...'; });
-  $("full-result").style.display = "";
+  $("full-result").style.display = "none";
   $("full-elapsed").textContent = "";
 
   try {
@@ -1501,11 +1628,14 @@ async function runFull() {
     lastFullResult = r;
     renderFull(r);
     $("full-elapsed").textContent = `总耗时 ${(r.steps && r.steps.elapsed) || ""}s · ${track || "通用"} · ${styleLabel.split("·")[0].trim()}`;
-    $("full-result").scrollIntoView({behavior: "smooth", block: "start"});
+    if (!r.task_id) throw new Error("生成已返回，但未提供任务编号，无法打开结果页");
+    location.href = "/result.html?task=" + encodeURIComponent(r.task_id);
   } catch (e) {
-    $("full-result").style.display = "";
+    $("full-result").style.display = "none";
     $("full-meta").textContent = "❌ " + e.message;
     $("full-meta").style.color = "var(--danger)";
+    $("footer-status").textContent = "生成失败：" + e.message;
+    $("footer-status").className = "settings-pip bad";
   } finally {
     btns.forEach(b => { b.disabled = false; b.innerHTML = b.dataset.orig; });
   }
@@ -1601,7 +1731,8 @@ function readImageDataUrl(file) {
 async function runPipeline() {
   const btns = [$("btn-run-full-pipeline"), $("btn-run-full-footer")].filter(Boolean);
   btns.forEach(btn => { btn.disabled = true; btn.dataset.orig = btn.innerHTML; });
-  $("full-result").style.display = "";
+  lastFullResult = null;
+  $("full-result").style.display = "none";
   $("full-elapsed").textContent = "";
   ["step4-block","step5-block","step6-block"].forEach(id => $(id).style.display = "none");
   try {
@@ -1622,12 +1753,12 @@ async function runPipeline() {
     const imageProvider = imageSource === "external" ? "custom" : $("img-engine").value;
     const imageSettings = imageProvider === "custom" ? settings.custom_image
       : imageProvider === "gpt_image" ? settings.image : settings[imageProvider];
-    const coverMode = getActiveChip("cover-mode", "data-cv", "ai");
+    const coverMode = getActiveChip("cover-mode", "data-cv", "none");
     const savedImageCount = resume?.steps?.images?.length || 0;
     const needsMoreImages = !(savedShotCount > 0 && savedImageCount >= savedShotCount);
     const needsImageApi = (needsMoreImages && (imageSource === "ai" || imageSource === "external"
       || (imageSource === "mine" && getActiveChip("materials-fallback", "data-mfb", "ai") === "ai")))
-      || (!resume?.steps?.cover?.url && ["ai", "title", "blank"].includes(coverMode));
+      || (!resume?.steps?.cover?.url && ["title", "blank"].includes(coverMode));
     if (needsImageApi && !imageSettings?.configured) {
       throw new Error("所选绘图引擎尚未配置，请先到系统设置保存凭据");
     }
@@ -1700,7 +1831,10 @@ async function runPipeline() {
           fallback: getActiveChip("materials-fallback", "data-mfb", "ai"),
         },
       },
-      cover: {mode: coverMode, style: styleLabel, dataUrl: coverDataUrl},
+      cover: {mode: coverMode, style: styleLabel, dataUrl: coverDataUrl,
+        title: $("cover-title").value.trim(), subtitle: $("cover-subtitle").value.trim(),
+        template: selectedCoverTemplate(),
+        ratio: getActiveChip("cover-ratio", "data-cover-ratio", "3:4")},
       scriptFormat: getActiveChip("video-form", "data-form", "narrator") === "podcast" ? "podcast" : "narrator",
       dynamic: {
         mode: getActiveChip("dynamic-shots", "data-dynamic", "off"),
@@ -1737,12 +1871,22 @@ async function runPipeline() {
     lastPipelineResult = result;
     $("full-elapsed").innerHTML = `✓ 全链路完成（任务 ${escapeHtml(result.taskId)}）<a href="/tasks.html" style="margin-left:8px;color:var(--accent)">📋 查看任务</a>`;
     $("full-elapsed").style.color = "var(--ok, #10b981)";
-    $("full-result").scrollIntoView({behavior: "smooth", block: "start"});
+    if (!result.taskId) throw new Error("流程已返回，但未提供任务编号，无法打开结果页");
+    location.href = "/result.html?task=" + encodeURIComponent(result.taskId);
   } catch (e) {
     $("full-meta").textContent = "❌ " + e.message;
     $("full-meta").style.color = "var(--danger)";
     $("full-elapsed").textContent = "流程已中断；已完成的阶段保留在任务目录中";
     $("full-elapsed").style.color = "var(--danger)";
+    $("footer-status").textContent = "流程中断：" + e.message;
+    $("footer-status").className = "settings-pip bad";
+    if (lastFullResult?.task_id) {
+      const link = document.createElement("a");
+      link.href = "/result.html?task=" + encodeURIComponent(lastFullResult.task_id);
+      link.textContent = " · 查看已保存产物";
+      link.style.color = "inherit";
+      $("footer-status").append(link);
+    }
   } finally {
     btns.forEach(btn => { btn.disabled = false; btn.innerHTML = btn.dataset.orig; });
   }
@@ -1920,6 +2064,9 @@ document.querySelectorAll("#process-mode .chip").forEach(chip => {
     $("btn-run-full-pipeline").textContent = "▶ 继续未完成阶段";
     $("btn-run-full").disabled = true;
     $("btn-run-full").title = "续跑任务请使用“继续未完成阶段”";
+  }
+  if (location.hash && document.body.dataset.view === "editor") {
+    requestAnimationFrame(() => document.getElementById(location.hash.slice(1))?.scrollIntoView());
   }
 })();
 </script>

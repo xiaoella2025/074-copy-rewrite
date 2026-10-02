@@ -240,7 +240,7 @@ code{background:var(--bg);padding:1px 5px;border-radius:3px;font-family:var(--fo
 .hidden{display:none!important;}
 </style>
 </head>
-<body data-theme="light">
+<body data-theme="dark">
 <div class="topbar">
   <h1>⚙ 系统设置</h1>
   <span class="crumb">app074 · v1.0</span>
@@ -2222,7 +2222,7 @@ function copyDiag() {
 function toggleTheme() {
   const b = document.body;
   b.dataset.theme = b.dataset.theme === "dark" ? "light" : "dark";
-  try { localStorage.setItem("app074-theme", b.dataset.theme); } catch {}
+  try { localStorage.setItem("app074-theme-v2", b.dataset.theme); } catch {}
 }
 
 // ============ 导航 ============
@@ -2277,7 +2277,7 @@ initImageProviderTabs();
 (async () => {
   // 恢复主题
   try {
-    const t = localStorage.getItem("app074-theme");
+    const t = localStorage.getItem("app074-theme-v2");
     if (t) document.body.dataset.theme = t;
   } catch {}
   // hash 决定初始 section
