@@ -294,7 +294,7 @@ code{background:var(--bg);padding:1px 5px;border-radius:3px;font-family:var(--fo
     </a>
     <a class="nav-item" data-section="ai-creation" href="#ai-creation">
       <div class="icon">💡</div>
-      <div class="meta"><div class="name">AI 创作</div><div class="sub">IMA 知识库</div></div>
+      <div class="meta"><div class="name">AI 创作</div><div class="sub">IMA · Obsidian 知识库</div></div>
       <span class="dot" id="dot-ai-creation"></span>
     </a>
     <a class="nav-item" data-section="about" href="#about">
@@ -847,17 +847,18 @@ code{background:var(--bg);padding:1px 5px;border-radius:3px;font-family:var(--fo
       </div>
     </div>
 
-    <!-- ============ AI 创作 · IMA ============ -->
+    <!-- ============ AI 创作 · 知识库 ============ -->
     <div class="section hidden" id="section-ai-creation">
       <div class="settings-section-head">
         <div class="settings-section-icon"><span class="icon">💡</span></div>
         <div class="flex-1">
-          <div class="settings-section-title">AI 创作 · IMA 知识库</div>
-          <div class="settings-section-sub">接入 IMA（腾讯智能体）知识库作为改写补充。</div>
+          <div class="settings-section-title">AI 创作 · 知识库</div>
+          <div class="settings-section-sub">IMA 与 Obsidian 配置，供图文创作使用。</div>
         </div>
         <span class="settings-pip" id="st-ai-creation"><span class="settings-pip-dot"></span>检测中…</span>
       </div>
       <div class="settings-card">
+        <div class="card-hd"><span class="label">IMA 知识库</span><span class="hint">与 073 相同，填写已有 ID</span></div>
         <div class="field-hd"><span class="label">Client ID</span><span class="hint">可选</span></div>
         <div class="key-input">
           <input type="text" id="ima-client-id" class="key-input-field" placeholder="粘贴 Client ID">
@@ -876,22 +877,21 @@ code{background:var(--bg);padding:1px 5px;border-radius:3px;font-family:var(--fo
           </div>
         </div>
 
+        <div class="field-hd"><span class="label">知识库 ID</span><span class="hint">可选 · AI 创作时检索</span></div>
+        <input type="text" id="ima-kb-id" class="input" placeholder="填写 IMA 知识库 ID">
+        <div class="field-hd"><span class="label">默认笔记本 ID</span><span class="hint">可选 · 保存笔记时使用</span></div>
+        <input type="text" id="ima-notebook-id" class="input" placeholder="填写 IMA 笔记本 ID">
+        <div class="field-help">073 使用手动 ID。074 原下拉框只显示已保存项，不会查询平台，所以改为可编辑字段。</div>
+
+        <div class="card-hd" style="margin-top:20px"><span class="label">Obsidian 知识库</span><span class="hint">本机已有仓库</span></div>
+        <div class="field-hd"><span class="label">仓库根目录</span><span class="hint">包含 .obsidian 文件夹</span></div>
+        <div class="row"><input type="text" id="obsidian-vault" class="input" placeholder="选择已有 Obsidian 仓库根目录"><button type="button" class="btn btn-secondary" id="btn-obsidian-browse">📁 浏览…</button></div>
+        <div class="field-hd"><span class="label">系列文件夹</span><span class="hint">仓库内的单个文件夹</span></div>
+        <input type="text" id="obsidian-folder" class="input" placeholder="图文创作">
+
         <div class="settings-card-footer">
-          <button class="btn btn-primary" id="btn-ima-save">💾 保存</button>
-          <button class="btn btn-ghost" id="btn-ima-test">检查本地配置</button>
-        </div>
-
-        <!-- STORY 真值：测试连接后出现 知识库 + 笔记本 select -->
-        <div id="ima-kb-block" style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid var(--border-subtle)">
-          <div class="field-hd"><span class="label">选择知识库</span><span class="hint">AI 创作时从此知识库检索素材</span></div>
-          <select id="ima-kb-select">
-            <option value="">未选择</option>
-          </select>
-
-          <div class="field-hd" style="margin-top:12px"><span class="label">默认写入笔记本</span><span class="hint">可选 · 「存入 ima」的笔记归入该笔记本</span></div>
-          <select id="ima-notebook-select">
-            <option value="">未选择</option>
-          </select>
+          <button class="btn btn-primary" id="btn-ima-save">💾 保存知识库设置</button>
+          <button class="btn btn-ghost" id="btn-ima-test">检查 IMA 凭证</button>
         </div>
       </div>
     </div>
@@ -1641,25 +1641,18 @@ async function refreshSettings() {
     if ($("jy-task-notify"))   $("jy-task-notify").checked   = s.jianying.task_notify !== false;
     setStatus("st-draft", s.jianying.configured ? "✓ 已配置" : "未配置", s.jianying.configured);
     setDot("dot-draft", s.jianying.configured ? "ok" : "bad");
-    // IMA
+    // 知识库
     $("ima-client-id").value = s.ima.client_id || "";
     $("ima-api-key").value = "";
-    // 选择知识库 / 默认写入笔记本：仅在已有保存值时显示
-    if (s.ima.kb_id || s.ima.notebook_id) {
-      const kbSel = $("ima-kb-select");
-      const nbSel = $("ima-notebook-select");
-      if (s.ima.kb_id) {
-        kbSel.innerHTML = `<option value="${s.ima.kb_id}">${escapeHtml(s.ima.kb_name || s.ima.kb_id)}</option>`;
-        kbSel.value = s.ima.kb_id;
-      }
-      if (s.ima.notebook_id) {
-        nbSel.innerHTML = `<option value="${s.ima.notebook_id}">${escapeHtml(s.ima.notebook_name || s.ima.notebook_id)}</option>`;
-        nbSel.value = s.ima.notebook_id;
-      }
-      $("ima-kb-block").style.display = "";
-    }
-    setStatus("st-ai-creation", s.ima.configured ? "✓ 已配置" : "未配置", s.ima.configured);
-    setDot("dot-ai-creation", s.ima.configured ? "ok" : "bad");
+    $("ima-kb-id").value = s.ima.kb_id || "";
+    $("ima-notebook-id").value = s.ima.notebook_id || "";
+    $("obsidian-vault").value = s.obsidian?.vault || "";
+    $("obsidian-folder").value = s.obsidian?.folder || "图文创作";
+    const knowledgeOk = !!((s.ima.configured && s.ima.kb_id) || s.obsidian?.configured);
+    const knowledgeLabel = knowledgeOk ? "✓ 可检索" : s.ima.configured
+      ? "凭证已存 · 待填知识库 ID" : "未配置";
+    setStatus("st-ai-creation", knowledgeLabel, knowledgeOk);
+    setDot("dot-ai-creation", knowledgeOk ? "ok" : "bad");
     // About
     setStatus("st-about", "✓ 正常", true);
     setDot("dot-about", "ok");
@@ -2128,24 +2121,11 @@ async function browseFolder(targetId) {
 }
 
 async function testIMA() {
-  toast("⏳ 测试连接中...", true);
+  toast("⏳ 检查本地知识库配置...", true);
   try {
     const r = await api("/api/test_ima", "POST", {});
-    if (r.ok) {
-      const block = $("ima-kb-block");
-      const kbSel = $("ima-kb-select");
-      const nbSel = $("ima-notebook-select");
-      if (r.kbs && r.kbs.length) {
-        kbSel.innerHTML = '<option value="">未选择</option>' + r.kbs.map(k => `<option value="${k.id}">${escapeHtml(k.name || k.id)}</option>`).join("");
-        kbSel.value = r.kb_id || "";
-      }
-      if (r.notebooks && r.notebooks.length) {
-        nbSel.innerHTML = '<option value="">未选择</option>' + r.notebooks.map(n => `<option value="${n.id}">${escapeHtml(n.name || n.id)}</option>`).join("");
-        nbSel.value = r.notebook_id || "";
-      }
-      block.style.display = r.kbs || r.notebooks ? "" : "none";
-      toast(r.verified ? "✓ IMA 连接成功" : "✓ 本地凭证已保存；尚未验证 IMA 平台连接", true);
-    } else toast("❌ " + (r.error || "失败"), false);
+    if (r.ok) toast("✓ IMA 凭证已保存在本机；尚未验证平台连接", true);
+    else toast("⚠ IMA：" + (r.error || "未配置"), false);
   } catch (e) { toast("❌ " + e.message, false); }
 }
 
@@ -2154,10 +2134,12 @@ async function saveIMA() {
     await api("/api/settings", "POST", {
       ima_client_id: $("ima-client-id").value.trim() || KEEP,
       ima_api_key: $("ima-api-key").value.trim() || KEEP,
-      ima_kb_id: $("ima-kb-select").value || KEEP,
-      ima_notebook_id: $("ima-notebook-select").value || KEEP,
+      ima_kb_id: $("ima-kb-id").value.trim(),
+      ima_notebook_id: $("ima-notebook-id").value.trim(),
+      obsidian_vault: $("obsidian-vault").value.trim(),
+      obsidian_folder: $("obsidian-folder").value.trim(),
     });
-    toast("✓ IMA 已保存", true);
+    toast("✓ 知识库设置已保存", true);
     $("ima-api-key").value = "";
     await refreshSettings();
   } catch (e) { toast("❌ " + e.message, false); }
@@ -2258,6 +2240,7 @@ $("btn-jy-browse") && ($("btn-jy-browse").onclick = () => browseFolder("jy-draft
 $("btn-jy-bgm-browse") && ($("btn-jy-bgm-browse").onclick = () => browseFolder("jy-bgm-path"));
 $("btn-ima-test") && ($("btn-ima-test").onclick = testIMA);
 $("btn-ima-save").onclick = saveIMA;
+$("btn-obsidian-browse").onclick = () => browseFolder("obsidian-vault");
 $("btn-clear-tasks").onclick = clearTasks;
 $("btn-clear-all").onclick = clearAll;
 $("btn-copy-diag").onclick = copyDiag;

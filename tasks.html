@@ -225,6 +225,11 @@ function renderDetail(d) {
     html.push(`<div class="section">
       <h3>📝 Step 1 改写后文案（${steps.rewrite.length} 字）</h3>
       <div class="json-block">${escapeHtml(steps.rewrite)}</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+        <button type="button" class="btn" data-knowledge-export="obsidian">存入 Obsidian</button>
+        <button type="button" class="btn" data-knowledge-export="ima">存入 IMA</button>
+      </div>
+      <div id="knowledge-export-status" class="edit-caption" role="status"></div>
       <details class="edit-panel"><summary>人工修改文案</summary>
         <textarea id="edit-rewrite">${escapeHtml(steps.rewrite)}</textarea>
         <button type="button" class="btn" id="save-rewrite">保存为新版本并续跑</button>
@@ -329,6 +334,21 @@ function renderDetail(d) {
   }))));
   $("detail-panel").querySelectorAll("[data-redraw-idx]").forEach(button => {
     button.onclick = () => fork("redraw", Number(button.dataset.redrawIdx));
+  });
+  $("detail-panel").querySelectorAll("[data-knowledge-export]").forEach(button => {
+    button.onclick = async () => {
+      const status = $("knowledge-export-status");
+      button.disabled = true;
+      status.textContent = "保存中…";
+      try {
+        const result = await api("/api/knowledge/export", "POST", {
+          task_id: info.task_id, provider: button.dataset.knowledgeExport,
+        });
+        status.textContent = result.status === "already_saved" ? "此版本已存入 IMA，未重复创建。"
+          : button.dataset.knowledgeExport === "obsidian" ? "已存入 Obsidian：" + result.path : "已存入 IMA。";
+      } catch (error) { status.textContent = "保存失败：" + error.message; }
+      finally { button.disabled = false; }
+    };
   });
 }
 

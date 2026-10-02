@@ -523,7 +523,9 @@ body{padding-left:220px;}
         <div class="chip active" data-src="search">全网搜索</div>
         <div class="chip" data-src="kb">AI 内置知识库</div>
         <div class="chip" data-src="ima">IMA 知识库</div>
+        <div class="chip" data-src="obsidian">Obsidian 知识库</div>
       </div>
+      <div class="help" id="knowledge-status" style="margin-top:6px">选择 IMA 或 Obsidian 后，创作前会检索已配置的知识库。</div>
     </div>
     <div style="margin-bottom:10px">
       <div class="help" style="margin-bottom:6px">带货商品信息（可选）</div>
@@ -1437,6 +1439,8 @@ async function runRewrite() {
       extra: $("extra").value,
     });
     $("output").textContent = r.text;
+    $("knowledge-status").textContent = (r.knowledge || []).length
+      ? `本次引用 ${(r.knowledge || []).length} 条知识材料` : "本次未检索到知识材料";
     $("elapsed").textContent = `耗时 ${r.elapsed}s`;
     $("btn-copy").disabled = false;
     $("btn-rerun").disabled = false;
@@ -1509,6 +1513,8 @@ async function runFull() {
 
 function renderFull(r) {
   const steps = r.steps || {};
+  $("knowledge-status").textContent = (r.knowledge || []).length
+    ? `本次引用 ${(r.knowledge || []).length} 条知识材料` : "本次未检索到知识材料";
   $("full-meta").textContent = `${(r.line||"")} · ${(r.level||"")} · 共 ${Object.keys(steps).length} 步`;
   $("full-meta").style.color = "";
 
