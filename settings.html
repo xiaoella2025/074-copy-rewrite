@@ -878,7 +878,7 @@ code{background:var(--bg);padding:1px 5px;border-radius:3px;font-family:var(--fo
 
         <div class="settings-card-footer">
           <button class="btn btn-primary" id="btn-ima-save">💾 保存</button>
-          <button class="btn btn-ghost" id="btn-ima-test">🔌 测试连接 / 拉取知识库</button>
+          <button class="btn btn-ghost" id="btn-ima-test">检查本地配置</button>
         </div>
 
         <!-- STORY 真值：测试连接后出现 知识库 + 笔记本 select -->
@@ -2144,7 +2144,7 @@ async function testIMA() {
         nbSel.value = r.notebook_id || "";
       }
       block.style.display = r.kbs || r.notebooks ? "" : "none";
-      toast("✓ 连接成功" + (r.kbs ? "，找到 " + r.kbs.length + " 个知识库" : ""), true);
+      toast(r.verified ? "✓ IMA 连接成功" : "✓ 本地凭证已保存；尚未验证 IMA 平台连接", true);
     } else toast("❌ " + (r.error || "失败"), false);
   } catch (e) { toast("❌ " + e.message, false); }
 }

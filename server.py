@@ -3011,9 +3011,7 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if self.path == "/api/test_ima":
-            # IMA 真值：测试连接 + 拉取知识库 + 拉取笔记本
-            # 简化：074 不直接调用腾讯 IMA，返回本地保存的 kb_id / notebook_id，
-            #       如果有保存值则视为已连上 + 把当前选中项回显给前端
+            # 目前只检查本地凭证字段并回显已保存的选择，不声称连接平台成功。
             s = load_settings()
             ima = s.get("ima") or {}
             if not (ima.get("client_id") and ima.get("api_key")):
@@ -3027,6 +3025,7 @@ class Handler(BaseHTTPRequestHandler):
                 notebooks.append({"id": ima["notebook_id"], "name": ima.get("notebook_name") or ima["notebook_id"]})
             self._json(200, {
                 "ok": True,
+                "verified": False,
                 "kbs": kbs,
                 "notebooks": notebooks,
                 "kb_id": ima.get("kb_id", ""),
