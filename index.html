@@ -1941,7 +1941,7 @@ async function runFull() {
       keep_mode: $("toggle-keep").classList.contains("on"),
       publish: publishOptions(),
       style: styleLabel,
-      run_steps: ["0", "1", "meta", "2", "3"],
+      run_steps: computeRunSteps(new URLSearchParams(location.search).get("from"), resume),
       targets: {
         shots: $("shots").disabled ? null : parseInt($("shots").value) || null,
         words: $("words").disabled ? null : parseInt($("words").value) || null,
@@ -2423,11 +2423,123 @@ document.querySelectorAll("#process-mode .chip").forEach(chip => {
     $("btn-run-full-pipeline").textContent = "▶ 继续未完成阶段";
     $("btn-run-full").disabled = true;
     $("btn-run-full").title = "续跑任务请使用“继续未完成阶段”";
+    try {
+      const detail = await api("/api/task/" + encodeURIComponent(resumeId));
+      populateFromRequest(detail?.request || {}, new URLSearchParams(location.search).get("from"));
+      showResumeBanner(detail, new URLSearchParams(location.search).get("from"));
+    } catch (e) {
+      $("output").textContent = `载入任务失败：${e.message}`;
+    }
   }
   if (location.hash && document.body.dataset.view === "editor") {
     requestAnimationFrame(() => document.getElementById(location.hash.slice(1))?.scrollIntoView());
   }
 })();
+
+function computeRunSteps(fromStep, resume) {
+  // fromStep 决定从哪一步开始重新跑（已完成步骤直接跳过）
+  const ALL = ["0", "1", "meta", "2", "3"];
+  if (!fromStep) return ALL;
+  const idx = ALL.indexOf(fromStep);
+  if (idx === -1) return []; // TTS / images / draft 由各自端点处理
+  return ALL.slice(idx);
+}
+
+function setChipsActive(groupId, values, attr) {
+  const root = document.getElementById(groupId);
+  if (!root) return;
+  const wanted = new Set(Array.isArray(values) ? values : [values].filter(Boolean));
+  root.querySelectorAll(".chip").forEach(chip => {
+    const v = chip.dataset[attr] ?? chip.getAttribute(`data-${attr.replace(/^data-/, "")}`);
+    const key = attr.startsWith("data-") ? attr.slice(5) : attr;
+    const got = chip.dataset[key];
+    const on = wanted.has(got);
+    chip.classList.toggle("active", on);
+  });
+}
+
+function setText(id, value) { const el = $(id); if (el != null) el.value = value ?? ""; }
+
+function populateFromRequest(req, fromStep) {
+  if (!req) return;
+  // 文本输入
+  setText("title", req.title);
+  setText("reference", req.reference);
+  setText("topic", req.topic);
+  setText("keywords", req.keywords);
+  setText("product", req.product);
+  setText("extra", req.extra);
+  // 开关 + 关联文本
+  const fixedOn = !!req.fixed_opening;
+  $("toggle-fixed")?.classList.toggle("on", fixedOn);
+  setText("fixed-opening", req.fixed_opening);
+  const tailOn = !!req.tail_guide;
+  $("toggle-tail")?.classList.toggle("on", tailOn);
+  setText("tail-guide", req.tail_guide);
+  $("toggle-keep")?.classList.toggle("on", !!req.keep_mode);
+  // profile + 计数
+  if (req.profile_id) setText("model-pick", req.profile_id);
+  const tg = req.targets || {};
+  setText("shots", tg.shots ?? "");
+  setText("words", tg.words ?? "");
+  // line + level
+  if (req.line) setChipsActive("lines", req.line, "line");
+  if (req.level) {
+    setChipsActive("levels-story", req.level, "key");
+    setChipsActive("levels-user", req.level, "key");
+  }
+  // rounds / viewpoint / track
+  if (req.rounds) setChipsActive("rounds", req.rounds, "rd");
+  if (req.viewpoint) setChipsActive("viewpoints", req.viewpoint, "vp");
+  if (req.track) setChipsActive("tracks", req.track, "track");
+  // 多选
+  if (Array.isArray(req.hooks)) setChipsActive("hooks", req.hooks, "hook");
+  if (Array.isArray(req.sources)) setChipsActive("sources", req.sources, "src");
+  // 出图
+  if (req.image_source) setChipsActive("img-source", req.image_source, "imgSrc");
+  if (req.img_ratio) setChipsActive("img-ratio", req.img_ratio, "ratio");
+  if (req.dynamic_shots) setChipsActive("dynamic-shots", req.dynamic_shots, "dynamic");
+  if (req.image_provider) setText("img-engine", req.image_provider);
+  // TTS
+  if (req.tts_mode) setChipsActive("tts-mode", req.tts_mode, "tts");
+  if (req.tts_provider) setChipsActive("tts-provider", req.tts_provider, "ttsp");
+  if (req.tts_speed) setChipsActive("tts-speed", req.tts_speed, "speed");
+  // 风格 + 封面
+  if (req.style) {
+    const root = document.getElementById("style");
+    if (root) root.querySelectorAll(".style-chip").forEach(c => c.classList.toggle("active", c.textContent.trim() === req.style));
+  }
+  if (req.cover_mode) setChipsActive("cover-mode", req.cover_mode, "cv");
+  if (req.cover_template) setChipsActive("cover-template", req.cover_template, "template");
+  // 流程
+  if (req.process_mode) setChipsActive("process-mode", req.process_mode, "pm");
+  if (req.pause_mode) setChipsActive("pause-mode", req.pause_mode, "pam");
+  currentLine = req.line || currentLine;
+  if (req.level) currentLevel[currentLine] = req.level;
+}
+
+function showResumeBanner(detail, fromStep) {
+  const info = detail?.info || {};
+  const done = (info.completed_steps || []).map(String);
+  const NODE_LABELS = {"0":"文案预审", "1":"智能改写与封面", "2":"影视分镜分句", "5":"TTS 配音", "3":"生成绘图提示词", "4":"批量生图", "6":"生成剪映草稿"};
+  let banner = document.getElementById("resume-banner");
+  const editor = document.getElementById("task-editor");
+  if (!banner && editor) {
+    banner = document.createElement("div");
+    banner.id = "resume-banner";
+    banner.style.cssText = "margin:0 0 14px;padding:12px 16px;border:1px solid var(--accent);background:var(--accent-soft);border-radius:10px;color:var(--text);font-size:13px;line-height:1.6";
+    editor.insertBefore(banner, editor.firstChild);
+  }
+  if (!banner) return;
+  const stepLabel = fromStep && NODE_LABELS[fromStep] ? NODE_LABELS[fromStep] : (done.length ? "已完成步骤之后" : "开头");
+  const completed = done.filter(k => NODE_LABELS[k]).map(k => NODE_LABELS[k]).join("、") || "无";
+  banner.innerHTML =
+    `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">` +
+      `<strong style="color:var(--accent-2)">↻ 从「${stepLabel}」重跑</strong>` +
+      `<span style="color:var(--muted)">任务 ${info.task_id || ""} · 已完成：${completed}</span>` +
+      `<span style="color:var(--muted)">— 你可以修改任意参数再提交，只重跑未完成或改动的阶段</span>` +
+    `</div>`;
+}
 </script>
 </body>
 </html>

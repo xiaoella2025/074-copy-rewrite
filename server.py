@@ -210,6 +210,13 @@ def get_task_detail(task_id):
         "product_reference": any(p.is_file() and p.suffix.lower() in (".png", ".jpg", ".webp")
                                  for p in task_dir.glob("product-reference.*")),
     }}
+    # 加载原始请求参数（供「从这里重跑」回填表单）
+    p = task_dir / "request.json"
+    if p.exists():
+        try:
+            detail["request"] = json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            pass
     p = task_dir / "01-review.json"
     if p.exists():
         try:
@@ -3632,6 +3639,15 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/api/generate":
             # STORY 图文全链路：Step 0 预审 + Step 1 改写 + Step 1 元 + Step 2 分镜 + Step 3 出图 prompt
             progress_task_id = data.get("task_id") if data.get("track_progress") else None
+            # 备份完整请求到 task_dir/request.json，供「从这里重跑」回填表单
+            if progress_task_id:
+                try:
+                    task_dir_for_req = _tasks_root() / progress_task_id
+                    task_dir_for_req.mkdir(parents=True, exist_ok=True)
+                    (task_dir_for_req / "request.json").write_text(
+                        json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+                except Exception:
+                    pass
             progress_step = "0"
             def advance(step, status, payload=None):
                 nonlocal progress_step
