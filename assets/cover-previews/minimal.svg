@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 320" preserveAspectRatio="xMidYMid slice">
+<rect width="240" height="320" fill="#fafaf6"/>
+<line x1="32" y1="80" x2="208" y2="80" stroke="#1a1a1a" stroke-width="1"/>
+<text x="32" y="68" font-family="Helvetica,sans-serif" font-size="10" fill="#1a1a1a" letter-spacing="6">N° 074</text>
+<text x="120" y="158" text-anchor="middle" font-family="Georgia,serif" font-size="22" font-weight="400" fill="#1a1a1a" letter-spacing="2">极简留白</text>
+<text x="120" y="184" text-anchor="middle" font-family="sans-serif" font-size="9" fill="#666" letter-spacing="3">MINIMAL</text>
+<line x1="32" y1="240" x2="208" y2="240" stroke="#1a1a1a" stroke-width="1"/>
+<text x="32" y="260" font-family="sans-serif" font-size="9" fill="#999" letter-spacing="2">STORY · 074</text>
+<text x="208" y="260" text-anchor="end" font-family="sans-serif" font-size="9" fill="#999" letter-spacing="2">2026</text>
+</svg>

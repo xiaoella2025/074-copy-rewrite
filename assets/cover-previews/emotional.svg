@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 320" preserveAspectRatio="xMidYMid slice">
+<defs>
+<linearGradient id="warm" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3a1410"/><stop offset=".5" stop-color="#a23a18"/><stop offset="1" stop-color="#f5a350"/></linearGradient>
+<radialGradient id="figure" cx=".5" cy=".4" r=".35"><stop offset="0" stop-color="#f5b870"/><stop offset="1" stop-color="#7a1e0a" stop-opacity="0"/></radialGradient>
+</defs>
+<rect width="240" height="320" fill="url(#warm)"/>
+<ellipse cx="120" cy="130" rx="55" ry="68" fill="url(#figure)"/>
+<rect y="200" width="240" height="120" fill="#000" opacity=".25"/>
+<text x="120" y="252" text-anchor="middle" font-family="Georgia,serif" font-size="22" font-weight="700" fill="#fff5e5" letter-spacing="2">人物情绪</text>
+<text x="120" y="272" text-anchor="middle" font-family="sans-serif" font-size="9" fill="#fff" opacity=".7" letter-spacing="3">EMOTIONAL</text>
+</svg>

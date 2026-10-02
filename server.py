@@ -3492,6 +3492,30 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/api/cover":
             try:
                 s = load_settings()
+                # 本地上传模式：直接复用用户在表单里预先上传的封面文件
+                cover_task_id = str(data.get("task_id") or "")
+                if data.get("cover_mode") == "upload" and cover_task_id:
+                    task_dir = _tasks_root() / cover_task_id
+                    for ext in ("png", "jpg", "webp", "jpeg"):
+                        candidate = task_dir / f"cover-upload.{ext}"
+                        if candidate.exists() and candidate.is_file():
+                            with open(candidate, "rb") as fh:
+                                raw = fh.read()
+                            covers_dir = DATA_DIR / "covers"
+                            covers_dir.mkdir(parents=True, exist_ok=True)
+                            name = f"upload_{uuid.uuid4().hex}.{ext}"
+                            (covers_dir / name).write_bytes(raw)
+                            cover_url = f"/covers/{name}"
+                            cover_result = {
+                                "url": cover_url,
+                                "prompt": "(本地上传)",
+                                "elapsed": 0,
+                                "provider": "upload",
+                            }
+                            (task_dir / "cover-meta.json").write_text(
+                                json.dumps(cover_result, ensure_ascii=False, indent=2), encoding="utf-8")
+                            self._json(200, cover_result)
+                            return
                 prompt_override = (data.get("prompt") or "").strip()
                 llm = resolve_active_llm_settings(data.get("profile_id")) if not prompt_override else None
                 if not prompt_override and not llm.get("api_key"):

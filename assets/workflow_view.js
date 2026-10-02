@@ -109,7 +109,16 @@
         const text = node("div");
         append(text, node("div", "wv-node-title", item.label),
           node("div", "wv-node-note", over?.note || (status === "skipped" ? "已跳过" : status === "done" ? "已完成" : item.description)));
-        append(row, node("span", "wv-dot", mark), text);
+        const retry = node("button", "wv-node-retry", "↻ 从这里重跑");
+        retry.type = "button";
+        retry.title = `从「${item.label}」重新执行后续步骤`;
+        retry.onclick = event => {
+          event.stopPropagation();
+          const id = taskId || info.task_id;
+          if (!id) return;
+          location.href = "/index.html?resume=" + encodeURIComponent(id) + "&from=" + encodeURIComponent(item.key);
+        };
+        append(row, node("span", "wv-dot", mark), text, retry);
         timeline.append(row);
       });
     }

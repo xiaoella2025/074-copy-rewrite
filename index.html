@@ -258,6 +258,9 @@ body{padding-left:220px;}
 .style-chip[data-has-preview=true]:hover::before{content:"";position:absolute;left:50%;bottom:100%;transform:translateX(-50%);border:6px solid transparent;border-top-color:var(--border-strong);z-index:51;pointer-events:none;}
 @keyframes stylePreviewIn{from{opacity:0;transform:translateX(-50%) translateY(4px);}to{opacity:1;transform:translateX(-50%) translateY(0);}}
 .style-chip[data-has-preview=true]{cursor:help;}
+.cover-chip[data-has-preview=true]{position:relative;cursor:help;}
+.cover-chip[data-has-preview=true]:hover::after{content:"";position:absolute;left:50%;bottom:calc(100% + 8px);transform:translateX(-50%);width:240px;height:320px;background-image:var(--preview-img);background-size:contain;background-position:center;background-repeat:no-repeat;background-color:var(--bg-elevated);border:1px solid var(--border-strong);border-radius:var(--radius-md);box-shadow:var(--shadow-lg);z-index:50;pointer-events:none;animation:stylePreviewIn .15s ease-out;}
+.cover-chip[data-has-preview=true]:hover::before{content:"";position:absolute;left:50%;bottom:100%;transform:translateX(-50%);border:6px solid transparent;border-top-color:var(--border-strong);z-index:51;pointer-events:none;}
 
 /* Checkbox row */
 .cb-row{display:flex;align-items:center;gap:8px;padding:5px 0;cursor:pointer;font-size:13px;}
@@ -391,7 +394,7 @@ body[data-view="editor"] #home-screen{display:none;}
 
   <div class="nav-group">
     <a class="nav-item" href="/tasks.html"><span class="ico">📋</span>任务队列</a>
-    <a class="nav-item" href="/tasks.html"><span class="ico">🕐</span>历史任务</a>
+    <a class="nav-item" href="/tasks.html?filter=done"><span class="ico">🕐</span>历史任务</a>
   </div>
 
   <div class="nav-group">
@@ -619,10 +622,10 @@ body[data-view="editor"] #home-screen{display:none;}
     <div style="margin-bottom:10px">
       <div class="help" style="margin-bottom:6px">叙事视角</div>
       <div class="chips" id="viewpoints">
-        <div class="chip" data-vp="keep">保持原文</div>
+        <div class="chip active" data-vp="keep">保持原文</div>
         <div class="chip" data-vp="first">第一人称</div>
         <div class="chip" data-vp="third">第三人称</div>
-        <div class="chip active" data-vp="overview">概述</div>
+        <div class="chip" data-vp="overview">概述</div>
       </div>
     </div>
     <div style="margin-bottom:10px">
@@ -815,7 +818,7 @@ body[data-view="editor"] #home-screen{display:none;}
       </div>
       <div class="help" style="margin:11px 0 6px">封面模板</div>
       <div class="chips" id="cover-template" style="margin-bottom:13px">
-        <span class="chip active" data-template="movie">电影海报感</span><span class="chip" data-template="minimal">极简留白</span><span class="chip" data-template="emotional">人物情绪</span><span class="chip" data-template="impact">文字冲击</span><span class="chip" data-template="chinese">国风古韵</span><span class="chip" data-template="custom">＋ 自定义</span>
+        <span class="chip cover-chip active" data-template="movie" data-preview="movie">电影海报感</span><span class="chip cover-chip" data-template="minimal" data-preview="minimal">极简留白</span><span class="chip cover-chip" data-template="emotional" data-preview="emotional">人物情绪</span><span class="chip cover-chip" data-template="impact" data-preview="impact">文字冲击</span><span class="chip cover-chip" data-template="chinese" data-preview="chinese">国风古韵</span><span class="chip cover-chip" data-template="custom">＋ 自定义</span>
       </div>
       <input type="text" id="cover-template-custom" placeholder="描述你想要的封面构图" style="display:none;margin:-4px 0 13px">
       <div class="help" style="margin-bottom:6px">封面比例</div>
@@ -901,8 +904,8 @@ body[data-view="editor"] #home-screen{display:none;}
       <div>
         <div class="help" style="margin-bottom:6px">配音语速</div>
         <div class="chips" id="tts-speed">
-          <span class="chip" data-speed="085">慢速 · 0.85x</span>
           <span class="chip active" data-speed="10">默认 · 1.0x</span>
+          <span class="chip" data-speed="085">慢速 · 0.85x</span>
           <span class="chip" data-speed="115">快语 · 1.15x</span>
           <span class="chip" data-speed="13">更快 · 1.3x</span>
         </div>
@@ -1061,11 +1064,12 @@ function startGenerationPoll(taskId) {
     try {
       const progress = await api("/api/task_progress/" + encodeURIComponent(taskId));
       const state = progress.step + ":" + progress.status + ":" + progress.updated_at;
-      if (state === last || !runView) return;
-      last = state;
-      setRunTaskId(taskId);
-      runView.setStep(progress.step, progress.status === "complete" ? "done" : progress.status);
-      if (progress.status === "done" || progress.status === "complete") await refreshRunDetail(taskId);
+      if (state !== last && runView) {
+        last = state;
+        setRunTaskId(taskId);
+        runView.setStep(progress.step, progress.status === "complete" ? "done" : progress.status);
+      }
+      await refreshRunDetail(taskId);
     } catch (_) { /* 任务第一次写入前尚无进度文件 */ }
   };
   generationPoll = setInterval(check, 700);
@@ -1301,20 +1305,71 @@ document.querySelectorAll("#style .style-chip").forEach(chip => {
   };
 });
 
+// Cover template chips with hover preview
+document.querySelectorAll("#cover-template .cover-chip").forEach(chip => {
+  const pv = chip.dataset.preview;
+  if (pv) {
+    chip.dataset.hasPreview = "true";
+    chip.style.setProperty("--preview-img", `url(/assets/cover-previews/${pv}.svg)`);
+  }
+});
+
 // Clickable cover upload — wrap dropzone in label
 const coverInput = $("cover-file");
 const coverResult = $("cover-result");
 const coverDrop = $("cover-drop");
+const coverPreview = $("cover-preview");
+const coverImg = $("cover-img");
+const coverStatus = $("cover-status");
+
+async function uploadCoverNow(file) {
+  if (!file) return null;
+  if (!/^image\/(png|jpeg|webp)$/.test(file.type)) {
+    coverResult.textContent = "✗ 仅支持 PNG/JPEG/WebP 图片";
+    coverResult.classList.remove("ok");
+    coverResult.classList.add("err");
+    return null;
+  }
+  if (file.size > 10_000_000) {
+    coverResult.textContent = "✗ 图片超过 10 MB";
+    coverResult.classList.remove("ok");
+    coverResult.classList.add("err");
+    return null;
+  }
+  coverResult.textContent = `⏳ 正在上传：${file.name}（${(file.size / 1024).toFixed(1)} KB）…`;
+  coverResult.classList.remove("err");
+  try {
+    const dataUrl = await readImageDataUrl(file);
+    const r = await fetch("/api/cover_upload", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({data_url: dataUrl}),
+    });
+    const out = await r.json();
+    if (!r.ok) throw new Error(out.error || `HTTP ${r.status}`);
+    coverResult.textContent = `✓ 已上传：${file.name}（${(file.size / 1024).toFixed(1)} KB）`;
+    coverResult.classList.add("ok");
+    if (coverImg && coverPreview) {
+      coverImg.src = out.url;
+      coverPreview.style.display = "";
+      coverDownload = $("cover-download");
+      if (coverDownload) coverDownload.href = out.url;
+    }
+    return out.url;
+  } catch (err) {
+    coverResult.textContent = "✗ 上传失败：" + err.message;
+    coverResult.classList.add("err");
+    return null;
+  }
+}
+
 if (coverDrop && coverInput) {
   coverDrop.addEventListener("click", e => {
     if (e.target.tagName !== "INPUT") coverInput.click();
   });
   coverInput.addEventListener("change", () => {
     const f = coverInput.files && coverInput.files[0];
-    if (f) {
-      coverResult.textContent = `✓ 已选择：${f.name}（${(f.size / 1024).toFixed(1)} KB）`;
-      coverResult.classList.add("ok");
-    }
+    if (f) uploadCoverNow(f);
   });
 }
 
@@ -1376,6 +1431,30 @@ async function callCover(promptOverride) {
   const status = $("cover-status");
   const btn = $("btn-gen-cover");
   const regen = $("btn-regen-cover");
+  const coverMode = getActiveChip("cover-mode", "data-cv", "none");
+  if (coverMode === "upload") {
+    const file = $("cover-file").files?.[0];
+    if (!file) {
+      status.textContent = "请先在下方「本地上传」区选一张封面图";
+      status.style.color = "var(--warn, #f5a524)";
+      return;
+    }
+    status.textContent = "上传本地封面中...";
+    const url = await uploadCoverNow(file);
+    if (url) {
+      $("cover-img").src = url;
+      $("cover-img").dataset.url = url;
+      $("cover-download").href = url;
+      $("cover-preview").style.display = "";
+      status.textContent = "✓ 封面已就绪（本地上传）";
+      status.style.color = "var(--accent-2)";
+    } else {
+      status.textContent = "✗ 封面上传失败";
+      status.style.color = "var(--err, #e85a5a)";
+    }
+    btn.disabled = false; regen.disabled = false;
+    return;
+  }
   status.textContent = "生成中...（先 LLM 写 prompt，再调出图 API）";
   status.style.color = "var(--muted)";
   btn.disabled = true; regen.disabled = true;
@@ -1841,7 +1920,7 @@ async function runFull() {
       rounds: getActiveChip("rounds", "data-rd", "std"),
       line: currentLine,
       level: currentLevel[currentLine],
-      viewpoint: document.querySelector("#viewpoints .chip.active")?.dataset.vp || "overview",
+      viewpoint: document.querySelector("#viewpoints .chip.active")?.dataset.vp || "keep",
       reference: $("reference").value,
       topic: $("topic").value,
       title: $("title").value,
@@ -2048,7 +2127,7 @@ async function runPipeline() {
         rounds: getActiveChip("rounds", "data-rd", "std"),
         line: currentLine,
         level: currentLevel[currentLine],
-        viewpoint: document.querySelector("#viewpoints .chip.active")?.dataset.vp || "overview",
+        viewpoint: document.querySelector("#viewpoints .chip.active")?.dataset.vp || "keep",
         reference: $("reference").value,
         topic: $("topic").value,
         title: $("title").value,
