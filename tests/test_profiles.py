@@ -50,6 +50,18 @@ class ProfileSaveTests(unittest.TestCase):
             "enabled": True,
         }])
 
+    def test_source_create_uses_selected_profile_and_search_summaries(self):
+        self.seed()
+        with patch.object(server, "call_llm", return_value="创作原稿") as llm:
+            status, result = self.request("POST", "/api/source_create", {
+                "profile_id": "p1", "keyword": "人物故事", "track": "character-story",
+                "articles": [{"title": "资料标题", "summary": "事实摘要"}],
+            })
+        self.assertEqual(status, 200, result)
+        self.assertEqual(result["text"], "创作原稿")
+        self.assertIn("事实摘要", llm.call_args.args[2])
+        self.assertEqual(llm.call_args.args[0]["model"], "m1")
+
     def test_new_profile_without_key_can_be_saved_for_later_editing(self):
         draft = {"id": "new-profile", "name": "新配置", "provider": "deepseek",
                  "protocol": "openai", "baseUrl": "https://api.deepseek.com",
@@ -112,6 +124,21 @@ class ProfileSaveTests(unittest.TestCase):
         server.save_profiles(profiles)
         self.assertFalse(self.request("GET", "/api/profiles")[1]["profiles"][0]["has_key"])
         self.assertEqual(server.resolve_active_llm_settings()["api_key"], "")
+
+    def test_explicit_model_selection_uses_its_own_saved_profile(self):
+        self.seed()
+        profiles = server.load_profiles()
+        profiles.append({"id": "p2", "name": "第二模型", "provider": "custom",
+                         "protocol": "openai", "baseUrl": "https://other.invalid",
+                         "model": "other-model", "apiKey": "sk-second-654321",
+                         "enabled": False})
+        server.save_profiles(profiles)
+        selected = server.resolve_active_llm_settings("p2")
+        self.assertEqual(selected["model"], "other-model")
+        self.assertEqual(selected["api_key"], "sk-second-654321")
+        self.assertEqual(server.resolve_active_llm_settings()["model"], "m1")
+        with self.assertRaisesRegex(ValueError, "不存在"):
+            server.resolve_active_llm_settings("missing")
 
     def test_connection_check_uses_saved_key_when_input_is_blank(self):
         self.seed()

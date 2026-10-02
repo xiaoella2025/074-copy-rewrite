@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <title>app074 · 文案改写</title>
 <link rel="stylesheet" href="/assets/story_theme.css">
+<link rel="stylesheet" href="/assets/workflow_view.css">
 <style>
 /* === STORY 1.24.0 真值 oklch 变量（与 /assets/story_theme.css 一致） === */
 :root{
@@ -326,13 +327,34 @@ body{padding:38px 0 0 240px;background:var(--bg);}
 #task-editor .section[id]{scroll-margin-top:55px;}
 #back-home{display:inline-flex;align-items:center;gap:6px;background:transparent;border:0;color:var(--text-muted);cursor:pointer;font-size:12px;padding:0 0 10px;}
 #back-home:hover{color:var(--brand);}
-#task-editor .page-hd{margin:0;padding:24px 28px 20px;border-bottom:1px solid var(--border-subtle);}
-#task-editor .section{background:transparent;border:0;border-bottom:1px solid var(--border-subtle);border-radius:0;padding:22px 28px;margin:0;}
-#task-editor .section-title{font-size:15px;margin-bottom:14px;}
+#task-editor .page-hd{margin:0;padding:18px 24px 14px;border-bottom:1px solid var(--border-subtle);}
+#task-editor .section{background:transparent;border:0;border-bottom:1px solid var(--border-subtle);border-radius:0;padding:14px 24px;margin:0;}
+#task-editor .section-title{font-size:14px;margin-bottom:8px;}
 #task-editor .section-title .badge{font-size:11px;}
-#task-editor .big-cards{gap:10px;}
-#task-editor .big-card{background:var(--bg-sunken);border-color:var(--border);border-radius:9px;padding:14px 18px;}
+#task-editor .big-cards{gap:8px;}
+#task-editor .big-card{background:var(--bg-sunken);border-color:var(--border);border-radius:9px;padding:9px 13px;}
 #task-editor .big-card.active{background:var(--brand-soft);border-color:var(--brand);}
+#task-editor .chips{gap:5px;}
+#task-editor .chip{padding:4px 10px;font-size:12px;}
+#task-editor .chip.sub{padding:3px 8px;font-size:11px;}
+#task-editor .toggle-row{padding:3px 0;}
+#task-editor .rewrite-extra{margin-top:7px;padding-top:7px;}
+#task-editor .publish-grid{display:flex;gap:8px 22px;flex-wrap:wrap;align-items:center;margin-top:3px;}
+#task-editor .publish-grid label{min-width:150px;}
+#draft-banner{display:flex;align-items:center;gap:8px;margin-top:10px;padding:8px 10px;border:1px solid var(--border);border-radius:7px;color:var(--muted);font-size:11px;}
+#draft-banner[hidden]{display:none!important;}#draft-banner button{margin-left:auto;}
+.source-create{display:none;margin:0 24px 10px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-sunken);}
+.source-create.active{display:block;}.source-create .controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}.source-create .controls input{flex:1;min-width:180px;}.source-results{display:grid;gap:5px;margin:9px 0;max-height:220px;overflow:auto;}.source-results label{display:flex;gap:8px;align-items:flex-start;padding:7px;border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:11px;}.source-results small{display:block;color:var(--muted);margin-top:3px;line-height:1.4;}.source-status{font-size:11px;color:var(--muted);margin-top:7px;}
+#run-screen{display:none;height:calc(100vh - 38px);padding:20px 20px 70px;min-width:0;flex-direction:column;}
+#run-screen .run-head{display:flex;align-items:center;gap:12px;margin-bottom:12px;}
+#run-screen .run-head h1{font-size:18px;margin:0;}
+#run-screen .run-head p{color:var(--muted);font-size:12px;margin:2px 0 0;}
+#run-screen .run-head .spacer{flex:1;}
+#run-screen .run-badge{font-size:11px;border:1px solid var(--border);border-radius:999px;padding:4px 10px;color:var(--accent);}
+#run-screen .run-view{flex:1;min-height:0;}
+#run-screen .run-actions{position:fixed;left:240px;right:0;bottom:0;padding:10px 20px;background:var(--bg-elevated);border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px;z-index:10;}
+body[data-run="true"] #task-editor,body[data-run="true"] .footer{display:none;}
+body[data-run="true"] #run-screen{display:flex;}
 textarea,input[type=text],.model-select{background:var(--bg-sunken);color:var(--text);}
 .radio-card{background:var(--bg-sunken);}
 .chip.active,.chip[data-active=true]{background:var(--text);color:var(--bg);}
@@ -349,7 +371,7 @@ textarea,input[type=text],.model-select{background:var(--bg-sunken);color:var(--
 body[data-view="home"] #task-editor,body[data-view="home"] .footer{display:none;}
 body[data-view="editor"] #home-screen{display:none;}
 @media(max-width:1100px){.workflow-cards{gap:12px}.workflow-card{padding:20px 18px;min-height:320px}.home-screen{padding:60px 20px}}
-@media(max-width:800px){body{padding-left:0}.sidebar{display:none}.footer{left:0}.workflow-cards{grid-template-columns:1fr}.workflow-card{min-height:240px}.home-screen{padding:44px 16px}.container#task-editor{margin:10px 8px 0}#task-editor .section,#task-editor .page-hd{padding-left:16px;padding-right:16px}.grid-2{grid-template-columns:1fr}.footer .inner{flex-wrap:wrap}.footer .cost{display:none}}
+@media(max-width:800px){body{padding-left:0}.sidebar{display:none}.footer{left:0}.workflow-cards{grid-template-columns:1fr}.workflow-card{min-height:240px}.home-screen{padding:44px 16px}.container#task-editor{margin:10px 8px 0}#task-editor .section,#task-editor .page-hd{padding-left:16px;padding-right:16px}.grid-2{grid-template-columns:1fr}.footer .inner{flex-wrap:wrap}.footer .cost{display:none}#run-screen{padding:12px 10px 70px}#run-screen .run-actions{left:0}}
 </style>
 </head>
 <body data-theme="dark" data-style="linear" data-view="home">
@@ -394,7 +416,7 @@ body[data-view="editor"] #home-screen{display:none;}
 <main class="home-screen" id="home-screen">
   <div class="home-head"><div class="eyebrow">开始创作</div><h1>想做点什么？</h1><p>选择一种任务类型，一句话或一段文案，即可开始创作。</p></div>
   <div class="workflow-cards">
-    <button type="button" class="workflow-card image" data-workflow="image"><span class="workflow-icon">▧</span><h2>图文任务</h2><span class="subtitle">IMAGE · STORY</span><p>经典图文成片：AI 分镜配图 + 文案朗读 + 字幕，适合口播和故事视频。</p><span class="tags"><span>人物故事</span><span>健康图书</span><span>带货口播</span></span><span class="bottom"><small>支持双人播客 / 素材库</small><span>开始创建 →</span></span></button>
+    <button type="button" class="workflow-card image" data-workflow="image"><span class="workflow-icon">▧</span><h2>图文任务</h2><span class="subtitle">IMAGE · TEXT</span><p>经典图文成片：AI 分镜配图 + 文案朗读 + 字幕，适合口播和故事视频。</p><span class="tags"><span>人物故事</span><span>健康图书</span><span>带货口播</span></span><span class="bottom"><small>支持双人播客 / 素材库</small><span>开始创建 →</span></span></button>
     <button type="button" class="workflow-card video" data-workflow="video"><span class="workflow-icon">▣</span><h2>HTML 动画视频</h2><span class="subtitle">MOTION · CODE</span><p>代码驱动的动效成片：知识卡片、金句排版与动态强调。</p><span class="tags"><span>知识科普</span><span>财富写作</span><span>命题创作</span></span><span class="bottom"><small>工作流接入中</small><span>查看状态 →</span></span></button>
     <button type="button" class="workflow-card music" data-workflow="music"><span class="workflow-icon">♫</span><h2>音乐 MV</h2><span class="subtitle">MUSIC · VIDEO</span><p>歌词卡点和情绪向画面成片，可搭配音乐与节奏剪辑。</p><span class="tags"><span>情感氛围</span><span>歌词卡点</span><span>节日祝福</span></span><span class="bottom"><small>工作流接入中</small><span>查看状态 →</span></span></button>
   </div>
@@ -414,6 +436,7 @@ body[data-view="editor"] #home-screen{display:none;}
       </div>
       <span id="status" class="settings-pip warn"><span class="settings-pip-dot"></span>未配置</span>
     </div>
+    <div id="draft-banner" hidden><span id="draft-message">本机有一份已保存的表单草稿。</span><button class="btn" id="btn-restore-draft" type="button">恢复草稿</button></div>
   </div>
 
   <!-- 标题 -->
@@ -432,6 +455,12 @@ body[data-view="editor"] #home-screen{display:none;}
       <div class="title">✨ AI 创作<span class="new">NEW</span></div>
       <div class="desc">输入关键词，AI 自动搜索并创作思路</div>
     </div>
+  </div>
+  <div class="source-create" id="source-create">
+    <div class="controls"><input id="source-keyword" type="text" placeholder="输入人物、事件或创作关键词"><button class="btn" id="source-search" type="button">搜索资料</button></div>
+    <div class="source-results" id="source-results"></div>
+    <div class="controls"><input id="source-requirements" type="text" placeholder="补充创作要求（可选）"><button class="btn primary" id="source-generate" type="button" disabled>根据所选资料创作原稿</button></div>
+    <div class="source-status" id="source-status">先搜索并勾选资料，再生成原稿；模型调用会使用当前 LLM 配置。</div>
   </div>
 
   <!-- 视频形态 -->
@@ -534,13 +563,7 @@ body[data-view="editor"] #home-screen{display:none;}
 
   <!-- 发布素材 -->
   <div class="section">
-    <div class="section-title"><span class="icon">📢</span> 发布素材</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 18px;margin-top:4px">
-      <label class="cb-row"><input type="checkbox" id="pub-title" checked>生成短标题</label>
-      <label class="cb-row"><input type="checkbox" id="pub-desc" checked>生成发布文案</label>
-      <label class="cb-row"><input type="checkbox" id="pub-tags" checked>生成话题标签</label>
-      <label class="cb-row"><input type="checkbox" id="pub-seed">生成种子评论</label>
-    </div>
+    <div class="toggle-row on" id="toggle-publish"><span class="label">📢 发布素材</span><div class="switch"></div><span class="help" id="publish-help" style="margin:0">生成短标题 / 发布文案 / 话题标签 / 种子评论</span></div>
   </div>
 
   <!-- 改写强度（双线）—— 直播出片模式下自动隐藏 -->
@@ -741,15 +764,11 @@ body[data-view="editor"] #home-screen{display:none;}
     <div class="grid-2">
       <div>
         <div class="help" style="margin-bottom:6px">草稿模板</div>
-        <div class="chips" style="margin-bottom:6px">
-          <span class="chip active" data-tpl="default-916">★ 默认竖屏 · 出图 9:16</span>
-          <span class="chip" data-tpl="43">竖屏 4:3 · 出图 4:3</span>
-          <span class="chip" data-tpl="169">锁屏 16:9 · 出图 16:9</span>
-        </div>
-        <div class="chips">
-          <span class="chip" data-tpl="card">知识卡（分栏）· 出图 1:1</span>
-          <span class="chip" data-tpl="new">新模板 · 出图 9:16</span>
-          <span class="chip" data-tpl="manage">管理模板</span>
+        <div class="chips" id="draft-templates">
+          <span class="chip active" data-tpl="default-portrait-9-16">★ 默认竖屏 · 出图 9:16</span>
+          <span class="chip" data-tpl="builtin-portrait-4-3">竖屏 4:3 · 出图 4:3</span>
+          <span class="chip" data-tpl="builtin-landscape-16-9">横屏 16:9 · 出图 16:9</span>
+          <span class="chip" data-tpl="builtin-knowledge-card">知识卡（分栏）· 出图 1:1</span>
         </div>
       </div>
       <div>
@@ -812,7 +831,7 @@ body[data-view="editor"] #home-screen{display:none;}
         <textarea id="cover-prompt" style="min-height:60px"></textarea>
       </div>
       <div id="cover-preview" style="display:none;margin-bottom:8px;text-align:center">
-        <img id="cover-img" style="max-width:240px;border-radius:6px;border:1px solid var(--border)">
+        <img id="cover-img" style="width:240px;height:320px;max-width:100%;object-fit:cover;border-radius:6px;border:1px solid var(--border);background:var(--panel-2)">
         <div class="help" id="cover-elapsed" style="margin-top:4px"></div>
         <div style="margin-top:8px;display:flex;gap:6px;justify-content:center">
           <a id="cover-download" class="btn" download="cover.png">⬇ 下载</a>
@@ -837,7 +856,7 @@ body[data-view="editor"] #home-screen{display:none;}
   <div class="actionbar">
     <span class="cost">预计 <strong>22-30</strong> 分钟完成 <span class="muted" style="color:var(--muted);margin-left:6px">改写仅几秒</span></span>
     <div style="display:flex;gap:8px">
-      <button class="btn ghost">保存为草稿</button>
+      <button class="btn ghost save-form-draft" type="button">保存为草稿</button>
       <button class="btn primary" id="btn-run-full">▶ 仅生成文本与绘图提示词（Step 0–3）</button>
     </div>
   </div>
@@ -890,10 +909,12 @@ body[data-view="editor"] #home-screen{display:none;}
       </div>
       <div>
         <div class="help" style="margin-bottom:6px">背景音乐</div>
-        <div class="chips">
+        <div class="chips" id="bgm-choice">
           <span class="chip active" data-bgm="builtin">▶ 内置 BGM</span>
-          <span class="chip" data-bgm="add">+ 添加</span>
+          <span class="chip" data-bgm="upload" id="bgm-upload-trigger">+ 添加本地音乐</span>
+          <input type="file" id="bgm-file" accept="audio/mpeg,audio/mp3,audio/wav,audio/x-wav" style="display:none">
         </div>
+        <div class="help" id="bgm-selected" style="margin-top:5px">使用设置中的内置背景音乐</div>
       </div>
     </div>
   </div>
@@ -1001,6 +1022,12 @@ body[data-view="editor"] #home-screen{display:none;}
 
 </main>
 
+<main id="run-screen" aria-live="polite">
+  <div class="run-head"><div><h1 id="run-title">图文任务运行中</h1><p id="run-status">正在准备图文工作流…</p></div><span class="spacer"></span><span class="run-badge" id="run-badge">运行中</span></div>
+  <div class="run-view" id="run-workflow"></div>
+  <div class="run-actions"><a class="btn" id="run-result-link" href="/tasks.html" hidden>查看已保存产物</a><button class="btn" id="run-return" type="button" hidden>返回任务设置</button></div>
+</main>
+
 <!-- Footer -->
 <div class="footer">
   <div class="inner">
@@ -1009,7 +1036,7 @@ body[data-view="editor"] #home-screen{display:none;}
       <option value="">加载中…</option>
     </select>
     <span class="cost" id="cost-estimate">预计 <strong>1-3</strong> 分钟完成 <span class="muted">改写仅几秒</span></span>
-    <button class="btn btn-ghost">保存为草稿</button>
+    <button class="btn btn-ghost save-form-draft" type="button">保存为草稿</button>
     <button class="btn btn-primary" id="btn-run">▶ 开始改写 <kbd class="kbd">Enter</kbd></button>
     <button class="btn btn-accent" id="btn-run-full-footer">▶ 一键全链路（Step 0–6）</button>
   </div>
@@ -1019,8 +1046,66 @@ body[data-view="editor"] #home-screen{display:none;}
 <div id="modal-settings" style="display:none"></div>
 
 <script src="/assets/image_pipeline.js"></script>
+<script src="/assets/workflow_view.js"></script>
 <script>
 const $ = id => document.getElementById(id);
+let runView = null;
+let generationPoll = null;
+function createRunTaskId() {
+  return "task_" + Date.now() + "_" + (crypto.randomUUID?.() || Math.random().toString(36).slice(2)).replace(/[^A-Za-z0-9]/g, "").slice(0, 12);
+}
+function startGenerationPoll(taskId) {
+  if (generationPoll) clearInterval(generationPoll);
+  let last = "";
+  const check = async () => {
+    try {
+      const progress = await api("/api/task_progress/" + encodeURIComponent(taskId));
+      const state = progress.step + ":" + progress.status + ":" + progress.updated_at;
+      if (state === last || !runView) return;
+      last = state;
+      setRunTaskId(taskId);
+      runView.setStep(progress.step, progress.status === "complete" ? "done" : progress.status);
+      if (progress.status === "done" || progress.status === "complete") await refreshRunDetail(taskId);
+    } catch (_) { /* 任务第一次写入前尚无进度文件 */ }
+  };
+  generationPoll = setInterval(check, 700);
+  check();
+}
+function stopGenerationPoll() { if (generationPoll) clearInterval(generationPoll); generationPoll = null; }
+function showRunScreen(message = "正在准备图文工作流…") {
+  stopGenerationPoll();
+  $("run-workflow").replaceChildren();
+  runView = WorkflowView.mount($("run-workflow"));
+  $("run-status").textContent = message;
+  $("run-title").textContent = "图文任务运行中";
+  $("run-badge").textContent = "运行中";
+  $("run-result-link").hidden = true;
+  $("run-return").hidden = true;
+  document.body.dataset.run = "true";
+  window.scrollTo(0, 0);
+}
+function setRunStage(stage, status, data) {
+  if (!runView) return;
+  runView.setStage(stage, status, status === "failed" ? data?.message || "此步骤失败" : "");
+  const names = {generate:"文案预审、改写与分镜", tts:"逐镜配音", prompts:"绘图提示词", images:"批量生图", videos:"动态分镜", draft:"剪映草稿", cover:"封面海报"};
+  $("run-status").textContent = `${names[stage] || stage}：${{running:"运行中",done:"已完成",paused:"等待确认",failed:"失败"}[status] || status}`;
+  if (status === "failed") $("run-badge").textContent = "已中断";
+  if (data?.task_id) setRunTaskId(data.task_id);
+  if (status === "done" && runView.getTaskId()) refreshRunDetail(runView.getTaskId());
+}
+function setRunTaskId(taskId) {
+  if (!taskId || !runView) return;
+  runView.setTaskId(taskId);
+  $("run-result-link").href = "/result.html?task=" + encodeURIComponent(taskId);
+  $("run-result-link").hidden = false;
+}
+async function refreshRunDetail(taskId) {
+  try {
+    const data = await api("/api/task/" + encodeURIComponent(taskId));
+    if (runView?.getTaskId() === taskId) runView.renderTask(data);
+  } catch (_) { /* 阶段产物仍可在任务保存完成后读取 */ }
+}
+$("run-return").onclick = () => { document.body.dataset.run = "false"; };
 
 // State
 let currentLine = "story";
@@ -1048,7 +1133,53 @@ if (new URLSearchParams(location.search).has("resume") || new URLSearchParams(lo
 // Big cards (entry mode)
 document.querySelectorAll(".big-card").forEach(c => c.onclick = () => {
   document.querySelectorAll(".big-card").forEach(x => x.classList.toggle("active", x === c));
+  $("source-create").classList.toggle("active", c.dataset.entry === "ai");
 });
+let sourceArticles = [];
+$("source-search").onclick = async () => {
+  const keyword = $("source-keyword").value.trim();
+  if (!keyword) { $("source-status").textContent = "请先输入关键词"; return; }
+  $("source-search").disabled = true;
+  $("source-status").textContent = "正在搜索资料…";
+  $("source-results").replaceChildren();
+  $("source-generate").disabled = true;
+  try {
+    const data = await api("/api/source_search", "POST", {keyword});
+    sourceArticles = data.results || [];
+    sourceArticles.forEach((item, index) => {
+      const row = document.createElement("label");
+      const input = document.createElement("input"); input.type = "checkbox"; input.value = String(index);
+      input.onchange = () => { $("source-generate").disabled = !$("source-results").querySelector("input:checked"); };
+      const body = document.createElement("span"); body.textContent = item.title;
+      const summary = document.createElement("small"); summary.textContent = item.summary;
+      body.appendChild(summary); row.append(input, body); $("source-results").appendChild(row);
+    });
+    $("source-status").textContent = sourceArticles.length
+      ? `找到 ${sourceArticles.length} 条搜索摘要。勾选要参考的资料。` : "未找到资料，请换个关键词。";
+  } catch (error) { $("source-status").textContent = error.message; }
+  finally { $("source-search").disabled = false; }
+};
+$("source-generate").onclick = async () => {
+  const chosen = [...$("source-results").querySelectorAll("input:checked")]
+    .slice(0, 8).map(input => sourceArticles[Number(input.value)]).filter(Boolean);
+  if (!chosen.length) return;
+  $("source-generate").disabled = true;
+  $("source-status").textContent = "正在根据所选资料创作原稿…";
+  try {
+    const data = await api("/api/source_create", "POST", {
+      profile_id: $("model-pick").value,
+      keyword: $("source-keyword").value.trim(),
+      requirements: $("source-requirements").value.trim(),
+      track: getActiveChip("tracks", "data-track", "character-story"),
+      articles: chosen,
+    });
+    $("reference").value = data.text;
+    updateShotHint();
+    $("reference-section").scrollIntoView({behavior:"smooth",block:"start"});
+    $("source-status").textContent = `已生成原稿，参考 ${data.source_count} 条搜索摘要；请核对事实后再运行任务。`;
+  } catch (error) { $("source-status").textContent = error.message; }
+  finally { $("source-generate").disabled = false; }
+};
 
 // Chip groups (generic handler)
 function bindChips(containerId, onChange, single = true) {
@@ -1112,8 +1243,19 @@ bindChips("img-source", (chip) => {
   $("img-source-external").style.display = src === "external" ? "" : "none";
   if (src === "mine") refreshMaterials();
 });
+bindChips("materials-fallback");
 bindChips("dynamic-shots", (chip) => {
   $("dynamic-custom-area").style.display = chip.dataset.dynamic === "custom" ? "" : "none";
+});
+const DRAFT_TEMPLATE_RATIO = {
+  'default-portrait-9-16': '916',
+  'builtin-portrait-4-3': '43',
+  'builtin-landscape-16-9': '169',
+  'builtin-knowledge-card': '11',
+};
+bindChips("draft-templates", chip => {
+  const ratio = DRAFT_TEMPLATE_RATIO[chip.dataset.tpl];
+  document.querySelector(`#img-ratio .chip[data-ratio="${ratio}"]`)?.click();
 });
 bindChips("img-ratio");
 bindChips("style");
@@ -1127,8 +1269,20 @@ bindChips("tts-mode", (chip) => {
 });
 bindChips("tts-provider");
 bindChips("tts-speed");
+document.querySelector('#bgm-choice .chip[data-bgm="builtin"]').onclick = () => {
+  document.querySelectorAll("#bgm-choice .chip").forEach(chip => chip.classList.toggle("active", chip.dataset.bgm === "builtin"));
+  $("bgm-selected").textContent = "使用设置中的内置背景音乐";
+};
+$("bgm-upload-trigger").onclick = () => $("bgm-file").click();
+$("bgm-file").addEventListener("change", () => {
+  const file = $("bgm-file").files?.[0];
+  if (!file) return;
+  document.querySelectorAll("#bgm-choice .chip").forEach(chip => chip.classList.toggle("active", chip.dataset.bgm === "upload"));
+  $("bgm-selected").textContent = `已选择：${file.name}`;
+});
 document.querySelectorAll("#tts-provider .chip").forEach(chip => chip.addEventListener("click", syncVoiceOptions));
 bindChips("process-mode");
+bindChips("rounds");
 bindChips("pause-mode");
 document.querySelectorAll("#pause-mode .chip").forEach(chip => chip.addEventListener("click", () => {
   $("pause-custom").style.display = chip.dataset.pam === "custom" ? "" : "none";
@@ -1230,6 +1384,7 @@ async function callCover(promptOverride) {
     const styleActive = document.querySelector("#style .style-chip.active");
     const styleLabel = styleActive ? styleActive.textContent.trim().split("·")[1]?.trim() || styleActive.textContent.trim() : "";
     const r = await api("/api/cover", "POST", {
+      profile_id: $("model-pick").value,
       title: $("cover-title").value || $("title").value,
       subtitle: $("cover-subtitle").value,
       content: $("reference").value,
@@ -1300,12 +1455,15 @@ document.querySelectorAll(".caret").forEach(c => c.onclick = () => {
 });
 
 // Toggle rows
-["toggle-publish", "toggle-fixed", "toggle-tail", "toggle-retry"].forEach(id => {
+["toggle-publish", "toggle-fixed", "toggle-tail", "toggle-retry", "toggle-keep"].forEach(id => {
   const row = $(id);
   if (!row) return;
   row.onclick = e => {
     if (e.target.tagName === "INPUT") return;
     row.classList.toggle("on");
+    if (id === "toggle-publish") $("publish-help").textContent = row.classList.contains("on")
+      ? "生成短标题 / 发布文案 / 话题标签 / 种子评论"
+      : "不生成发布素材；封面标题照常生成";
     if (id === "toggle-fixed") $("fixed-area").style.display = row.classList.contains("on") ? "" : "none";
     if (id === "toggle-tail") $("tail-area").style.display = row.classList.contains("on") ? "" : "none";
   };
@@ -1338,6 +1496,72 @@ async function api(path, method = "GET", body) {
   }
   return r.json();
 }
+
+function publishOptions() {
+  const enabled = $("toggle-publish").classList.contains("on");
+  return {
+    short_title: enabled,
+    summary: enabled,
+    tags: enabled,
+    comments: enabled,
+  };
+}
+
+const FORM_DRAFT_KEY = "app074-image-form-draft-v1";
+function saveFormDraft() {
+  const editor = $("task-editor");
+  const fields = {};
+  editor.querySelectorAll("input[id],textarea[id],select[id]").forEach(input => {
+    if (input.type === "file") return;
+    fields[input.id] = input.type === "checkbox" ? input.checked : input.value;
+  });
+  fields["model-pick"] = $("model-pick").value;
+  const chips = {};
+  editor.querySelectorAll(".chips[id]").forEach(group => {
+    chips[group.id] = [...group.querySelectorAll(".chip")].map((item, index) => item.classList.contains("active") ? index : -1).filter(index => index >= 0);
+  });
+  const draft = {fields, chips,
+    style: [...document.querySelectorAll("#style .style-chip")].findIndex(item => item.classList.contains("active")),
+    entry: document.querySelector(".big-card.active")?.dataset.entry || "paste",
+    toggles: [...editor.querySelectorAll(".toggle-row[id].on")].map(item => item.id),
+    savedAt: new Date().toISOString()};
+  try {
+    localStorage.setItem(FORM_DRAFT_KEY, JSON.stringify(draft));
+    const filePending = [...editor.querySelectorAll('input[type="file"]')].some(input => input.files?.length);
+    $("draft-message").textContent = "表单草稿已保存在本机浏览器，可在下次打开时恢复。" + (filePending ? " 已选图片或音频需要在恢复后重新选择。" : "");
+    $("draft-banner").hidden = false;
+  } catch (error) { $("draft-message").textContent = "保存草稿失败：" + error.message; $("draft-banner").hidden = false; }
+}
+function restoreFormDraft() {
+  let draft;
+  try { draft = JSON.parse(localStorage.getItem(FORM_DRAFT_KEY) || "null"); } catch (_) { draft = null; }
+  if (!draft?.fields) return;
+  const entry = document.querySelector(`.big-card[data-entry="${draft.entry === "ai" ? "ai" : "paste"}"]`);
+  entry?.click();
+  for (const [id, indices] of Object.entries(draft.chips || {})) {
+    const group = $(id);
+    if (!group || !Array.isArray(indices)) continue;
+    [...group.querySelectorAll(".chip")].forEach((item, index) => {
+      if (item.classList.contains("active") !== indices.includes(index)) item.click();
+    });
+  }
+  document.querySelectorAll("#style .style-chip")[draft.style]?.click();
+  $("task-editor").querySelectorAll(".toggle-row[id]").forEach(row => {
+    if (row.classList.contains("on") !== (draft.toggles || []).includes(row.id)) row.click();
+  });
+  for (const [id, value] of Object.entries(draft.fields)) {
+    const input = $(id);
+    if (!input || input.type === "file") continue;
+    if (input.type === "checkbox") input.checked = Boolean(value);
+    else input.value = String(value ?? "");
+  }
+  updateShotHint();
+  syncVoiceOptions();
+  $("draft-message").textContent = "已恢复本机表单草稿。";
+}
+document.querySelectorAll(".save-form-draft").forEach(button => button.onclick = saveFormDraft);
+$("btn-restore-draft").onclick = restoreFormDraft;
+try { if (localStorage.getItem(FORM_DRAFT_KEY)) $("draft-banner").hidden = false; } catch (_) {}
 
 async function refreshStatus() {
   try {
@@ -1550,6 +1774,8 @@ async function runRewrite() {
   $("output").textContent = "";
   try {
     const r = await api("/api/rewrite", "POST", {
+      profile_id: $("model-pick").value,
+      rounds: getActiveChip("rounds", "data-rd", "std"),
       line: currentLine,
       level: currentLevel[currentLine],
       viewpoint: document.querySelector("#viewpoints .chip.active").dataset.vp,
@@ -1564,6 +1790,7 @@ async function runRewrite() {
       fixed_opening: $("toggle-fixed").classList.contains("on") ? $("fixed-opening").value : "",
       tail_guide: $("toggle-tail").classList.contains("on") ? $("tail-guide").value : "",
       extra: $("extra").value,
+      keep_mode: $("toggle-keep").classList.contains("on"),
     });
     $("output").textContent = r.text;
     $("knowledge-status").textContent = (r.knowledge || []).length
@@ -1597,13 +1824,21 @@ async function runFull() {
   btns.forEach(b => { b.disabled = true; b.dataset.orig = b.innerHTML; b.innerHTML = '<span class="spinner"></span>生成中...'; });
   $("full-result").style.display = "none";
   $("full-elapsed").textContent = "";
+  showRunScreen("正在生成文案、元信息、分镜与绘图提示词…");
+  setRunStage("generate", "running");
 
   try {
     const styleActive = document.querySelector("#style .style-chip.active");
     const styleLabel = styleActive ? styleActive.textContent.trim() : "现代电影";
     const trackActive = document.querySelector("#tracks .chip.active");
     const track = trackActive ? trackActive.dataset.track : "";
+    const runTaskId = createRunTaskId();
+    startGenerationPoll(runTaskId);
     const r = await api("/api/generate", "POST", {
+      task_id: runTaskId,
+      track_progress: true,
+      profile_id: $("model-pick").value,
+      rounds: getActiveChip("rounds", "data-rd", "std"),
       line: currentLine,
       level: currentLevel[currentLine],
       viewpoint: document.querySelector("#viewpoints .chip.active")?.dataset.vp || "overview",
@@ -1618,6 +1853,8 @@ async function runFull() {
       fixed_opening: $("toggle-fixed").classList.contains("on") ? $("fixed-opening").value : "",
       tail_guide: $("toggle-tail").classList.contains("on") ? $("tail-guide").value : "",
       extra: $("extra").value,
+      keep_mode: $("toggle-keep").classList.contains("on"),
+      publish: publishOptions(),
       style: styleLabel,
       run_steps: ["0", "1", "meta", "2", "3"],
       targets: {
@@ -1626,17 +1863,26 @@ async function runFull() {
       },
     });
     lastFullResult = r;
+    setRunTaskId(r.task_id);
+    setRunStage("generate", "done", r);
+    if ((r.steps || {})["3"]?.length) setRunStage("prompts", "done", r);
     renderFull(r);
     $("full-elapsed").textContent = `总耗时 ${(r.steps && r.steps.elapsed) || ""}s · ${track || "通用"} · ${styleLabel.split("·")[0].trim()}`;
     if (!r.task_id) throw new Error("生成已返回，但未提供任务编号，无法打开结果页");
     location.href = "/result.html?task=" + encodeURIComponent(r.task_id);
   } catch (e) {
+    setRunStage("generate", "failed", e);
+    $("run-title").textContent = "图文任务已中断";
+    runView?.setNotice("生成失败：" + e.message);
+    $("run-status").textContent = "生成失败：" + e.message;
+    $("run-return").hidden = false;
     $("full-result").style.display = "none";
     $("full-meta").textContent = "❌ " + e.message;
     $("full-meta").style.color = "var(--danger)";
     $("footer-status").textContent = "生成失败：" + e.message;
     $("footer-status").className = "settings-pip bad";
   } finally {
+    stopGenerationPoll();
     btns.forEach(b => { b.disabled = false; b.innerHTML = b.dataset.orig; });
   }
 }
@@ -1734,6 +1980,7 @@ async function runPipeline() {
   lastFullResult = null;
   $("full-result").style.display = "none";
   $("full-elapsed").textContent = "";
+  showRunScreen("正在检查配置并准备图文工作流…");
   ["step4-block","step5-block","step6-block"].forEach(id => $(id).style.display = "none");
   try {
     const resumeId = new URLSearchParams(location.search).get("resume");
@@ -1746,11 +1993,17 @@ async function runPipeline() {
       const f = $("tts-upload-file").files?.[0];
       if (!f) throw new Error("上传配音模式需要先选一份音频");
     }
-    if ($("prod-file").files?.length) {
-      throw new Error("产品参考图编辑尚未接入当前出图接口，请移除参考图后继续");
-    }
     const imageSource = getActiveChip("img-source", "data-img-src", "ai");
     const imageProvider = imageSource === "external" ? "custom" : $("img-engine").value;
+    const referenceFile = $("prod-file").files?.[0] || null;
+    if (referenceFile && (referenceFile.size > 10 * 1024 * 1024 ||
+        !["image/png", "image/jpeg", "image/webp"].includes(referenceFile.type))) {
+      throw new Error("产品参考图只支持 10 MB 以内的 PNG、JPEG 或 WebP");
+    }
+    if ((referenceFile || resume?.steps?.product_reference) && (imageSource !== "ai" && imageSource !== "external" ||
+        !["gpt_image", "custom"].includes(imageProvider))) {
+      throw new Error("产品参考图需要选择 AI 绘图，并使用全能绘图或支持图片编辑的自定义平台");
+    }
     const imageSettings = imageProvider === "custom" ? settings.custom_image
       : imageProvider === "gpt_image" ? settings.image : settings[imageProvider];
     const coverMode = getActiveChip("cover-mode", "data-cv", "none");
@@ -1779,6 +2032,8 @@ async function runPipeline() {
     const speedValue = parseInt(speedChip, 10);
     const selectedRatio = {"916":"9:16", "43":"4:3", "11":"1:1", "169":"16:9"}[
       getActiveChip("img-ratio", "data-ratio", "916")];
+    const runTaskId = resumeId || createRunTaskId();
+    startGenerationPoll(runTaskId);
     const result = await runImagePipeline({
       request: (path, body) => api(path, "POST", body),
       resume,
@@ -1787,6 +2042,10 @@ async function runPipeline() {
       pauseStages: [...document.querySelectorAll("#pause-custom input:checked")].map(input => input.value),
       onPause: async stage => confirm(`已完成${{generate:"文案与分镜",tts:"配音",prompts:"绘图提示词",images:"出图"}[stage]}。确认继续下一步？取消会停止，产物保留在任务目录。`),
       generate: {
+        task_id: runTaskId,
+        track_progress: true,
+        profile_id: $("model-pick").value,
+        rounds: getActiveChip("rounds", "data-rd", "std"),
         line: currentLine,
         level: currentLevel[currentLine],
         viewpoint: document.querySelector("#viewpoints .chip.active")?.dataset.vp || "overview",
@@ -1801,6 +2060,8 @@ async function runPipeline() {
         fixed_opening: $("toggle-fixed").classList.contains("on") ? $("fixed-opening").value : "",
         tail_guide: $("toggle-tail").classList.contains("on") ? $("tail-guide").value : "",
         extra: $("extra").value,
+        keep_mode: $("toggle-keep").classList.contains("on"),
+        publish: publishOptions(),
         style: styleLabel,
         targets: {
           shots: $("shots").disabled ? null : parseInt($("shots").value) || null,
@@ -1820,6 +2081,9 @@ async function runPipeline() {
       },
       image: {
         provider: imageProvider,
+        referenceFile,
+        templateId: getActiveChip("draft-templates", "data-tpl", "default-portrait-9-16"),
+        bgmFile: getActiveChip("bgm-choice", "data-bgm", "builtin") === "upload" ? $("bgm-file").files?.[0] : null,
         ratio: selectedRatio || imageSettings?.ratio || "9:16",
         resolution: imageSettings?.resolution || "1k",
         concurrency: imageSettings?.concurrency || 3,
@@ -1832,6 +2096,7 @@ async function runPipeline() {
         },
       },
       cover: {mode: coverMode, style: styleLabel, dataUrl: coverDataUrl,
+        profileId: $("model-pick").value,
         title: $("cover-title").value.trim(), subtitle: $("cover-subtitle").value.trim(),
         template: selectedCoverTemplate(),
         ratio: getActiveChip("cover-ratio", "data-cover-ratio", "3:4")},
@@ -1844,6 +2109,7 @@ async function runPipeline() {
         })(),
       },
       onStage: (stage, status, data) => {
+        setRunStage(stage, status, data);
         const names = {generate:"文案与分镜", tts:"Step 5 配音", prompts:"Step 3 绘图提示词", images:"Step 4 出图", draft:"Step 6 剪映草稿", cover:"封面海报"};
         if (status === "running") btns.forEach(btn => btn.innerHTML = `<span class="spinner"></span> ${names[stage] || stage}中...`);
         if (status === "done" && stage === "generate") { lastFullResult = data; renderFull(data); }
@@ -1869,11 +2135,18 @@ async function runPipeline() {
       },
     });
     lastPipelineResult = result;
+    setRunTaskId(result.taskId);
+    await refreshRunDetail(result.taskId);
     $("full-elapsed").innerHTML = `✓ 全链路完成（任务 ${escapeHtml(result.taskId)}）<a href="/tasks.html" style="margin-left:8px;color:var(--accent)">📋 查看任务</a>`;
     $("full-elapsed").style.color = "var(--ok, #10b981)";
     if (!result.taskId) throw new Error("流程已返回，但未提供任务编号，无法打开结果页");
     location.href = "/result.html?task=" + encodeURIComponent(result.taskId);
   } catch (e) {
+    $("run-status").textContent = "流程中断：" + e.message;
+    $("run-title").textContent = "图文任务已中断";
+    runView?.setNotice("流程中断：" + e.message);
+    $("run-badge").textContent = "已中断";
+    $("run-return").hidden = false;
     $("full-meta").textContent = "❌ " + e.message;
     $("full-meta").style.color = "var(--danger)";
     $("full-elapsed").textContent = "流程已中断；已完成的阶段保留在任务目录中";
@@ -1888,6 +2161,7 @@ async function runPipeline() {
       $("footer-status").append(link);
     }
   } finally {
+    stopGenerationPoll();
     btns.forEach(btn => { btn.disabled = false; btn.innerHTML = btn.dataset.orig; });
   }
 }

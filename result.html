@@ -3,56 +3,57 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>任务结果 · app074</title>
+<title>任务详情 · app074</title>
 <link rel="stylesheet" href="/assets/story_theme.css">
+<link rel="stylesheet" href="/assets/workflow_view.css">
 <style>
 :root{color-scheme:dark;--bg:#090d10;--panel:#10161a;--raised:#171f24;--border:#293138;--text:#e9f0f2;--muted:#8d9a9f;--accent:#00c9a7;--soft:#07372f;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text)}a{color:inherit;text-decoration:none}button{font:inherit;cursor:pointer}.titlebar{position:fixed;z-index:4;top:0;left:0;right:0;height:38px;padding:10px 14px;background:#070a0d;border-bottom:1px solid var(--border);font-size:12px;color:var(--muted)}.titlebar b{color:var(--accent)}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text)}a{color:inherit;text-decoration:none}button{font:inherit;cursor:pointer}
+.titlebar{position:fixed;z-index:4;top:0;left:0;right:0;height:38px;padding:10px 14px;background:#070a0d;border-bottom:1px solid var(--border);font-size:12px;color:var(--muted)}.titlebar b{color:var(--accent)}
 .sidebar{position:fixed;top:38px;bottom:0;left:0;width:240px;background:#0b1014;border-right:1px solid var(--border);padding:18px 12px;display:flex;flex-direction:column;gap:5px}.brand{padding:6px 10px 20px;font-weight:700}.brand span{display:inline-grid;place-items:center;width:34px;height:34px;border-radius:9px;background:var(--soft);color:var(--accent);margin-right:8px}.sidebar a{padding:10px 12px;border-radius:7px;color:var(--muted);font-size:13px}.sidebar a:hover,.sidebar a.active{background:#1b2429;color:var(--text)}.sidebar a.new{background:var(--soft);color:var(--accent);font-weight:700;margin-bottom:14px}.sidebar .bottom{margin-top:auto;border-top:1px solid var(--border);padding-top:12px}
-main{max-width:1220px;margin:0 auto;padding:76px 36px 110px 276px}.heading{display:flex;align-items:flex-start;gap:14px;margin-bottom:22px}.heading .icon{width:40px;height:40px;display:grid;place-items:center;border-radius:10px;background:var(--soft);color:var(--accent);font-size:19px}.heading h1{font-size:21px;margin:0 0 5px}.heading p{margin:0;color:var(--muted);font-size:12px}.heading .spacer{flex:1}.pill{border:1px solid #1d624f;color:var(--accent);background:var(--soft);border-radius:999px;padding:5px 10px;font-size:12px;white-space:nowrap}
-.step{background:var(--panel);border:1px solid var(--border);border-radius:11px;padding:20px;margin:14px 0}.step h2{font-size:15px;margin:0 0 15px;padding-bottom:13px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px}.step-no{background:var(--soft);color:var(--accent);border-radius:5px;padding:4px 8px;font-size:12px}.text-box{white-space:pre-wrap;line-height:1.85;background:var(--raised);border:1px solid var(--border);border-radius:7px;padding:15px;max-height:310px;overflow:auto;font-size:13px}.meta-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.field{min-width:0}.field.wide{grid-column:1/-1}.field label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px}.field .value{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--raised);border:1px solid var(--border);border-radius:7px;padding:10px 12px;min-height:39px;font-size:13px;line-height:1.65}.item{display:grid;grid-template-columns:34px minmax(0,1fr);gap:10px;margin:8px 0}.item .number{background:var(--soft);color:var(--accent);border-radius:6px;text-align:center;padding:8px 0;font-size:12px}.item .value{white-space:pre-wrap;line-height:1.7;background:var(--raised);border:1px solid var(--border);border-radius:7px;padding:9px 12px;font-size:13px}.media-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px}.media-grid a{display:block;background:var(--raised);border:1px solid var(--border);border-radius:8px;padding:8px}.media-grid img{width:100%;aspect-ratio:9/16;object-fit:cover}.media-grid span{display:block;font-size:11px;color:var(--muted);padding:6px 2px}.audio-row{padding:8px 0;display:flex;gap:10px;align-items:center}.audio-row audio{width:min(430px,100%)}
-.actions{position:fixed;bottom:0;left:240px;right:0;z-index:3;background:#0c1215e9;border-top:1px solid var(--border);padding:12px 32px;display:flex;justify-content:flex-end;gap:8px;align-items:center}.btn{border:1px solid var(--border);background:var(--raised);color:var(--text);padding:9px 14px;border-radius:7px;font-size:13px}.btn:hover{border-color:var(--accent)}.btn.primary{background:var(--accent);border-color:var(--accent);color:#06110e;font-weight:700}.notice{border:1px solid var(--border);background:var(--panel);padding:25px;border-radius:10px;color:var(--muted);font-size:13px}.error{color:#ff8b8b}
-@media(max-width:760px){.sidebar{display:none}main{padding:58px 12px 95px}.actions{left:0;padding:10px}.meta-grid{grid-template-columns:1fr}.field.wide{grid-column:auto}}
+main{margin-left:240px;padding:56px 20px 82px;height:100vh;display:flex;flex-direction:column;min-width:0}.page-heading{display:flex;align-items:center;gap:12px;padding:0 2px 12px}.page-heading h1{font-size:17px;margin:0}.page-heading small{color:var(--muted);font-size:11px}.page-heading .spacer{flex:1}.status-pill{border:1px solid #1d624f;color:var(--accent);background:var(--soft);border-radius:999px;padding:4px 10px;font-size:11px;white-space:nowrap}.result-view{flex:1;min-height:0}.bottom-actions{position:fixed;bottom:0;left:240px;right:0;z-index:3;background:#0c1215ee;border-top:1px solid var(--border);padding:10px 20px;display:flex;justify-content:flex-end;gap:8px}.btn{border:1px solid var(--border);background:var(--raised);color:var(--text);padding:8px 13px;border-radius:7px;font-size:12px}.btn:hover{border-color:var(--accent)}.btn.primary{background:var(--accent);border-color:var(--accent);color:#06110e;font-weight:700}.notice{border:1px solid var(--border);background:var(--panel);padding:25px;border-radius:10px;color:var(--muted);font-size:13px}.error{color:#ff8b8b}
+@media(max-width:800px){.sidebar{display:none}main{margin-left:0;padding:52px 10px 83px}.bottom-actions{left:0;padding:10px}.page-heading{flex-wrap:wrap}}
 </style>
 </head>
 <body>
 <div class="titlebar"><b>▣</b> app074 · 图文创作</div>
-<aside class="sidebar" aria-label="主导航"><div class="brand"><span>07</span>app074</div><a class="new" href="/index.html?new=1">＋ 新建任务</a><a href="/tasks.html">☷ 任务列表</a><a class="active" href="#" aria-current="page">▤ 任务结果</a><div class="bottom"><a href="/settings.html">⚙ 系统设置</a></div></aside>
+<aside class="sidebar" aria-label="主导航"><div class="brand"><span>07</span>app074</div><a class="new" href="/index.html?new=1">＋ 新建任务</a><a href="/tasks.html">☷ 任务列表</a><a class="active" href="#" aria-current="page">▤ 任务详情</a><div class="bottom"><a href="/settings.html">⚙ 系统设置</a></div></aside>
 <main>
-  <div class="heading"><div class="icon">▤</div><div><h1>一键全链路结果</h1><p id="subtitle">正在读取已保存的任务产物…</p></div><div class="spacer"></div><span class="pill" id="count"></span></div>
-  <div id="content"><div class="notice">加载中…</div></div>
+  <div class="page-heading"><div><h1>任务详情</h1><small>历史任务 › 产物预览与流水线</small></div><span class="spacer"></span><span class="status-pill" id="status">读取中…</span></div>
+  <div id="result-view" class="result-view"><div class="notice">正在读取已保存的任务产物…</div></div>
 </main>
-<div class="actions"><a class="btn" id="detail-link" href="/tasks.html">任务详情与人工修改</a><a class="btn" href="/index.html?new=1">新建任务</a><a class="btn primary" id="resume-link" href="/tasks.html">继续未完成阶段</a></div>
+<div class="bottom-actions"><a class="btn" id="detail-link" href="/tasks.html">人工修改</a><a class="btn" href="/index.html?new=1">新建任务</a><a class="btn primary" id="resume-link" href="/tasks.html">继续未完成阶段</a></div>
+<script src="/assets/workflow_view.js"></script>
 <script>
 const taskId = new URLSearchParams(location.search).get("task");
-const content = document.getElementById("content");
-function el(tag, className, value) { const n = document.createElement(tag); if(className)n.className=className;if(value!=null)n.textContent=String(value);return n; }
-function section(label, number) { const box=el("section","step");const h=el("h2");if(number!=null)h.append(el("span","step-no",number));h.append(document.createTextNode(label));box.append(h);content.append(box);return box; }
-function field(parent, label, value, wide=false) {const f=el("div","field"+(wide?" wide":""));f.append(el("label","",label),el("div","value",value));parent.append(f);}
-function lines(value) {return Array.isArray(value)?value.map((v,i)=>`${i+1}. ${typeof v === "string"?v:JSON.stringify(v)}`).join("\n"):String(value||"");}
-function items(box, data, key) { data.forEach((v,i)=>{const item=el("div","item");item.append(el("div","number",v.idx??i+1),el("div","value",key?v[key]||"":typeof v==="string"?v:JSON.stringify(v)));box.append(item);}); }
+const host = document.getElementById("result-view");
+let workflow = null;
 async function load() {
-  if(!taskId || !/^[A-Za-z0-9_-]{1,100}$/.test(taskId)) {content.innerHTML="";content.append(el("div","notice error","缺少有效的任务编号。请从任务列表打开结果。"));return;}
-  document.getElementById("detail-link").href="/tasks.html?task="+encodeURIComponent(taskId);
-  document.getElementById("resume-link").href="/index.html?resume="+encodeURIComponent(taskId);
+  if (!taskId || !/^[A-Za-z0-9_-]{1,100}$/.test(taskId)) {
+    host.innerHTML = '<div class="notice error">缺少有效的任务编号。请从任务列表打开结果。</div>';
+    document.getElementById("status").textContent = "无法读取";
+    return;
+  }
+  document.getElementById("detail-link").href = "/tasks.html?edit=1&task=" + encodeURIComponent(taskId);
+  document.getElementById("resume-link").href = "/index.html?resume=" + encodeURIComponent(taskId);
   try {
-    const response=await fetch("/api/task/"+encodeURIComponent(taskId),{cache:"no-store"});
-    const data=await response.json();if(!response.ok)throw new Error(data.error||`HTTP ${response.status}`);
-    const info=data.info||{},steps=data.steps||{};
-    document.getElementById("subtitle").textContent=(info.title||"未命名任务")+" · "+(info.created_at||"");
-    document.getElementById("count").textContent=(info.completed_steps||[]).length+"/8 步完成";
-    document.getElementById("resume-link").hidden=(info.completed_steps||[]).includes(6);
-    content.innerHTML="";
-    if(steps.rewrite){const b=section("改写后文案",1);b.append(el("div","text-box",steps.rewrite));}
-    if(steps.meta){const b=section("元信息","★"),g=el("div","meta-grid"),m=steps.meta;field(g,"封面主标题",m.title);field(g,"短标题（≤16字）",m.short_title);field(g,"发布文案",m.summary,true);field(g,"话题标签",lines(m.tags),true);field(g,"种子评论",lines(m.comments),true);field(g,"封面构图方向",lines(m.cover_image_prompts),true);b.append(g);}
-    if(steps.shots?.length)items(section("分镜",2),steps.shots,"text");
-    if(steps.prompts?.length)items(section("出图 Prompt",3),steps.prompts,"desc_prompt");
-    if(steps.images?.length){const b=section("出图",4),grid=el("div","media-grid");steps.images.forEach(img=>{const a=el("a");a.href=img.url;a.target="_blank";a.rel="noopener";const image=el("img");image.src=img.url;image.alt=img.name||"分镜图片";image.loading="lazy";a.append(image,el("span","",img.name));grid.append(a);});b.append(grid);}
-    if(steps.audios?.length){const b=section("配音",5);steps.audios.forEach(a=>{const row=el("div","audio-row"),audio=el("audio");audio.controls=true;audio.src=a.url;row.append(el("span","",a.name),audio);b.append(row);});}
-    if(steps.draft){const b=section("剪映草稿",6),g=el("div","meta-grid");field(g,"草稿目录",steps.draft.draft_dir,true);field(g,"分镜数",steps.draft.shot_count);field(g,"出图数",steps.draft.image_count);field(g,"配音数",steps.draft.segment_count);field(g,"总时长",steps.draft.total_duration_sec+"s");b.append(g);}
-    if(steps.review){const b=section("文案预审记录",0),details=el("details"),summary=el("summary","","展开预审记录");details.append(summary,el("div","text-box",typeof steps.review==="string"?steps.review:JSON.stringify(steps.review,null,2)));b.append(details);}
-    if(!content.children.length)content.append(el("div","notice","此任务尚无已保存产物。可返回新建任务继续。"));
-  } catch(error){content.innerHTML="";content.append(el("div","notice error","读取任务结果失败："+error.message));}
+    const response = await fetch("/api/task/" + encodeURIComponent(taskId), {cache:"no-store"});
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+    if (!workflow) { host.replaceChildren(); workflow = WorkflowView.mount(host); }
+    workflow.renderTask(data);
+    document.title = (data.info?.title || "任务详情") + " · app074";
+    const completed = data.info?.completed_steps || [];
+    document.getElementById("status").textContent = completed.includes(6) ? "已完成" : `${[0,1,2,5,3,4,6].filter(step => completed.includes(step)).length}/7 步已保存`;
+    document.getElementById("resume-link").hidden = completed.includes(6);
+  } catch (error) {
+    host.replaceChildren();
+    const notice = document.createElement("div");
+    notice.className = "notice error";
+    notice.textContent = "读取任务结果失败：" + error.message;
+    host.append(notice);
+    document.getElementById("status").textContent = "读取失败";
+  }
 }
 load();
 </script>

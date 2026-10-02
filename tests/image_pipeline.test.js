@@ -299,13 +299,30 @@ test('动态分镜 off 时不调用 step4_intro_video，step6 拿不到 videos',
   await runImagePipeline({
     request: async (path, body) => { calls.push({path,body}); return replies.shift(); },
     generate:{reference:'原文'}, tts:{provider:'aura'},
-    image:{provider:'gpt_image',ratio:'9:16'},
+    image:{provider:'gpt_image',ratio:'1:1',templateId:'builtin-knowledge-card'},
     dynamic:{mode:'off'},
   });
   const paths = calls.map(c => c.path);
   assert.ok(!paths.includes('/api/step4_intro_video'));
   const draft = calls.find(c => c.path === '/api/step6_jianying_draft');
   assert.deepEqual(draft.body.videos, []);
+  assert.equal(draft.body.template_id, 'builtin-knowledge-card');
+});
+
+test('本地背景音乐上传后写入草稿请求', async () => {
+  const calls = [];
+  const replies = [firstGeneration(),
+    {results:[{idx:1,ok:true,path:'audio.mp3',duration:2}]},
+    {steps:{'3':[{idx:1,desc_prompt:'画面'}]}},
+    {results:[{idx:1,ok:true,url:'/covers/a.png'}]},
+    {path:'task-bgm.mp3'}, {draft_dir:'draft'}];
+  await runImagePipeline({
+    request: async (path, body) => { calls.push({path,body}); return replies.shift(); },
+    generate:{reference:'原文'}, tts:{provider:'aura'},
+    image:{provider:'gpt_image',ratio:'9:16',bgmFile:new Blob(['ID3mock'])},
+  });
+  assert.ok(calls.find(item => item.path === '/api/bgm_upload')?.body instanceof FormData);
+  assert.equal(calls.find(item => item.path === '/api/step6_jianying_draft').body.bgm_path, 'task-bgm.mp3');
 });
 
 test('动态分镜=3 时调 step4_intro_video 把前 3 镜转视频，step6 优先 video material', async () => {

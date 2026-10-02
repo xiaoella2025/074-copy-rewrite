@@ -58,9 +58,12 @@ body{font-family:var(--font-sans);background:var(--bg);color:var(--text);padding
 .btn.primary:hover,.btn.btn-primary:hover{background:var(--brand-hover);border-color:var(--brand-hover);}
 .btn.danger{color:var(--err);border-color:color-mix(in oklch,var(--err) 22%,transparent);}
 .btn.ghost,.btn.btn-ghost{background:transparent;color:var(--text-muted);}
-.layout{display:grid;grid-template-columns:minmax(260px,320px) minmax(0,1fr);gap:18px;height:calc(100vh - 128px);}
+.layout{display:block;min-height:calc(100vh - 128px);}
 .list-panel{background:var(--panel);border:1px solid var(--border-subtle);border-radius:var(--radius-lg);padding:10px;overflow-y:auto;box-shadow:var(--shadow-sm);}
 .detail-panel{background:var(--panel);border:1px solid var(--border-subtle);border-radius:var(--radius-lg);padding:18px;overflow-y:auto;box-shadow:var(--shadow-sm);}
+body:not(.editing) .list-panel{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:8px;overflow:visible}
+body:not(.editing) .detail-panel{display:none}
+body.editing .layout{display:grid;grid-template-columns:minmax(260px,320px) minmax(0,1fr);gap:18px;height:calc(100vh - 128px)}
 /* === 任务列表卡片 — STORY 真值 === */
 .task-card{padding:12px 14px;border-radius:var(--radius-md);cursor:pointer;margin-bottom:6px;border:1px solid transparent;transition:all .15s;position:relative;}
 .task-card:hover{background:var(--bg-hover);}
@@ -112,7 +115,7 @@ body{font-family:var(--font-sans);background:var(--bg);color:var(--text);padding
 .settings-pip.warn{background:color-mix(in oklch,var(--warn) 14%,transparent);color:var(--warn);border-color:color-mix(in oklch,var(--warn) 24%,transparent);}
 .settings-pip.bad{background:color-mix(in oklch,var(--err) 14%,transparent);color:var(--err);border-color:color-mix(in oklch,var(--err) 24%,transparent);}
 @media(max-width:900px){body{padding-left:20px;padding-top:58px}.app-sidebar{display:none}.layout{grid-template-columns:280px minmax(0,1fr)}}
-@media(max-width:640px){body{padding:56px 10px 10px}.layout{display:block;height:auto}.list-panel{max-height:210px;margin-bottom:10px}.detail-panel{min-height:50vh}.settings-section-head{flex-wrap:wrap}}
+@media(max-width:640px){body{padding:56px 10px 10px}body.editing .layout{display:block;height:auto}body.editing .list-panel{max-height:210px;margin-bottom:10px}body.editing .detail-panel{min-height:50vh}.settings-section-head{flex-wrap:wrap}}
 </style>
 </head>
 <body data-theme="dark">
@@ -143,7 +146,7 @@ body{font-family:var(--font-sans);background:var(--bg);color:var(--text);padding
     <div class="empty-state">加载中...</div>
   </div>
   <div class="detail-panel" id="detail-panel">
-    <div class="empty-state">← 选择左侧任务查看详情</div>
+    <div class="empty-state">← 选择左侧任务进行人工修改</div>
   </div>
 </div>
 
@@ -151,6 +154,8 @@ body{font-family:var(--font-sans);background:var(--bg);color:var(--text);padding
 const $ = id => document.getElementById(id);
 const STEP_LABELS = {0:"预审",1:"改写","meta":"元信息",2:"分镜",3:"出图Prompt",4:"出图",5:"配音",6:"草稿"};
 let currentTaskId = null;
+const editMode = new URLSearchParams(location.search).get("edit") === "1";
+document.body.classList.toggle("editing", editMode);
 
 async function api(path, method = "GET", body = null) {
   const opt = {method, headers: {"Content-Type": "application/json"}};
@@ -197,13 +202,21 @@ async function loadList() {
     `).join("");
     $("list-panel").querySelectorAll(".task-card").forEach(card => card.onclick = () => selectTask(card.dataset.id));
     const requested = new URLSearchParams(location.search).get("task");
-    if (!currentTaskId) selectTask(requested && tasks.some(t => t.task_id === requested) ? requested : tasks[0].task_id);
+    if (requested && !editMode && tasks.some(t => t.task_id === requested)) {
+      location.replace("/result.html?task=" + encodeURIComponent(requested));
+      return;
+    }
+    if (editMode && !currentTaskId) selectTask(requested && tasks.some(t => t.task_id === requested) ? requested : tasks[0].task_id);
   } catch (e) {
     $("list-panel").innerHTML = `<div class="empty-state" style="color:var(--err)">❌ ${escapeHtml(e.message)}</div>`;
   }
 }
 
 async function selectTask(taskId) {
+  if (!editMode) {
+    location.href = "/result.html?task=" + encodeURIComponent(taskId);
+    return;
+  }
   currentTaskId = taskId;
   // 高亮
   document.querySelectorAll(".task-card").forEach(c => c.classList.toggle("active", c.dataset.id === taskId));
@@ -387,9 +400,6 @@ $("btn-toggle-theme").onclick = toggleTheme;
 // 初始化
 loadList();
 // 自动刷新：每 5 秒
-setInterval(() => {
-  if (!currentTaskId) loadList();
-}, 5000);
 </script>
 </body>
 </html>

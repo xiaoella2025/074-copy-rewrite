@@ -27,6 +27,11 @@ async function runImagePipeline({ request, generate, tts, image, cover, resume, 
   const prior = resume?.steps || {};
   const resumeReady = !!(resume?.info?.task_id && prior.rewrite && prior.meta && prior.shots?.length);
   const resumeRewrite = !!(resume?.info?.task_id && prior.rewrite && !resumeReady);
+  if (image?.referenceFile) {
+    const referenceTaskId = resume?.info?.task_id || generate.task_id;
+    if (!referenceTaskId) throw new Error('参考图上传需要任务编号');
+    await request('/api/reference_upload', makeFormData({task_id:referenceTaskId,file:image.referenceFile}));
+  }
   if (!resumeReady && !resumeRewrite && mode !== 'full' && !generate.reference?.trim()) {
     throw new Error('半自动和直播出片模式需要先填写完整口播文案');
   }
@@ -251,6 +256,12 @@ async function runImagePipeline({ request, generate, tts, image, cover, resume, 
   if (dynamicMode !== 'off' && newVideos.length) onStage('videos', 'done', step4WithVideo);
 
   const title = meta.title || generate.title || '未命名任务';
+  let bgmPath = '';
+  if (image?.bgmFile && !prior.draft?.draft_dir) {
+    const bgm = await request('/api/bgm_upload', makeFormData({task_id: taskId, file: image.bgmFile}));
+    bgmPath = bgm?.path || '';
+    if (!bgmPath) throw new Error('背景音乐上传后未返回文件路径');
+  }
   const step6 = prior.draft?.draft_dir ? prior.draft : await call('draft', '/api/step6_jianying_draft', {
     task_id: taskId,
     shots: timedShots,
@@ -260,6 +271,8 @@ async function runImagePipeline({ request, generate, tts, image, cover, resume, 
     podcast_path: podcastResult?.path || '',
     title,
     ratio: image.ratio,
+    template_id: image.templateId || 'default-portrait-9-16',
+    bgm_path: bgmPath,
     cover_title: meta,
   });
   if (prior.draft?.draft_dir) onStage('draft', 'done', step6);
@@ -268,7 +281,7 @@ async function runImagePipeline({ request, generate, tts, image, cover, resume, 
   if (coverResult) onStage('cover', 'done', coverResult);
   else if (cover && ['ai', 'title', 'blank'].includes(cover.mode)) {
     coverResult = await call('cover', '/api/cover', {
-      task_id: taskId, provider: image.provider, title: cover.title || title,
+      task_id: taskId, provider: image.provider, profile_id: cover.profileId || "", title: cover.title || title,
       subtitle: cover.subtitle || '', content: rewritten,
       style: cover.style || generate.style, hooks: generate.hooks || [],
       cover_mode: cover.mode, cover_template: cover.template || 'movie',

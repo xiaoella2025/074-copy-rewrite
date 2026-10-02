@@ -12,6 +12,69 @@ import server
 
 
 class ImageWorkflowHttpTests(unittest.TestCase):
+    def test_selected_web_source_reaches_rewrite_context(self):
+        with patch.object(server, "search_web_summaries", return_value=[
+            {"title": "资料标题", "summary": "可核查的摘要", "url": "https://example.org/article"}
+        ]) as search:
+            results = server.task_knowledge({"sources": ["search"], "keywords": "关键字"})
+        search.assert_called_once_with("关键字", limit=5)
+        self.assertEqual(results[0]["source"], "全网搜索")
+        self.assertIn("可核查的摘要", server.build_context_block({"knowledge_results": results}))
+
+    def test_live_progress_endpoint_reports_current_step_without_credentials(self):
+        with tempfile.TemporaryDirectory() as directory, patch.object(server, "DATA_DIR", Path(directory)):
+            server.write_generation_progress("sample", "1", "running")
+            httpd = ThreadingHTTPServer(("127.0.0.1", 0), server.Handler)
+            worker = threading.Thread(target=httpd.serve_forever, daemon=True)
+            worker.start()
+            try:
+                conn = http.client.HTTPConnection("127.0.0.1", httpd.server_port, timeout=5)
+                conn.request("GET", "/api/task_progress/sample")
+                response = conn.getresponse()
+                payload = json.loads(response.read().decode("utf-8"))
+                self.assertEqual(response.status, 200)
+                self.assertEqual((payload["step"], payload["status"]), ("1", "running"))
+                conn.close()
+            finally:
+                httpd.shutdown()
+                httpd.server_close()
+                worker.join(timeout=5)
+
+    def test_product_reference_upload_is_scoped_to_task(self):
+        with tempfile.TemporaryDirectory() as directory, patch.object(server, "DATA_DIR", Path(directory)):
+            handler = object.__new__(server.Handler)
+            replies = []
+            handler._json = lambda status, payload: replies.append((status, payload))
+            handler._handle_reference_upload({"task_id": "sample"},
+                                             {"file": b"\x89PNG\r\n\x1a\nreference"})
+            self.assertEqual(replies[0][0], 200)
+            self.assertTrue((Path(directory) / "tasks" / "sample" / "product-reference.png").is_file())
+            with self.assertRaises(ValueError):
+                handler._handle_reference_upload({"task_id": "../other"}, {"file": b"\xff\xd8bad"})
+
+    def test_bgm_upload_is_scoped_to_task_and_validates_audio(self):
+        with tempfile.TemporaryDirectory() as directory, patch.object(server, "DATA_DIR", Path(directory)):
+            handler = object.__new__(server.Handler)
+            replies = []
+            handler._json = lambda status, payload: replies.append((status, payload))
+            handler._handle_bgm_upload({"task_id": "sample"}, {"file": b"ID3mock-music"})
+            self.assertEqual(replies[0][0], 200)
+            self.assertEqual(Path(replies[0][1]["path"]).read_bytes(), b"ID3mock-music")
+            with self.assertRaises(ValueError):
+                handler._handle_bgm_upload({"task_id": "../other"}, {"file": b"ID3bad"})
+            with self.assertRaises(ValueError):
+                handler._handle_bgm_upload({"task_id": "sample"}, {"file": b"not music"})
+
+    def test_rewrite_rounds_retry_only_for_length_mismatch(self):
+        original = "原" * 300
+        with patch.object(server, "call_llm", side_effect=["短", "改" * 290]) as llm:
+            text = server.rewrite_with_attempts({"api_key": "fake"}, "system", "user", original, "story", "std")
+        self.assertEqual(len(text), 290)
+        self.assertEqual(llm.call_count, 2)
+        with patch.object(server, "call_llm", return_value="短") as llm:
+            server.rewrite_with_attempts({"api_key": "fake"}, "system", "user", original, "story", "fast")
+        self.assertEqual(llm.call_count, 1)
+
     def test_result_page_is_separate_from_new_task_form(self):
         httpd = ThreadingHTTPServer(("127.0.0.1", 0), server.Handler)
         thread = threading.Thread(target=httpd.serve_forever, daemon=True)
@@ -22,8 +85,9 @@ class ImageWorkflowHttpTests(unittest.TestCase):
             response = conn.getresponse()
             page = response.read().decode("utf-8")
             self.assertEqual(response.status, 200)
-            self.assertIn("一键全链路结果", page)
+            self.assertIn("任务详情", page)
             self.assertIn("/api/task/", page)
+            self.assertIn("/assets/workflow_view.js", page)
             conn.close()
         finally:
             httpd.shutdown()
@@ -118,7 +182,9 @@ class ImageWorkflowHttpTests(unittest.TestCase):
                 patch.object(server, "PROFILES_PATH", root / "profiles.json"),
                 patch.object(server, "step0_pre_review", return_value={"passed": True}),
                 patch.object(server, "call_llm", return_value="改写稿"),
-                patch.object(server, "step1_meta", return_value={"title": "标题"}),
+                patch.object(server, "step1_meta", return_value={"title": "标题", "short_title": "短标题",
+                                                                "summary": "发布文案", "tags": ["话题"],
+                                                                "comments": ["评论"]}),
                 patch.object(server, "step2_split", return_value={"shots": [{"idx": 1, "text": "第一镜"}]}),
                 patch.object(server, "step3_image_prompts", return_value=[{"idx": 1, "desc_prompt": "画面"}]),
                 patch.object(server, "_aura_tts_synthesize", return_value={
@@ -146,20 +212,37 @@ class ImageWorkflowHttpTests(unittest.TestCase):
 
             try:
                 first = post("/api/generate", {"reference": "原文", "line": "story", "level": "standard",
-                                                "run_steps": ["0", "1", "meta", "2"]})
+                                                "task_id": "test_progress", "track_progress": True,
+                                                "run_steps": ["0", "1", "meta", "2"],
+                                                "publish": {"short_title": False, "summary": True,
+                                                            "tags": False, "comments": False}})
+                self.assertEqual(first["steps"]["meta"]["short_title"], "")
+                self.assertEqual(first["steps"]["meta"]["summary"], "发布文案")
+                self.assertEqual(first["steps"]["meta"]["tags"], [])
+                self.assertEqual(first["steps"]["meta"]["comments"], [])
                 task_id = first["task_id"]
+                self.assertEqual(task_id, "test_progress")
+                self.assertEqual(json.loads((root / "tasks" / task_id / "progress.json").read_text(encoding="utf-8"))["status"], "complete")
+                self.assertTrue((root / "tasks" / task_id / "01-review.json").is_file())
                 shots = first["steps"]["2"]["shots"]
                 speech = post("/api/step5_tts", {"task_id": task_id, "provider": "aura",
                                                     "segments": shots})
                 prompts = post("/api/generate", {"task_id": task_id, "rewritten": "改写稿",
                                                   "shots": shots, "meta": first["steps"]["meta"],
                                                   "run_steps": ["3"]})["steps"]["3"]
+                (root / "tasks" / task_id / "product-reference.png").write_bytes(b"\x89PNG\r\n\x1a\nmock")
                 images = post("/api/step4_generate_images", {"task_id": task_id,
                                                              "provider": "gpt_image", "prompts": prompts})
+                self.assertTrue(mock_image_dispatcher.call_args.kwargs["reference_data_url"].startswith("data:image/png;base64,"))
                 draft = post("/api/step6_jianying_draft", {"task_id": task_id, "title": "标题",
+                                                              "template_id": "builtin-portrait-4-3", "ratio": "4:3",
                                                               "shots": shots, "images": images["results"],
                                                               "segments": speech["results"]})
                 self.assertTrue(Path(draft["draft_dir"]).exists())
+                draft_content = json.loads((Path(draft["draft_dir"]) / "draft_content.json").read_text(encoding="utf-8"))
+                self.assertEqual((draft_content["width"], draft_content["height"]), (1080, 1920))
+                self.assertEqual(draft_content["template_id"], "builtin-portrait-4-3")
+                self.assertEqual(draft_content["tracks"][0]["segments"][0]["image_layout"]["height"], 0.421875)
                 self.assertEqual(len(server.load_tasks()["tasks"]), 1)
                 self.assertIn(0, server.get_task_detail(task_id)["info"]["completed_steps"])
                 self.assertEqual(speech["results"][0]["duration_source"], "ffprobe")
