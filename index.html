@@ -1285,7 +1285,16 @@ let coverDirectionIndex = 0;
 async function renderCoverTemplateRules(tplKey, forceDirection) {
   const panel = $("cover-template-rules");
   if (!panel) return;
-  if (tplKey === "custom") { panel.style.display = "none"; return; }
+  if (tplKey === "custom") {
+    $("ctr-name").textContent = "自定义构图";
+    $("ctr-desc").textContent = "在下方输入你想用的封面构图描述（最多 120 字），将作为构图规则直接拼到 AI 提示词。";
+    $("ctr-directions").replaceChildren();
+    $("ctr-title").textContent = "（自定义：不受 6 套模板的 titleLayout 约束，按你输入的描述生成）";
+    $("ctr-subtitle").textContent = "（同上）";
+    $("ctr-plain").textContent = "（留空时按 plainHint 处理）";
+    panel.style.display = "";
+    return;
+  }
   const data = await loadCoverTemplateData();
   const tpl = data.find(x => x.id === (COVER_ALIAS[tplKey] || tplKey));
   if (!tpl) { panel.style.display = "none"; return; }

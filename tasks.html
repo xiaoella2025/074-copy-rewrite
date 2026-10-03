@@ -215,7 +215,7 @@ async function loadList() {
     const r = await api("/api/tasks");
     const all = r.tasks || [];
     const tasks = filter === "done" ? all : (filter === "active" ? all.filter(isActiveTask) : all);
-    if((filter === "done" || filter === "all") && !editMode){StoryHistory.render(all,{select:selectTask,api});return;}
+    if(!editMode){StoryHistory.render(tasks,{select:selectTask,api});return;}
     $("badge-count").innerHTML = `<span class="settings-pip-dot"></span>${tasks.length} 个${filter === "done" ? "已完成" : filter === "active" ? "进行中" : "全部"}`;
     $("badge-count").className = "settings-pip ok";
     if (tasks.length === 0) {
