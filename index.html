@@ -1387,10 +1387,13 @@ async function uploadCoverNow(file) {
     coverResult.classList.add("err");
     return null;
   }
-  coverResult.textContent = `⏳ 正在上传：${file.name}（${(file.size / 1024).toFixed(1)} KB）…`;
+  const ratioChip = document.querySelector("#cover-ratio .chip.active");
+  const ratioStr = ratioChip ? ratioChip.dataset.coverRatio : "3:4";
+  coverResult.textContent = `⏳ 正在${ratioStr}裁切并上传：${file.name}（${(file.size / 1024).toFixed(1)} KB）…`;
   coverResult.classList.remove("err");
   try {
-    const dataUrl = await readImageDataUrl(file);
+    let dataUrl = await readImageDataUrl(file);
+    dataUrl = await cropToRatio(dataUrl, ratioStr);
     const r = await fetch("/api/cover_upload", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
@@ -1398,7 +1401,7 @@ async function uploadCoverNow(file) {
     });
     const out = await r.json();
     if (!r.ok) throw new Error(out.error || `HTTP ${r.status}`);
-    coverResult.textContent = `✓ 已上传：${file.name}（${(file.size / 1024).toFixed(1)} KB）`;
+    coverResult.textContent = `✓ 已按 ${ratioStr} 裁切并上传：${file.name}`;
     coverResult.classList.add("ok");
     if (coverImg && coverPreview) {
       coverImg.src = out.url;
@@ -1412,6 +1415,36 @@ async function uploadCoverNow(file) {
     coverResult.classList.add("err");
     return null;
   }
+}
+
+async function cropToRatio(dataUrl, ratioStr) {
+  if (!ratioStr || !ratioStr.includes(":")) return dataUrl;
+  const [rw, rh] = ratioStr.split(":").map(Number);
+  if (!rw || !rh) return dataUrl;
+  const img = await new Promise((res, rej) => {
+    const im = new Image();
+    im.onload = () => res(im);
+    im.onerror = rej;
+    im.src = dataUrl;
+  });
+  const targetRatio = rw / rh;
+  const srcRatio = img.width / img.height;
+  let sw = img.width, sh = img.height, sx = 0, sy = 0;
+  if (srcRatio > targetRatio) {
+    sw = Math.round(img.height * targetRatio); sx = Math.round((img.width - sw) / 2);
+  } else if (srcRatio < targetRatio) {
+    sh = Math.round(img.width / targetRatio); sy = Math.round((img.height - sh) / 2);
+  }
+  const maxSide = 1600;
+  let dw = sw, dh = sh;
+  if (Math.max(dw, dh) > maxSide) {
+    if (dw >= dh) { dh = Math.round(dh * maxSide / dw); dw = maxSide; }
+    else { dw = Math.round(dw * maxSide / dh); dh = maxSide; }
+  }
+  const c = document.createElement("canvas");
+  c.width = dw; c.height = dh;
+  c.getContext("2d").drawImage(img, sx, sy, sw, sh, 0, 0, dw, dh);
+  return c.toDataURL("image/jpeg", 0.92);
 }
 
 if (coverDrop && coverInput) {
