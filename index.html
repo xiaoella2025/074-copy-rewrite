@@ -1281,7 +1281,8 @@ async function loadCoverTemplateData() {
 }
 const COVER_ALIAS = {movie:"cinematic-poster",minimal:"minimal-clean",emotional:"portrait-emotion",
   impact:"typographic-impact",chinese:"guofeng-poster",legend:"legend-portrait"};
-async function renderCoverTemplateRules(tplKey) {
+let coverDirectionIndex = 0;
+async function renderCoverTemplateRules(tplKey, forceDirection) {
   const panel = $("cover-template-rules");
   if (!panel) return;
   if (tplKey === "custom") { panel.style.display = "none"; return; }
@@ -1290,12 +1291,25 @@ async function renderCoverTemplateRules(tplKey) {
   if (!tpl) { panel.style.display = "none"; return; }
   $("ctr-name").textContent = tpl.name;
   $("ctr-desc").textContent = tpl.description || "";
+  const dirs = tpl.directions || [];
+  if (typeof forceDirection === "number" && forceDirection >= 0 && forceDirection < dirs.length) coverDirectionIndex = forceDirection;
+  else if (coverDirectionIndex >= dirs.length) coverDirectionIndex = 0;
   const ol = $("ctr-directions");
   ol.replaceChildren();
-  (tpl.directions || []).forEach(d => {
+  dirs.forEach((d, i) => {
     const li = document.createElement("li");
-    li.style.marginBottom = "2px";
-    li.innerHTML = `<b style="color:var(--text)">${d.label}</b>：${escapeHtml(d.hint)}`;
+    li.style.marginBottom = "3px";
+    li.style.cursor = "pointer";
+    li.style.padding = "3px 6px";
+    li.style.borderRadius = "4px";
+    li.style.transition = "background .12s";
+    if (i === coverDirectionIndex) {
+      li.style.background = "var(--brand-soft)";
+      li.style.color = "var(--brand)";
+      li.style.fontWeight = "600";
+    }
+    li.innerHTML = `<b style="color:inherit">方向 ${i+1} · ${escapeHtml(d.label)}</b>：${escapeHtml(d.hint)}${i === coverDirectionIndex ? ' <span style="color:var(--brand);font-size:10.5px">✓ 当前</span>' : ''}`;
+    li.onclick = () => { coverDirectionIndex = i; renderCoverTemplateRules(tplKey); };
     ol.appendChild(li);
   });
   $("ctr-title").textContent = (tpl.titleLayout || "").replace(/\*\*/g, "");
@@ -1303,6 +1317,7 @@ async function renderCoverTemplateRules(tplKey) {
   $("ctr-plain").textContent = tpl.plainHint || "";
   panel.style.display = "";
 }
+function selectedCoverDirection() { return coverDirectionIndex || 0; }
 bindChips("cover-ratio");
 bindChips("tts-mode", (chip) => {
   $("tts-upload-area").style.display = chip.dataset.tts === "custom" ? "" : "none";
@@ -1510,6 +1525,7 @@ async function callCover(promptOverride) {
       provider: $("img-engine").value,
       cover_mode: getActiveChip("cover-mode", "data-cv", "none"),
       cover_template: selectedCoverTemplate(),
+      cover_direction: selectedCoverDirection(),
       ratio: getActiveChip("cover-ratio", "data-cover-ratio", "3:4"),
     });
     $("cover-img").src = r.url + "?t=" + Date.now();
@@ -2566,7 +2582,7 @@ function populateFromRequest(req, fromStep) {
   if (req.pause_mode) setChipsActive("pause-mode", req.pause_mode, "pam");
   currentLine = req.line || currentLine;
   if (req.level) currentLevel[currentLine] = req.level;
-  if (req.cover_template) renderCoverTemplateRules(req.cover_template === "custom" ? "custom" : (req.cover_template.split(":")[0]));
+  if (req.cover_template) renderCoverTemplateRules(req.cover_template === "custom" ? "custom" : (req.cover_template.split(":")[0]), typeof req.cover_direction === "number" ? req.cover_direction : 0);
   if(window.syncStoryFormLayout)window.syncStoryFormLayout();
 }
 

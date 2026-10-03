@@ -21,6 +21,12 @@ import socket
 import subprocess
 import xml.etree.ElementTree as ET
 import knowledge
+from captions import task_captions, save_captions
+from template_store import TemplateStore
+from prompt_assistant import generate_template
+from jianying_export import export_draft as export_jianying_draft
+import secrets
+from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -177,6 +183,15 @@ def _scan_task(task_dir):
             pass
     # 创建时间（mtime）
     try:
+        runtime = json.loads((task_dir / "run-meta.json").read_text("utf-8"))
+        progress = json.loads((task_dir / "progress.json").read_text("utf-8"))
+        info["elapsed_sec"] = runtime.get("elapsed_sec")
+        info["stage_timings"] = runtime.get("stages", {})
+        info["progress"] = progress
+        info["running"] = progress.get("status") == "running"
+    except (OSError, ValueError):
+        pass
+    try:
         st = task_dir.stat()
         info["created_at"] = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(st.st_mtime))
     except OSError:
@@ -217,6 +232,13 @@ def get_task_detail(task_id):
             detail["request"] = json.loads(p.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             pass
+    # 加载客户端完整 pipeline 配置（供「重跑 / 改参数」复用参数）
+    p = task_dir / "client_config.json"
+    if p.exists():
+        try:
+            detail["client_config"] = json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            pass
     p = task_dir / "01-review.json"
     if p.exists():
         try:
@@ -253,6 +275,8 @@ def get_task_detail(task_id):
             detail["steps"]["segments"] = json.loads(p.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             pass
+    if detail["steps"].get("shots") and detail["steps"].get("segments"):
+        detail["steps"]["captions"] = task_captions(task_dir, detail["steps"]["shots"], detail["steps"]["segments"])
     p = task_dir / "05-podcast.json"
     if p.exists():
         try:
@@ -303,12 +327,65 @@ def get_task_detail(task_id):
     return detail
 
 
+def prepare_task_rerun(task_id, from_step):
+    """Archive downstream results so polling cannot report an old run as completed."""
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,100}", str(task_id)):
+        raise ValueError("task_id 不合法")
+    order = ["0", "1", "2", "5", "3", "4", "6"]
+    if str(from_step) not in order:
+        raise ValueError("未知重跑步骤")
+    task_dir = _tasks_root() / task_id
+    if not task_dir.is_dir():
+        raise ValueError("任务不存在")
+    files = {
+        "0":["01-review.json"], "1":["02-rewrite.txt", "02-meta.json"],
+        "2":["03-shots.json", "03-character-card.json"],
+        "5":["05-tts-segments.json", "05-captions.json", "05-podcast.json", "podcast.mp3", "audio"],
+        "3":["04-prompts.json"], "4":["covers", "04-intro-videos.json", "videos"],
+        "6":["06-draft-meta.json", "cover-meta.json", "cover.png", "cover.jpg", "cover.webp"],
+    }
+    targets = [task_dir / name for key in order[order.index(str(from_step)):]
+               for name in files[key] if (task_dir / name).exists()]
+    backup = task_dir / ".reruns" / f"{time.time_ns()}-{from_step}"
+    backup.mkdir(parents=True)
+    moved = []
+    try:
+        for path in targets:
+            path.rename(backup / path.name)
+            moved.append(path.name)
+        runtime_path=task_dir / "run-meta.json"
+        if runtime_path.exists():
+            runtime_path.rename(backup / runtime_path.name)
+            moved.append(runtime_path.name)
+        write_generation_progress(task_id, str(from_step), "running")
+    except OSError:
+        for name in reversed(moved):
+            (backup / name).rename(task_dir / name)
+        raise
+    return {"ok":True, "task_id":task_id, "archived_files":len(moved)}
+
+
 def write_generation_progress(task_id, step, status, payload=None):
     """Persist image-text generation progress for the live task view."""
     if not re.fullmatch(r"[A-Za-z0-9_-]{1,100}", str(task_id)):
         raise ValueError("task_id 不合法")
     task_dir = _tasks_root() / task_id
     task_dir.mkdir(parents=True, exist_ok=True)
+    runtime_path=task_dir / "run-meta.json"
+    try:
+        runtime=json.loads(runtime_path.read_text('utf-8'))
+    except (OSError, ValueError):
+        runtime={"started_at":time.time(),"stages":{}}
+    now=time.time();stage=runtime.setdefault('stages',{}).setdefault(str(step),{})
+    if status=='running':
+        stage.setdefault('started_at',now)
+    elif status in ('done','complete','failed'):
+        stage['finished_at']=now
+        if stage.get('started_at'):
+            stage['elapsed_sec']=round(now-stage['started_at'],2)
+    stage['status']=status
+    runtime['elapsed_sec']=round(now-runtime.get('started_at',now),2)
+    runtime_path.write_text(json.dumps(runtime,ensure_ascii=False,indent=2),'utf-8')
     target = task_dir / "progress.json"
     progress = {"step": str(step), "status": status, "updated_at": time.time()}
     temp = task_dir / "progress.tmp"
@@ -2238,7 +2315,8 @@ def parse_llm_json(text):
         lines = [l for l in lines if not l.strip().startswith("```")]
         text = "\n".join(lines).strip()
     # 找第一个 { 或 [
-    for opener, closer in [("{", "}"), ("[", "]")]:
+    delimiters=sorted([("{", "}"), ("[", "]")],key=lambda pair:text.find(pair[0]) if pair[0] in text else len(text))
+    for opener, closer in delimiters:
         s = text.find(opener)
         if s < 0:
             continue
@@ -2351,18 +2429,47 @@ def step0_pre_review(llm_settings, reference):
     }
 
 
+def resolve_prompt_template(data):
+    store = TemplateStore(DATA_DIR, ROOT)
+    if data.get('prompt_template_id') or data.get('prompt_template'):
+        return store.resolve('prompts', data.get('prompt_template_id'), data.get('prompt_template')) or {}
+    track = data.get('track') or 'character-story'
+    return next((t for t in store.list('prompts') if t['id'] == track), {})
+
+
+def story_workflow_reference():
+    return json.loads((ROOT / 'assets/story_workflow_reference.json').read_text('utf-8'))
+
+
+def extract_character_card(llm_settings, content):
+    try:
+        value = parse_llm_json(call_llm(llm_settings, story_workflow_reference()['characterPrompt'],
+                                       '## 原文\n' + content + '\n\n## 你的输出（严格 JSON）：'))
+        if not isinstance(value, dict) or not isinstance(value.get('identity'), str) or not value['identity'].strip():
+            return None
+        stages = [s for s in value.get('ageStages', []) if isinstance(s, dict)
+                  and all(isinstance(s.get(k), str) for k in ('stage', 'appearance', 'eraVisuals'))]
+        if not stages:
+            return None
+        return {'identity': value['identity'].strip(), 'ageStages': [
+            {k:s[k].strip() for k in ('stage','appearance','eraVisuals')} for s in stages]}
+    except (RuntimeError, ValueError, TypeError):
+        return None
+
+
 def step1_meta(llm_settings, title, content, hooks, track):
     """Step 1 元信息：title / short_title / summary / tags / comments / cover_image_prompts。
     字段定义照搬 Ag 真值结构。"""
     if not content.strip():
         return {"title": title.strip()[:22], "short_title": "", "summary": "", "tags": [], "comments": [], "cover_image_prompts": []}
-    sys_p = load_prompt_module("step1_meta.py")
+    sys_p = llm_settings.get("_prompt_template", {}).get("step1MetadataSystemPrompt") or load_prompt_module("step1_meta.py")
+    sys_p += "\n\n" + story_workflow_reference()["metadataShortTitleSupplement"]
     hooks_str = " / ".join(hooks) if hooks else "无"
     user_p = (
         f"## 标题\n{title.strip() or '(未填)'}\n\n"
         f"## 赛道\n{track}\n\n"
         f"## 黄金 3 秒钩子\n{hooks_str}\n\n"
-        f"## 改写后文案\n{content.strip()[:4000]}"
+        f"## 改写后文案\n{content.strip()}"
     )
     try:
         text = call_llm(llm_settings, sys_p, user_p)
@@ -2388,7 +2495,7 @@ def step1_meta(llm_settings, title, content, hooks, track):
     return result
 
 
-def step2_split(llm_settings, content, target_shots=None, target_words=None, script_format="narrator"):
+def step2_split(llm_settings, content, target_shots=None, target_words=None, script_format="narrator", mechanical=False, target_words_min=None):
     """Step 2 智能分镜：PA 真值算法的简化版。
     真值：LLM 输出尾部锚点（10-20 字精确原文）→ 锚点匹配原文切片。
     简化：单轮 LLM 调用 → 解析锚点数组 → 锚点切片；匹配失败回退到按段落+标点切。
@@ -2400,9 +2507,47 @@ def step2_split(llm_settings, content, target_shots=None, target_words=None, scr
     if not text:
         return {"shots": [], "notes": "", "match_rate": 0}
 
+    if script_format == "podcast":
+        # Story $A: one speaker-labelled turn per scene; wrapped lines keep their speaker.
+        turns = []
+        for line in text.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            match = re.match(r"^[\[【]\s*([AaBb])\s*[\]】]\s*(.*)$", line)
+            if match:
+                turns.append({"speaker":match[1].upper(), "text":match[2].strip()})
+            elif turns:
+                turns[-1]["text"] = (turns[-1]["text"] + " " + line).strip()
+        turns = [turn for turn in turns if turn["text"]]
+        if not turns:
+            raise ValueError("双人播客请使用 [A] / [B] 标注每轮台词；半自动模式须粘贴已标注的对话")
+        return {"shots":[{"idx":i+1, **turn, "chars":len(turn["text"])} for i,turn in enumerate(turns)],
+                "notes":"按 A/B 对话轮次分镜，未再次调用 AI", "match_rate":1}
+
     sys_p = (load_prompt_module("podcast_dialogue.py") if script_format == "podcast"
              else load_prompt_module("step2_split.py"))
 
+    if mechanical:
+        paragraphs = [p.strip() for p in re.split(r"\n{2,}", text) if p.strip()]
+        if len(paragraphs) <= 1:
+            paragraphs = [p.strip() for p in text.splitlines() if p.strip()]
+        if len(paragraphs) <= 1:
+            paragraphs = [p.strip() for p in re.split(r"(?<=[。！？!?])", text) if p.strip()]
+        return {"shots":[{"idx":i+1,"text":p,"chars":len(p)} for i,p in enumerate(paragraphs)],
+                "notes":"已按自然段切分，未调 AI", "match_rate":1}
+    # Story 1.24.0 z0 / Ng: dynamic character limits and oversized-scene recovery.
+    if target_shots and int(target_shots)>0:
+        average=len(re.sub(r"\s+", "", text))/int(target_shots)
+        char_min, char_max=max(10,round(average*.75)), round(average*1.25)
+    elif target_words and int(target_words)>0:
+        char_max=max(15,int(target_words));char_min=max(10,round(char_max*.6))
+    else:
+        char_min,char_max=next((lo,hi) for ceiling,lo,hi in [(1200,25,45),(2000,30,50),(3500,40,60),(float('inf'),50,80)] if len(re.sub(r"\s+", "", text))<=ceiling)
+    if target_words_min:
+        char_min=int(target_words_min)
+        if not 10<=char_min<=500 or char_min>char_max:
+            raise ValueError('每镜字数范围无效：最少字数不得大于最多字数')
     # 计算期望分镜数（参考 STORY z0 函数的 count min/max 逻辑）
     text_len = len(text)
     if target_shots and int(target_shots) > 0:
@@ -2413,6 +2558,7 @@ def step2_split(llm_settings, content, target_shots=None, target_words=None, scr
 
     user_p = (
         f"## 目标分镜数\n{expected}\n\n"
+        f"## 每镜字数\n推荐 {char_min}–{char_max} 字，极限不超过 {round(char_max*1.2)} 字。锚点须均匀覆盖全文，禁止把剩余文案堆进最后一镜。\n\n"
         f"## 原文\n{text}\n\n"
         + ("请输出 JSON 对象数组，每项形如 {\"speaker\":\"A\"|\"B\", \"anchor\":\"...\"}。"
            if script_format == "podcast"
@@ -2504,6 +2650,23 @@ def step2_split(llm_settings, content, target_shots=None, target_words=None, scr
                     normalized.append(piece)
         anchors = normalized
 
+    # Port of original J4: split only severely oversized scenes, at sentence/comma boundaries.
+    recovered=[]
+    for scene in anchors:
+        if len(re.sub(r"\s+", "",scene)) <= max(round(char_max*1.2*1.5),100):
+            recovered.append(scene);continue
+        pieces=[p for p in re.split(r"(?<=[。！？；!?])",scene) if p.strip()]
+        if len(pieces)<=1:pieces=[p for p in re.split(r"(?<=[，,])",scene) if p.strip()]
+        if len(pieces)<=1:recovered.append(scene);continue
+        groups=[];part=""
+        for piece in pieces:
+            if part and len(re.sub(r"\s+", "",part+piece))>char_max:groups.append(part);part=piece
+            else:part+=piece
+        if part:
+            if groups and len(re.sub(r"\s+", "",part))<15:groups[-1]+=part
+            else:groups.append(part)
+        recovered.extend(groups)
+    anchors=recovered
     shots = [{"idx": i + 1, "text": s, "chars": len(s)} for i, s in enumerate(anchors) if s.strip()]
     if script_format == "podcast":
         for i, sh in enumerate(shots):
@@ -2511,7 +2674,19 @@ def step2_split(llm_settings, content, target_shots=None, target_words=None, scr
     return {"shots": shots, "notes": notes, "match_rate": match_rate}
 
 
-def step3_image_prompts(llm_settings, shots, track, style_label, story_context="", character_card=None):
+def story_grayscale_prompt(text, reference):
+    protected=[]
+    def protect(match):
+        protected.append(match.group());return f'@@CG@@{len(protected)-1}@@CG@@'
+    text=re.sub(r'(完全无|无任何|不要|排除|禁止|避免|无|非)(彩色|色彩饱和度?|色彩鲜艳|色彩缤纷|暖色调|冷色调)',protect,text)
+    for pattern,replacement in reference.get('grayscaleReplacements',[]):
+        replacement=re.sub(r'\$(\d+)',lambda m:r'\g<'+m[1]+'>',replacement)
+        text=re.sub(pattern,replacement,text)
+    text=re.sub(r'@@CG@@(\d+)@@CG@@',lambda m:protected[int(m[1])],text)
+    return re.sub(r'\s{2,}',' ',re.sub(r'，{2,}','，',re.sub(r'的{2,}','的',text))).strip('， ')
+
+
+def step3_image_prompts(llm_settings, shots, track, style_label, story_context="", character_card=None, reference_kind=None):
     """Step 3 出图 prompt：mS 风格的简化版。
     真值：分批并发 + 风格前后缀 + 角色档案 + 敏感词字典。
     简化：串行分批 + 风格前缀/后缀（STYLE_TOKENS）+ 角色档案（c$ 格式化）+ SENSITIVE_DICT。
@@ -2520,8 +2695,14 @@ def step3_image_prompts(llm_settings, shots, track, style_label, story_context="
     if not shots:
         return []
 
-    sys_p = load_prompt_module("step3_image_prompt.py")
-    style = STYLE_TOKENS.get(style_label, STYLE_TOKENS["写实彩色"])
+    sys_p = llm_settings.get("_prompt_template", {}).get("step3SystemPrompt") or load_prompt_module("step3_image_prompt.py")
+    reference = story_workflow_reference()
+    style_name = style_label.split('·')[0].strip()
+    style_name = {'宫崎骏治愈':'ghibli','黑板教学':'chalkboard','杂志漫画':'illustration'}.get(style_name,style_name)
+    original_style = next((s for s in reference['styles'] if s['id'] == style_name or s['name'] == style_name), None)
+    style = ({'prefix':original_style['prefix'], 'suffix':original_style['suffix'],
+              'allow_color':original_style['allowColor']} if original_style else
+             STYLE_TOKENS.get(style_name, STYLE_TOKENS['写实彩色']))
     style_prefix = style["prefix"]
     style_suffix = style["suffix"]
     allow_color = style["allow_color"]
@@ -2535,15 +2716,27 @@ def step3_image_prompts(llm_settings, shots, track, style_label, story_context="
         except Exception:
             char_block = ""
 
-    BATCH = 4  # 简化版每批 4 个（STORY yi 估计是 5-8，这里保守点）
+    BATCH = 12  # Story 1.24.0: index-CXUXw7CE.js, yi = 12
     all_results = {}
+    reference_choices = {}
+    diagnostics = {}
+    reference_section = reference.get("referenceJudgement" + (reference_kind or "").title(), "")
     for i in range(0, len(shots), BATCH):
         batch = shots[i : i + BATCH]
         shots_json = json.dumps(
-            [{"id": s["idx"], "cap": s["text"][:200]} for s in batch],
+            [{"id": s["idx"], "cap": s["text"]} for s in batch],
             ensure_ascii=False,
         )
         char_section = f"\n## character_card\n{char_block}\n\n" if char_block else ""
+        previous=shots[max(0,i-2):i]
+        continuity=('\n## 上文参考（紧邻本批之前的分镜内容，其画面正在另行生成）\n'+
+                    '\n'.join(f"- 第 {s['idx']} 句「{s['text']}」" for s in previous)+
+                    '\n请让本批开头的画面与上述内容自然衔接（场景/时代/光影不要无理由跳变；如果剧情本身切换了场景，可以切。）\n') if previous else ''
+        seeds=reference['visualSeeds']
+        visual=('\n## 本批视觉参考（仅供构图/光影维度参考，跟当前场景明显冲突时请忽略）\n'
+                '- 构图 / 镜头倾向：'+secrets.choice(seeds['shotAndComposition'])+
+                '\n- 光影 / 情绪倾向：'+secrets.choice(seeds['lightAndMood'])+
+                '\n具体每句仍以 cap 内容为准，白天场景不要强行画成黄昏 / 夜晚。\n')
         user_p = (
             f"## Track\n{track or '通用故事'}\n\n"
             f"## style_prefix\n{style_prefix}\n\n"
@@ -2551,16 +2744,33 @@ def step3_image_prompts(llm_settings, shots, track, style_label, story_context="
             f"## style_allow_color\n{'true' if allow_color else 'false'}\n\n"
             f"## story_context\n{story_context or '通用'}\n\n"
             f"{char_section}"
+            f"{continuity}{visual}"
             f"## shots\n{shots_json}\n\n"
-            f"返回 JSON 数组（长度 {len(batch)}），每项含 id/cap/desc_prompt。"
+            f"{reference_section}\n"
+            f"{reference.get('interactionVisualRules','')}{reference.get('imageSafetyDictionary','')}\n"
+            f"返回 JSON 数组（长度 {len(batch)}），每项含 id/cap/desc_prompt"
+            + ("/use_reference（布尔值）" if reference_kind else "") + "。"
         )
-        try:
-            text = call_llm(llm_settings, sys_p, user_p)
-            arr = parse_llm_json(text)
-        except (RuntimeError, ValueError, json.JSONDecodeError):
-            arr = None
-        if isinstance(arr, dict):
-            arr = [arr]
+        base_user=user_p;arr=None;attempts=[]
+        for attempt in range(1,4):
+            try:
+                text=call_llm({**llm_settings,'max_tokens':32768,'temperature':.5,'timeout':360},sys_p,user_p)
+                candidate=parse_llm_json(text)
+                if not isinstance(candidate,list) or len(candidate)!=len(batch):
+                    raise ValueError(f'必须返回 {len(batch)} 项 JSON 数组，数量与输入分镜一致')
+                for item,shot in zip(candidate,batch):
+                    if not isinstance(item,dict) or item.get('id')!=shot['idx']:
+                        raise ValueError('分镜 id 或顺序与输入不一致，不得遗漏、重复或增删')
+                    if not isinstance(item.get('desc_prompt'),str) or not item['desc_prompt'].strip():
+                        raise ValueError('每项必须有非空字符串 desc_prompt')
+                    if reference_kind and not isinstance(item.get('use_reference'),bool):
+                        raise ValueError('每项必须包含布尔值 use_reference')
+                from story_prompt_validation import normalize_batch
+                policy=(reference['tracks'].get(track) or {}).get('step3Policy') or {}
+                arr=normalize_batch(candidate,reference_kind,style_prefix,style_suffix,policy,attempt);break
+            except (RuntimeError,ValueError,json.JSONDecodeError) as error:
+                reason=str(error)[:300];attempts.append({'attempt':attempt,'reason':reason})
+                user_p=base_user+'\n\n⚠️ 上次生成存在以下问题，请修复：\n'+reason
         if isinstance(arr, list):
             for item in arr:
                 if not isinstance(item, dict):
@@ -2569,27 +2779,92 @@ def step3_image_prompts(llm_settings, shots, track, style_label, story_context="
                 p = str(item.get("desc_prompt", "")).strip()
                 if idx is None or not p:
                     continue
-                # 强约束：末尾追加 9:16 后缀（如果漏了）
-                tail = "竖屏构图，9:16 画幅比例，无文字、无水印"
-                if "9:16" not in p and "竖屏" not in p:
-                    p = p.rstrip("。. ") + "。" + tail
                 # 禁色（如黑白）
                 if not allow_color:
-                    import re as _re
-                    p = _re.sub(r"(红色|蓝色|绿色|黄色|紫色|橙色|粉色|金色|银色|白色|黑色|暖色|冷色)", "中性色调", p)
+                    p = story_grayscale_prompt(p,reference)
                 all_results[int(idx)] = p
+                if reference_kind:
+                    reference_choices[int(idx)] = item.get("use_reference", reference_kind == "character") is True
+        else:
+            track_ref=reference['tracks'].get(track) or reference['tracks']['character-story']
+            skeleton=track_ref.get('skeletonScenes') or ['中景镜头']
+            stages=(character_card or {}).get('ageStages') or []
+            for slot,shot in enumerate(batch):
+                components=[style_prefix]
+                if stages:
+                    stage=stages[min(len(stages)-1,slot*len(stages)//len(batch))]
+                    components.extend([(character_card.get('identity','')+'，'+stage.get('appearance','')).strip('，'),stage.get('eraVisuals','')])
+                components.extend([skeleton[slot%len(skeleton)],style_suffix])
+                prompt='，'.join(x for x in components if x)
+                all_results[shot['idx']]=prompt if allow_color else story_grayscale_prompt(prompt,reference)
+                reference_choices[shot['idx']]=False
+                diagnostics[shot['idx']]={'fellBackToSkeleton':True,'attempts':attempts}
 
     # 兜底：未生成的用模板
     for s in shots:
         if s["idx"] not in all_results:
             all_results[s["idx"]] = (
-                f"{style_prefix}，{s['text'][:30]}的画面，竖屏构图，9:16 画幅比例，无文字、无水印"
+                f"{style_prefix}，{s['text'][:30]}的画面，{style_suffix}，无文字、无水印"
             )
 
     return [
-        {"idx": s["idx"], "text": s["text"], "desc_prompt": all_results.get(s["idx"], "")}
+        {"idx": s["idx"], "text": s["text"], "desc_prompt": all_results.get(s["idx"], ""),
+         **({"use_reference": reference_choices.get(s["idx"], reference_kind == "character")} if reference_kind else {})}
+        | ({'diagnostic':diagnostics[s['idx']]} if s['idx'] in diagnostics else {})
         for s in shots
     ]
+
+
+def synthesize_voice_lab(data):
+    text=str(data.get('text') or '').strip()
+    if not text or len(text)>10000:
+        raise ValueError('请输入配音文本，最多10000字')
+    settings=load_settings().get('tts') or {}
+    provider=data.get('provider') or settings.get('provider') or 'volcengine'
+    if provider not in ('volcengine','minimax','aura'):
+        raise ValueError('未知 TTS 引擎')
+    config=settings.get(provider) or {};key=config.get('api_key')
+    if not key:
+        raise ValueError('未配置所选 TTS 引擎 API Key')
+    speaker=data.get('speaker') or config.get('speaker' if provider=='volcengine' else 'voice_id')
+    if not speaker:
+        raise ValueError('请先选择音色')
+    speed=float(data.get('speed',1))
+    if not .5<=speed<=2:
+        raise ValueError('语速超出范围')
+    voice_name=re.sub(r'[\\/:*?"<>|]', '_',str(data.get('voiceName') or '音色')).strip()[:60] or '音色'
+    folder=DATA_DIR/'voice-lab';folder.mkdir(parents=True,exist_ok=True)
+    parts=[];remaining=text
+    while remaining:
+        cut=min(2000,len(remaining))
+        if cut<len(remaining):
+            boundary=max(remaining.rfind(mark,0,cut) for mark in '。！？；.!?;\n')
+            if boundary>=1000:cut=boundary+1
+        parts.append(remaining[:cut]);remaining=remaining[cut:]
+    with tempfile.TemporaryDirectory(prefix='app074-voice-') as temp:
+        paths=[]
+        for index,part in enumerate(parts):
+            if provider=='volcengine':result=_volc_tts_synthesize(key,part,speaker,index+1,speed)
+            elif provider=='minimax':result=_minimax_tts_synthesize(key,part,speaker,index+1,speed,config)
+            else:result=_aura_tts_synthesize(key,part,speaker,index+1,speed,config)
+            if not result.get('ok') or not result.get('audio_bytes'):
+                raise RuntimeError(result.get('error') or 'TTS 返回空数据')
+            path=Path(temp)/f'{index+1}.mp3';path.write_bytes(result['audio_bytes']);paths.append(path)
+        if len(paths)==1:audio=paths[0].read_bytes()
+        else:
+            ffmpeg=shutil.which('ffmpeg')
+            if not ffmpeg:raise RuntimeError('缺少 ffmpeg，无法拼接长文本配音')
+            listing=Path(temp)/'concat.txt';listing.write_text('\n'.join(f"file '{path.as_posix()}'" for path in paths),'utf-8')
+            merged=Path(temp)/'merged.mp3'
+            result=subprocess.run([ffmpeg,'-y','-f','concat','-safe','0','-i',str(listing),'-c','copy',str(merged)],capture_output=True,timeout=120)
+            if result.returncode or not merged.is_file():raise RuntimeError('长文本配音拼接失败')
+            audio=merged.read_bytes()
+    name=f'配音_{voice_name}_{time.strftime("%Y%m%d-%H%M%S")}_{uuid.uuid4().hex[:4]}.mp3'
+    path=folder/name;path.write_bytes(audio)
+    item={'fileName':name,'voiceName':voice_name,'text':text,'speed':speed,'createdAt':time.strftime('%H:%M'),
+          'url':'/api/voice_lab/file/'+urllib.parse.quote(name),'path':str(path),'provider':provider}
+    path.with_suffix('.json').write_text(json.dumps(item,ensure_ascii=False,indent=2),'utf-8')
+    return item
 
 
 def load_module_with_extras(rel_path):
@@ -2632,37 +2907,44 @@ def save_task_record(record):
     save_tasks(data)
 
 
-def build_cover_prompt(llm_settings, title, content, style, hooks, cover_mode="ai", subtitle="", template="movie"):
-    """让 LLM 根据标题/文案/风格/钩子写一段英文出图 prompt。"""
-    hooks_str = " / ".join(hooks) if hooks else ""
-    style_str = style or "现代电影"
-    template_names = {"movie": "电影海报感", "minimal": "极简留白", "emotional": "人物情绪", "impact": "文字冲击", "chinese": "国风古韵"}
-    template_str = template[7:].strip()[:120] if template.startswith("custom:") else template_names.get(template, template_names["movie"])
-    template_str = template_str or template_names["movie"]
-    sys_p = "你是一名短视频封面 prompt 工程师，根据用户提供的中文信息写一段适合图像生成的英文 prompt。直接返回 prompt 文本，不要任何解释、Markdown、引号。"
-    user_p = (
-        f"## 标题\n{title.strip() or '(未填)'}\n\n"
-        f"## 内容赛道\n自动\n\n"
-        f"## 画面风格\n{style_str}\n\n"
-        f"## 封面模板\n{template_str}\n\n"
-        f"## 副标题（可选）\n{subtitle.strip()[:120] or '(未填)'}\n\n"
-        f"## 黄金 3 秒钩子\n{hooks_str}\n\n"
-        f"## 文案片段（前 200 字）\n{content.strip()[:200]}\n\n"
-        f"要求：\n"
-        f"1. 输出 1 段不超过 120 词的英文 prompt\n"
-        f"2. 描述主体场景、构图、光线、镜头、情绪、画面风格\n"
-        f"3. 不要出现中文、不要任何额外说明\n"
-    )
-    if cover_mode == "title":
-        user_p += f"4. 为画面保留清晰标题区，并在画面中呈现标题文字：{title.strip()}\n"
-        if subtitle.strip():
-            user_p += f"5. 在标题下呈现副标题：{subtitle.strip()[:120]}\n"
-    elif cover_mode == "blank":
-        user_p += "4. 画面不包含任何文字、字母、标识或水印，保留可后期添加标题的留白区域。\n"
-    text = call_llm(llm_settings, sys_p, user_p)
-    # 去掉可能的引号
-    text = text.strip().strip('"').strip("'").strip()
-    return text
+def story_cover_template(template):
+    aliases={'movie':'cinematic-poster','minimal':'minimal-clean','emotional':'portrait-emotion',
+             'impact':'typographic-impact','chinese':'guofeng-poster','legend':'legend-portrait'}
+    templates=story_workflow_reference()['coverTemplates']
+    selected=next((item for item in templates if item['id']==aliases.get(template,template)),templates[0])
+    if template.startswith('custom:'):
+        selected={**selected,'compositionRule':template[7:].strip()[:120] or selected['compositionRule']}
+    return selected
+
+
+def compose_story_cover_prompt(visual,title,subtitle,with_title,style,template,slogan=''):
+    # Faithful port of mv-image-gen-DC_52CK6.js Le / buildCoverImagePrompt.
+    title=title.strip();subs=[x.strip() for x in (subtitle if isinstance(subtitle,list) else subtitle.splitlines()) if x.strip()]
+    if with_title and title:
+        layout='，'+template['titleLayout'].replace('{{TITLE}}',title,1)
+        if subs and template.get('subtitleLayout'):
+            layout+='；'+template['subtitleLayout'].replace('{{SUBTITLE}}',''.join('「'+x+'」' for x in subs),1)
+        if slogan.strip():layout+='；底部金句标语的文字由用户指定，必须原样使用「'+slogan.strip()+'」（一字不改、不增减字，不要自行编写其他标语）'
+        layout+='；文字区域背景做轻微压暗或半透明渐变衬底处理保证文字浮出可读（专业海报的字底层次感）；所有文字必须与提供的文案完全一致，笔画完整、清晰可读、无错字、不变形、不增减字'
+    else:layout='，'+template['plainHint']
+    grayscale=bool(style and not style['allowColor'])
+    if grayscale:visual=story_grayscale_prompt(visual,story_workflow_reference())
+    result=style['prefix']+'，'+visual+layout+'，'+style['suffix'] if style else visual+layout
+    if grayscale and with_title and title:
+        result+='，唯一例外：主标题与副标题的**文字本身必须是醒目的暖金色彩色艺术字**——文字颜色不受画面黑白/单色风格限制，金字压在灰阶画面上形成点睛强对比；除文字外画面其余部分保持纯灰阶单色'
+    return result
+
+
+def build_cover_prompt(llm_settings, title, content, style, hooks, cover_mode="ai", subtitle="", template="movie", cover_direction=0):
+    selected=story_cover_template(template)
+    styles=story_workflow_reference()['styles'];style_name=style.split('·')[0].strip()
+    selected_style=next((s for s in styles if s['id']==style_name or s['name']==style_name),None)
+    direction_index=max(0, min(int(cover_direction or 0), len((selected.get('directions') or [{'hint':''}]))-1))
+    selected_direction=(selected.get('directions') or [{'hint':''}])[direction_index]
+    system=('你是短视频封面视觉策划。根据文案生成一条竖屏封面海报的画面描述，50-100字，'
+            '只描述画面内容（主体、构图、光线、氛围），不写画风词、不写任何文字内容。'+selected['compositionRule'])
+    visual=call_llm(llm_settings,system,'原文全文：\n'+content+'\n封面主标题：'+title+'\n方向：'+selected_direction['hint']).strip()
+    return compose_story_cover_prompt(visual,title,subtitle,cover_mode=='title',selected_style,selected)
 
 
 def save_cover_image(b64_or_url, mime="image/png"):
@@ -2700,7 +2982,7 @@ def call_llm(settings, system_prompt, user_prompt):
             url = base_url + "/v1/messages"
         payload = {
             "model": model,
-            "max_tokens": 8192,
+            "max_tokens": settings.get("max_tokens",8192),
             "system": system_prompt,
             "messages": [{"role": "user", "content": user_prompt}],
         }
@@ -2723,8 +3005,8 @@ def call_llm(settings, system_prompt, user_prompt):
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
-            "temperature": 0.2,
-            "max_tokens": 8192,
+            "temperature": settings.get("temperature",0.2),
+            "max_tokens": settings.get("max_tokens",8192),
         }
         headers = {
             "Authorization": "Bearer " + api_key,
@@ -2735,7 +3017,7 @@ def call_llm(settings, system_prompt, user_prompt):
         url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST"
     )
     try:
-        with urllib.request.urlopen(req, timeout=180) as resp:
+        with urllib.request.urlopen(req, timeout=settings.get("timeout",180)) as resp:
             body = resp.read().decode("utf-8")
     except urllib.error.HTTPError as e:
         raise RuntimeError(f"LLM 调用失败 HTTP {e.code}: {e.read().decode('utf-8', errors='replace')[:500]}")
@@ -2755,6 +3037,27 @@ def call_llm(settings, system_prompt, user_prompt):
 
 
 class Handler(BaseHTTPRequestHandler):
+    def _desktop_authorized(self):
+        token = os.environ.get("APP074_SESSION_TOKEN", "")
+        if not token:
+            return True
+        cookie = SimpleCookie()
+        try:
+            cookie.load(self.headers.get("Cookie", ""))
+        except Exception:
+            self._json(403, {"error": "桌面会话无效"})
+            return False
+        supplied = cookie.get("app074_session")
+        if not supplied or not secrets.compare_digest(supplied.value, token):
+            self._json(403, {"error": "请从桌面软件打开工作台"})
+            return False
+        origin = self.headers.get("Origin")
+        expected = f"http://127.0.0.1:{self.server.server_port}"
+        if origin and origin != expected:
+            self._json(403, {"error": "请求来源不允许"})
+            return False
+        return True
+
     def log_message(self, format, *args):
         # pythonw.exe 没有控制台，stderr 可能为 NULL，写入会抛异常 → handler 线程崩溃
         # 这里只写文件，不写 stderr
@@ -2765,6 +3068,13 @@ class Handler(BaseHTTPRequestHandler):
             pass
 
     def _json(self, status, payload):
+        request_stage = getattr(self, '_request_stage', None)
+        if request_stage:
+            task_id, step = request_stage
+            results=payload.get('results',[]) if isinstance(payload,dict) else []
+            failed = status >= 400 or any(result.get('ok') is False for result in results if isinstance(result,dict))
+            write_generation_progress(task_id,step,'failed' if failed else 'done')
+            self._request_stage=None
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self.send_header("content-type", "application/json; charset=utf-8")
@@ -2806,6 +3116,8 @@ class Handler(BaseHTTPRequestHandler):
             name = nm.group(1)
             if "filename=" in disp:
                 files[name] = content
+                filename_match = re.search(r'filename="([^\"]*)"', disp)
+                if filename_match: form[name + "_filename"] = Path(filename_match.group(1).replace("\\", "/")).name
             else:
                 form[name] = content.decode("utf-8", errors="replace")
         return form, files
@@ -2860,6 +3172,7 @@ class Handler(BaseHTTPRequestHandler):
         meta_path = materials_dir / f"{material_id}.json"
         meta_path.write_text(json.dumps({
             "id": material_id,
+            "name": str(form.get("file_filename") or out.name)[:200],
             "filename": out.name,
             "url": f"/api/material/{material_id}.{ext}",
             "size": len(content),
@@ -2870,7 +3183,9 @@ class Handler(BaseHTTPRequestHandler):
         self._json(200, {
             "ok": True,
             "material_id": material_id,
+            "path": str(out.resolve()),
             "url": f"/api/material/{material_id}.{ext}",
+            "name": str(form.get("file_filename") or out.name)[:200],
             "filename": out.name,
             "size": len(content),
             "mime": mime,
@@ -2933,11 +3248,118 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def do_DELETE(self):
+        if self.path.startswith("/api/task/"):
+            task_id = self.path[len("/api/task/"):].strip("/").split("/")[0]
+            if not re.fullmatch(r"[A-Za-z0-9_-]{1,100}", task_id):
+                self._json(400, {"error": "task_id 不合法"})
+                return
+            task_dir = _tasks_root() / task_id
+            removed = False
+            if task_dir.exists() and task_dir.is_dir():
+                try:
+                    shutil.rmtree(task_dir)
+                    removed = True
+                except OSError as e:
+                    self._json(500, {"error": f"删除任务目录失败：{e}"})
+                    return
+            for reg in ("tasks.json", "history.json"):
+                p = DATA_DIR / reg
+                if not p.exists():
+                    continue
+                try:
+                    arr = json.loads(p.read_text(encoding="utf-8"))
+                    if not isinstance(arr, list):
+                        continue
+                    new_arr = [item for item in arr
+                               if not (isinstance(item, dict) and item.get("task_id") == task_id)]
+                    if len(new_arr) != len(arr):
+                        p.write_text(json.dumps(new_arr, ensure_ascii=False, indent=2), encoding="utf-8")
+                except (OSError, ValueError):
+                    continue
+            self._json(200, {"ok": True, "task_id": task_id, "removed_dir": removed})
+            return
+        self.send_error(404)
+
     def do_GET(self):
+        parsed = urllib.parse.urlsplit(self.path)
+        token = os.environ.get("APP074_SESSION_TOKEN", "")
+        if token and parsed.path == "/desktop/bootstrap":
+            supplied = urllib.parse.parse_qs(parsed.query).get("token", [""])[0]
+            # Never put the session token in access logs.
+            self.path = "/desktop/bootstrap"
+            self.requestline = f"GET /desktop/bootstrap {self.request_version}"
+            if not secrets.compare_digest(supplied, token):
+                self._json(403, {"error": "桌面会话无效"})
+                return
+            self.send_response(302)
+            self.send_header("Set-Cookie", f"app074_session={token}; HttpOnly; SameSite=Strict; Path=/")
+            self.send_header("Location", "/index.html")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        if not self._desktop_authorized():
+            return
         # 浏览器续跑链接携带 ?resume=<task_id>；路由只按 URL path 匹配。
         self.path = urllib.parse.urlsplit(self.path).path
         if self.path == "/" or self.path == "/index.html":
             self._file(ROOT / "index.html", "text/html; charset=utf-8")
+            return
+        if self.path.split("?")[0] == "/voice-lab.html":
+            self._file(ROOT / "voice-lab.html", "text/html; charset=utf-8")
+            return
+        if self.path.split('?')[0]=='/image-lab.html':
+            self._file(ROOT/'image-lab.html','text/html; charset=utf-8');return
+        if self.path=='/api/image_lab':
+            import image_lab
+            self._json(200,{'items':image_lab.history(DATA_DIR)});return
+        if self.path.split('?')[0]=='/workbench.html':
+            self._file(ROOT/'workbench.html','text/html; charset=utf-8');return
+        if self.path.startswith('/api/workbench/'):
+            import workbench
+            parsed=urllib.parse.urlparse(self.path);params=urllib.parse.parse_qs(parsed.query)
+            source=params.get('source',['local'])[0];relative=params.get('path',[''])[0]
+            try:
+                if parsed.path=='/api/workbench/files':self._json(200,workbench.files(sys.modules[__name__],source))
+                elif parsed.path=='/api/workbench/file':self._json(200,workbench.read(sys.modules[__name__],source,relative))
+                elif parsed.path=='/api/workbench/session':
+                    workbench.root(sys.modules[__name__],source)
+                    path=DATA_DIR/('workbench-session-'+source+'.json')
+                    self._json(200,json.loads(path.read_text('utf-8')) if path.exists() else {'messages':[]})
+                else:self._json(404,{'error':'工作台接口不存在'})
+            except (ValueError,OSError) as error:self._json(400,{'error':str(error)})
+            return
+        if self.path == '/api/voice_lab':
+            folder=DATA_DIR/'voice-lab';folder.mkdir(parents=True,exist_ok=True)
+            items=[]
+            for path in sorted(folder.glob('*.json'),reverse=True):
+                try:
+                    item=json.loads(path.read_text('utf-8'))
+                    if path.with_suffix('.mp3').is_file():items.append(item)
+                except (OSError,ValueError):pass
+            self._json(200,{'items':items,'folder':str(folder)})
+            return
+        if self.path.startswith('/api/voice_lab/file/'):
+            name=urllib.parse.unquote(self.path[len('/api/voice_lab/file/'):].split('?')[0])
+            if Path(name).name!=name or not name.lower().endswith('.mp3'):
+                self._json(400,{'error':'无效音频文件名'})
+                return
+            self._file(DATA_DIR/'voice-lab'/name,'audio/mpeg')
+            return
+        if self.path.split("?")[0] == "/prompt-editor.html":
+            self._file(ROOT / "prompt-editor.html", "text/html; charset=utf-8")
+            return
+        if self.path.split("?")[0] == "/template-editor.html":
+            self._file(ROOT / "template-editor.html", "text/html; charset=utf-8")
+            return
+        if self.path == "/library.html":
+            self._file(ROOT / "library.html", "text/html; charset=utf-8")
+            return
+        if self.path in ("/api/templates/drafts", "/api/templates/prompts"):
+            try:
+                self._json(200, {"templates": TemplateStore(DATA_DIR, ROOT).list(self.path.rsplit("/", 1)[1])})
+            except (ValueError, OSError) as error:
+                self._json(400, {"error": str(error)})
             return
         if self.path == "/settings.html":
             self._file(ROOT / "settings.html", "text/html; charset=utf-8")
@@ -3123,6 +3545,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_error(404)
 
     def do_POST(self):
+        if not self._desktop_authorized():
+            return
         content_type = self.headers.get("content-type", "")
         if content_type.startswith("multipart/form-data"):
             try:
@@ -3168,6 +3592,37 @@ class Handler(BaseHTTPRequestHandler):
             return
         if not isinstance(data, dict):
             self._json(400, {"error": "请求体必须是 JSON 对象"})
+            return
+        if self.path == "/api/template_background":
+            try:
+                image_path = Path(str(data.get("path") or ""))
+                if image_path.suffix.lower() not in (".png", ".jpg", ".jpeg", ".webp", ".gif") or not image_path.is_file():
+                    raise ValueError("请选择已有图片文件")
+                if image_path.stat().st_size > 20 * 1024 * 1024:
+                    raise ValueError("图片文件超过 20MB 上限")
+                content = image_path.read_bytes()
+                mime = "image/png" if content.startswith(b"\x89PNG\r\n\x1a\n") else "image/jpeg" if content.startswith(b"\xff\xd8") else "image/webp" if content[:4] == b"RIFF" and content[8:12] == b"WEBP" else "image/gif" if content[:6] in (b"GIF87a", b"GIF89a") else None
+                if not mime: raise ValueError("文件不是受支持的图片")
+                self._json(200, {"data_url": "data:" + mime + ";base64," + base64.b64encode(content).decode("ascii")})
+            except (ValueError, OSError) as error:
+                self._json(400, {"error": str(error)})
+            return
+        if self.path.startswith("/api/templates/"):
+            try:
+                parts = self.path.strip("/").split("/")
+                kind = parts[2]
+                if kind not in ("drafts", "prompts") or len(parts) not in (3, 4): raise ValueError("无效模板地址")
+                store = TemplateStore(DATA_DIR, ROOT)
+                identifier = parts[3] if len(parts) == 4 else None
+                if data.get("action") == "delete":
+                    if not identifier: raise ValueError("缺少模板 ID")
+                    store.delete(kind, identifier)
+                    self._json(200, {"ok": True})
+                else:
+                    envelope = data.get("template", data)
+                    self._json(200, {"template": store.save(kind, envelope, identifier)})
+            except (ValueError, OSError, TypeError) as error:
+                self._json(400, {"error": str(error)})
             return
         requested_task_id = data.get("task_id")
         if requested_task_id not in (None, "") and not re.fullmatch(r"[A-Za-z0-9_-]{1,100}", str(requested_task_id)):
@@ -3450,8 +3905,10 @@ class Handler(BaseHTTPRequestHandler):
                     fname = f"{mid}.png"
                 img_path = materials_dir / fname
                 try:
-                    img_path.unlink(missing_ok=True)
-                    meta_path.unlink(missing_ok=True)
+                    archive = materials_dir / ".trash" / (mid + "-" + uuid.uuid4().hex)
+                    archive.mkdir(parents=True, exist_ok=True)
+                    if img_path.exists(): shutil.move(str(img_path), str(archive / img_path.name))
+                    shutil.move(str(meta_path), str(archive / meta_path.name))
                     deleted.append(fname)
                 except OSError as e:
                     self._json(500, {"error": f"删除失败: {e}"})
@@ -3560,7 +4017,8 @@ class Handler(BaseHTTPRequestHandler):
                 t0 = time.time()
                 prompt = prompt_override or build_cover_prompt(
                     llm, title, content, style, hooks, data.get("cover_mode") or "ai",
-                    str(data.get("subtitle") or ""), str(data.get("cover_template") or "movie"))
+                    str(data.get("subtitle") or ""), str(data.get("cover_template") or "movie"),
+                    int(data.get("cover_direction") or 0))
                 result = image_dispatcher(image_cfg, prompt, ratio=ratio, resolution=resolution)
                 if "b64" in result:
                     cover_url = save_cover_image(result["b64"], result.get("mime", "image/png"))
@@ -3589,6 +4047,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/api/rewrite":
             try:
                 settings = resolve_active_llm_settings(data.get("profile_id"))
+                settings["_prompt_template"] = resolve_prompt_template(data)
                 if not settings.get("api_key"):
                     self._json(400, {"error": "未配置 API Key，请先到设置页填写"})
                     return
@@ -3625,6 +4084,7 @@ class Handler(BaseHTTPRequestHandler):
                     self._json(400, {"error": "line 必须是 story 或 user"})
                     return
                 t0 = time.time()
+                system_prompt = settings["_prompt_template"].get("step1RewriteSystemPrompt") or system_prompt
                 text = rewrite_with_attempts(settings, system_prompt, user_prompt,
                                              reference, line, data.get("rounds") or "std")
                 elapsed = time.time() - t0
@@ -3635,6 +4095,68 @@ class Handler(BaseHTTPRequestHandler):
             except RuntimeError as e:
                 self._json(502, {"error": str(e)})
             return
+
+        if self.path == "/api/prompt_assistant":
+            try:
+                settings=resolve_active_llm_settings(data.get('profile_id'))
+                if not settings.get('api_key'):
+                    raise ValueError('未配置 LLM API Key，请先到系统设置填写')
+                self._json(200,generate_template(ROOT,data,settings,call_llm))
+            except (ValueError,KeyError,TypeError) as error:
+                self._json(400,{'error':str(error)})
+            except RuntimeError as error:
+                self._json(502,{'error':str(error)})
+            return
+
+        if self.path == '/api/voice_lab':
+            try:self._json(200,synthesize_voice_lab(data))
+            except (ValueError,TypeError) as error:self._json(400,{'error':str(error)})
+            except (RuntimeError,OSError) as error:self._json(502,{'error':str(error)})
+            return
+        if self.path=='/api/image_lab':
+            import image_lab
+            try:self._json(200,image_lab.generate(sys.modules[__name__],data))
+            except ValueError as error:self._json(400,{'error':str(error)})
+            except (RuntimeError,OSError) as error:self._json(502,{'error':str(error)})
+            return
+        if self.path.startswith('/api/workbench/'):
+            import workbench
+            backend=sys.modules[__name__];source=data.get('source') or 'local'
+            try:
+                if self.path=='/api/workbench/save':
+                    self._json(200,workbench.save(backend,source,data.get('path'),data.get('text'),data.get('version')))
+                elif self.path=='/api/workbench/chat':self._json(200,workbench.chat(backend,data))
+                elif self.path=='/api/workbench/open':
+                    folder=workbench.root(backend,source);folder.mkdir(parents=True,exist_ok=True)
+                    if sys.platform=='win32':os.startfile(folder)
+                    else:subprocess.Popen(['xdg-open',str(folder)])
+                    self._json(200,{'ok':True})
+                elif self.path=='/api/workbench/session':
+                    workbench.root(backend,source);messages=data.get('messages') or []
+                    if not isinstance(messages,list) or len(messages)>64 or len(json.dumps(messages))>2000000:
+                        raise ValueError('会话内容过大')
+                    write_json(DATA_DIR/('workbench-session-'+source+'.json'),{'messages':messages})
+                    self._json(200,{'ok':True})
+                else:self._json(404,{'error':'工作台接口不存在'})
+            except ValueError as error:self._json(400,{'error':str(error)})
+            except (RuntimeError,OSError) as error:self._json(502,{'error':str(error)})
+            return
+        if self.path == '/api/voice_lab/open':
+            try:
+                folder=DATA_DIR/'voice-lab';folder.mkdir(parents=True,exist_ok=True)
+                if sys.platform=='win32':os.startfile(str(folder))
+                else:subprocess.Popen(['xdg-open',str(folder)])
+                self._json(200,{'ok':True})
+            except OSError as error:self._json(400,{'error':str(error)})
+            return
+
+        media_stage = {'/api/step5_tts':'5','/api/step4_generate_images':'4',
+                       '/api/step4_from_materials':'4','/api/step4_web_search':'4',
+                       '/api/step4_intro_video':'4','/api/step6_jianying_draft':'6',
+                       '/api/cover':'6','/api/cover_upload':'6'}.get(self.path)
+        if media_stage and requested_task_id:
+            self._request_stage=(requested_task_id,media_stage)
+            write_generation_progress(requested_task_id,media_stage,'running')
 
         if self.path == "/api/generate":
             # STORY 图文全链路：Step 0 预审 + Step 1 改写 + Step 1 元 + Step 2 分镜 + Step 3 出图 prompt
@@ -3656,6 +4178,7 @@ class Handler(BaseHTTPRequestHandler):
                     write_generation_progress(progress_task_id, step, status, payload)
             try:
                 settings = resolve_active_llm_settings(data.get("profile_id"))
+                settings["_prompt_template"] = resolve_prompt_template(data)
                 if not settings.get("api_key"):
                     self._json(400, {"error": "未配置 LLM API Key，请先到设置页填写"})
                     return
@@ -3723,6 +4246,9 @@ class Handler(BaseHTTPRequestHandler):
                     else:
                         self._json(400, {"error": "line 必须是 story 或 user"})
                         return
+                    sys_p = settings["_prompt_template"].get("step1RewriteSystemPrompt") or sys_p
+                    if data.get("script_format") == "podcast":
+                        user_p = story_workflow_reference()["podcastRewriteSupplement"] + user_p
                     out["steps"]["1"] = {"text": rewrite_with_attempts(
                         settings, sys_p, user_p, base_text, line, data.get("rounds") or "std")}
                     advance("1", "done", out["steps"]["1"]["text"])
@@ -3765,7 +4291,9 @@ class Handler(BaseHTTPRequestHandler):
                     script_format = (data.get("script_format") or "narrator").strip()
                     out["steps"]["2"] = step2_split(settings, rewritten,
                                                    target_shots=target_shots, target_words=target_words,
-                                                   script_format=script_format)
+                                                   target_words_min=targets.get('words_min'),
+                                                   script_format=script_format,
+                                                   mechanical=data.get("process_mode") == "live")
                     advance("2", "done", out["steps"]["2"].get("shots") or [])
                 else:
                     out["steps"]["2"] = {"shots": data.get("shots") or [], "notes": "前端传入"}
@@ -3780,7 +4308,21 @@ class Handler(BaseHTTPRequestHandler):
                     # 角色档案（来自 Step 1 meta.characters[0]）注入 Step 3
                     chars = meta_for_ctx.get("characters") or []
                     character_card = chars[0] if isinstance(chars, list) and chars and isinstance(chars[0], dict) else None
-                    out["steps"]["3"] = step3_image_prompts(settings, shots, track, style_label, story_ctx, character_card)
+                    template = settings.get('_prompt_template') or {}
+                    track_config = story_workflow_reference()['tracks'].get(template.get('baseTrack') or track,
+                                           story_workflow_reference()['tracks']['character-story'])
+                    if template.get('needsCharacterCard', track_config.get('needsCharacterCard', True)):
+                        character_card = character_card or extract_character_card(settings, rewritten)
+                    else:
+                        character_card = None
+                    if character_card and data.get("task_id"):
+                        card_dir = _tasks_root() / (data.get('task_id') or progress_task_id or 'pending-character-card')
+                        card_dir.mkdir(parents=True, exist_ok=True)
+                        (card_dir/'03-character-card.json').write_text(json.dumps(character_card,ensure_ascii=False,indent=2),'utf-8')
+                    story_ctx = rewritten
+                    out["steps"]["3"] = step3_image_prompts(settings, shots, track, style_label, story_ctx, character_card,
+                        (template.get("referenceKind") or track_config.get("referenceKind") or "character")
+                        if data.get("task_id") and any((_tasks_root() / data["task_id"]).glob("product-reference.*")) else None)
                     advance("3", "done", out["steps"]["3"])
                 else:
                     out["steps"]["3"] = data.get("image_prompts") or []
@@ -3842,6 +4384,30 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/api/tasks":
             # 兼容旧：返回 history.json 内容
             self._json(200, load_tasks())
+            return
+
+        if self.path.startswith("/api/task/") and self.path.endswith("/rerun"):
+            try:
+                task_id = self.path[len("/api/task/"):-len("/rerun")].strip("/")
+                self._json(200, prepare_task_rerun(task_id, data.get("from_step")))
+            except (ValueError, OSError) as e:
+                self._json(400, {"error":str(e)})
+            return
+
+        if self.path.startswith("/api/task/") and self.path.endswith("/config"):
+            # 保存客户端完整 pipeline 配置（供重跑时复用）
+            task_id = self.path[len("/api/task/"):-len("/config")].strip("/")
+            if not re.fullmatch(r"[A-Za-z0-9_-]{1,100}", task_id):
+                self._json(400, {"error": "task_id 不合法"})
+                return
+            try:
+                task_dir = _tasks_root() / task_id
+                task_dir.mkdir(parents=True, exist_ok=True)
+                (task_dir / "client_config.json").write_text(
+                    json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+                self._json(200, {"ok": True, "task_id": task_id})
+            except (OSError, ValueError, TypeError) as e:
+                self._json(400, {"error": f"配置保存失败: {e}"})
             return
 
         if self.path == "/api/task/fork":
@@ -3914,7 +4480,7 @@ class Handler(BaseHTTPRequestHandler):
                     for attempt in ((1, 2) if retry else (1,)):
                         try:
                             t0 = time.time()
-                            if reference_data_url:
+                            if reference_data_url and p.get("use_reference", True):
                                 r = image_dispatcher(img_cfg, desc, ratio=ratio, resolution=resolution,
                                     reference_data_url=reference_data_url)
                             else:
@@ -4619,280 +5185,84 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(400, {"error": str(e)})
             return
 
-        if self.path == "/api/step6_jianying_draft":
+        if self.path == "/api/step6_jianying_draft" or (self.path.startswith("/api/task/") and self.path.endswith("/repack")):
             try:
-                s = load_settings()
-                jy = s.get("jianying") or {}
-                if not jy.get("draft_path"):
-                    self._json(400, {"error": "未配置剪映草稿目录（去设置页填「剪映 → 草稿目录」）"})
-                    return
-                shots = data.get("shots") or []
-                images = data.get("images") or []
-                videos = data.get("videos") or []
-                segments = data.get("segments") or []
-                podcast_path = (data.get("podcast_path") or "").strip()
-                title = (data.get("title") or "未命名任务").strip()
-                task_id = (data.get("task_id") or f"app074_{int(time.time())}").strip()
-                ratio = (data.get("ratio") or "9:16").strip()
-                template_id = (data.get("template_id") or "default-portrait-9-16").strip()
-                draft_templates = {
-                    "default-portrait-9-16": {"canvas": (1080, 1920), "image_ratio": "9:16", "image_top": 0.0, "image_height": 1.0, "background": "#000000"},
-                    "builtin-portrait-4-3": {"canvas": (1080, 1920), "image_ratio": "4:3", "image_top": 0.2890625, "image_height": 0.421875, "background": "#000000"},
-                    "builtin-landscape-16-9": {"canvas": (1920, 1080), "image_ratio": "16:9", "image_top": 0.0, "image_height": 1.0, "background": "#000000"},
-                    "builtin-knowledge-card": {"canvas": (1080, 1920), "image_ratio": "1:1", "image_top": 0.24, "image_height": 0.5, "background": "#0a1430"},
-                }
-                if template_id not in draft_templates:
-                    self._json(400, {"error": "未知草稿模板"})
-                    return
-                template = draft_templates[template_id]
-                bgm_path = (data.get("bgm_path") or jy.get("bgm_path") or "").strip()
-                bgm_volume = float(data.get("bgm_volume") or jy.get("bgm_volume") or 0.3)
-                bgm_fade_sec = float(data.get("bgm_fade_sec") or jy.get("bgm_fade_sec") or 1.5)
-                cover_title = data.get("cover_title") or {}
-                if not shots:
-                    self._json(400, {"error": "shots 不能为空"})
-                    return
-                # 校验草稿根目录
-                draft_root = Path(jy["draft_path"])
-                if not draft_root.exists():
-                    self._json(400, {"error": f"剪映草稿目录不存在：{draft_root}"})
-                    return
-                # 把 idx 序对齐
-                seg_by_idx = {seg.get("idx"): seg for seg in segments if seg.get("idx") is not None}
-                img_by_idx = {img.get("idx"): img for img in images if img.get("idx") is not None}
-                vid_by_idx = {vid.get("idx"): vid for vid in videos if vid.get("idx") is not None}
-                # 构建时间轴（参考 U_ 中 x payload 的 assignments/lyrics 结构）
-                tracks = []
-                # 视频轨：每个分镜一张图 + 时长（按 Step 5 配音时长，无则按字数 * 0.18 + 1s）
-                video_segments = []
-                cur_t = 0.0
-                total_dur = 0.0
-                for i, sh in enumerate(shots):
-                    idx = sh.get("idx", i + 1)
-                    img = img_by_idx.get(idx) or {}
-                    vid = vid_by_idx.get(idx) or {}
-                    seg = seg_by_idx.get(idx) or {}
-                    dur = float(seg.get("duration") or 0)
-                    if dur <= 0:
-                        # 兜底：按字数估算（中文 ~3.3 字/秒）
-                        chars = len((sh.get("text") or "").strip())
-                        dur = max(2.0, round(chars / 3.3, 2))
-                    if vid.get("video_path"):
-                        material_path = vid["video_path"]
-                        material_url = vid.get("video_url") or ""
-                        material_id = f"video_{idx}"
-                        seg_type = "video"
-                    else:
-                        img_url = img.get("url") or ""
-                        local_url = img.get("task_local") or img_url
-                        material_id = f"img_{idx}"
-                        seg_type = "video"
-                        if local_url.startswith("/covers/"):
-                            material_path = str(DATA_DIR / local_url.lstrip("/"))
-                        elif local_url.startswith(f"/api/task_image/{task_id}/"):
-                            material_path = str(_tasks_root() / task_id / "covers" / Path(local_url).name)
-                        else:
-                            material_path = ""
-                        material_url = img_url
-                    video_segments.append({
-                        "id": f"video_seg_{idx}",
-                        "type": seg_type,
-                        "material_id": material_id,
-                        "material_path": material_path,
-                        "material_url": material_url,
-                        "target_timerange": {
-                            "start": round(cur_t * 1_000_000),
-                            "duration": round(dur * 1_000_000),
-                        },
-                        "speed": 1.0,
-                        "volume": 0.0,
-                        "visible": True,
-                        "image_layout": {"top": template["image_top"], "height": template["image_height"], "fit": "cover"},
-                    })
-                    cur_t += dur
-                    total_dur += dur
-                tracks.append({
-                    "id": "video_track_main",
-                    "type": "video",
-                    "attribute": 0,
-                    "flag": 0,
-                    "segments": video_segments,
-                })
-                # 音频轨：每段配音 + 字幕
-                audio_segments = []
-                subtitle_segments = []
-                cur_t = 0.0
-                for i, sh in enumerate(shots):
-                    idx = sh.get("idx", i + 1)
-                    seg = seg_by_idx.get(idx) or {}
-                    dur = float(seg.get("duration") or 0)
-                    if dur <= 0:
-                        chars = len((sh.get("text") or "").strip())
-                        dur = max(2.0, round(chars / 3.3, 2))
-                    audio_path = seg.get("path") or ""
-                    audio_url = seg.get("url") or ""
-                    audio_segments.append({
-                        "id": f"audio_seg_{idx}",
-                        "type": "audio",
-                        "material_id": f"audio_{idx}",
-                        "material_path": audio_path,
-                        "material_url": audio_url,
-                        "target_timerange": {
-                            "start": round(cur_t * 1_000_000),
-                            "duration": round(dur * 1_000_000),
-                        },
-                        "speed": 1.0,
-                        "volume": 1.0,
-                        "visible": True,
-                    })
-                    text = (sh.get("text") or "").strip()
-                    speaker = str(sh.get("speaker") or "").strip().upper()
-                    if speaker in ("A", "B") and text and not text.startswith(f"{speaker}:"):
-                        text = f"{speaker}：{text}"
-                    if text:
-                        subtitle_segments.append({
-                            "id": f"subtitle_seg_{idx}",
-                            "type": "text",
-                            "material_id": f"subtitle_{idx}",
-                            "content": text,
-                            "target_timerange": {
-                                "start": round(cur_t * 1_000_000),
-                                "duration": round(dur * 1_000_000),
-                            },
-                            # 字幕样式（参考 STORY 默认字幕风格：白字 + 黑描边 + 阴影，底部居中）
-                            "font_size": 18,
-                            "font_color": "#FFFFFF",
-                            "stroke_color": "#000000",
-                            "stroke_width": 2,
-                            "shadow_enabled": True,
-                            "shadow_color": "#000000",
-                            "shadow_offset": {"x": 0, "y": 2},
-                            "alignment": 1,  # 居中
-                            "position": {"x": 0.5, "y": 0.88},  # 偏下，不挡主体
-                        })
-                    cur_t += dur
-                tracks.append({
-                    "id": "audio_track_main",
-                    "type": "audio",
-                    "attribute": 0,
-                    "flag": 0,
-                    "segments": audio_segments,
-                })
-                tracks.append({
-                    "id": "subtitle_track_main",
-                    "type": "text",
-                    "attribute": 0,
-                    "flag": 0,
-                    "segments": subtitle_segments,
-                })
-                # BGM 轨（全局铺底 30% 音量 + 头尾 1.5s 淡入淡出）
-                if bgm_path and Path(bgm_path).exists():
-                    bgm_duration_us = round(max(total_dur, 1.0) * 1_000_000)
-                    fade_us = int(bgm_fade_sec * 1_000_000)
-                    tracks.append({
-                        "id": "bgm_track",
-                        "type": "audio",
-                        "attribute": 0,
-                        "flag": 0,
-                        "segments": [{
-                            "id": "bgm_seg",
-                            "type": "audio",
-                            "material_id": "bgm",
-                            "material_path": bgm_path,
-                            "target_timerange": {
-                                "start": 0,
-                                "duration": bgm_duration_us,
-                            },
-                            "speed": 1.0,
-                            "volume": bgm_volume,
-                            # 音量关键帧：开头 0 → bgm_volume（淡入），结尾 bgm_volume → 0（淡出）
-                            "keyframes": [
-                                {"type": "volume", "time": 0, "value": 0.0},
-                                {"type": "volume", "time": min(fade_us, bgm_duration_us), "value": bgm_volume},
-                                {"type": "volume", "time": max(0, bgm_duration_us - fade_us), "value": bgm_volume},
-                                {"type": "volume", "time": bgm_duration_us, "value": 0.0},
-                            ],
-                            "visible": True,
-                        }],
-                    })
-                # draft_content.json（剪映私有格式）
-                draft_content = {
-                    "id": task_id,
-                    "title": title,
-                    "version": 360000,  # 剪映 4.x 兼容版本号
-                    "cover": cover_title.get("cover_path") or "",
-                    "fps": 30.0,
-                    "duration": round(total_dur * 1_000_000),
-                    "ratio": ratio,
-                    "width": template["canvas"][0],
-                    "height": template["canvas"][1],
-                    "background_color": template["background"],
-                    "template_id": template_id,
-                    "tracks": tracks,
-                    "extra": {
-                        "app074_version": "1.0.0",
-                        "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
-                        "source": "app074",
-                        "podcast_path": podcast_path,
-                    },
-                }
-                # draft_meta_info.json（剪映元信息）
-                draft_meta = {
-                    "draft_id": task_id,
-                    "draft_name": title,
-                    "draft_fold_path": "",
-                    "draft_materials": [],
-                    "draft_cover": cover_title.get("cover_path") or "",
-                    "draft_removable_storage_device": "",
-                    "tm_draft_cloud_completed": "",
-                    "draft_root_path": "",
-                    "draft_segment_extra_info": [],
-                    "draft_materials_not_support": [],
-                }
-                # 落盘到剪映草稿目录/<task_id>/
-                proj_dir = draft_root / task_id
-                proj_dir.mkdir(parents=True, exist_ok=True)
-                (proj_dir / "draft_content.json").write_text(
-                    json.dumps(draft_content, ensure_ascii=False, indent=2),
-                    encoding="utf-8",
-                )
-                (proj_dir / "draft_meta_info.json").write_text(
-                    json.dumps(draft_meta, ensure_ascii=False, indent=2),
-                    encoding="utf-8",
-                )
-                # 同时保存产物元数据到 074 data
-                task_meta = {
-                    "task_id": task_id,
-                    "title": title,
-                    "shot_count": len(shots),
-                    "image_count": sum(1 for img in images if img.get("ok")),
-                    "segment_count": len([s for s in segments if s.get("ok") is not False]),
-                    "total_duration_sec": round(total_dur, 2),
-                    "draft_dir": str(proj_dir),
-                    "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
-                }
-                (DATA_DIR / "tasks" / task_id).mkdir(parents=True, exist_ok=True)
-                (DATA_DIR / "tasks" / task_id / "06-draft-meta.json").write_text(
-                    json.dumps(task_meta, ensure_ascii=False, indent=2),
-                    encoding="utf-8",
-                )
-                self._json(200, {
-                    "ok": True,
-                    "task_id": task_id,
-                    "draft_dir": str(proj_dir),
-                    "draft_content_path": str(proj_dir / "draft_content.json"),
-                    "draft_meta_info_path": str(proj_dir / "draft_meta_info.json"),
-                    "shot_count": len(shots),
-                    "image_count": sum(1 for img in images if img.get("ok")),
-                    "segment_count": len([s for s in segments if s.get("ok") is not False]),
-                    "total_duration_sec": round(total_dur, 2),
-                    "tracks": [{"id": t["id"], "type": t["type"], "segment_count": len(t["segments"])} for t in tracks],
-                    "note": "完整 U_ 函数（draft_content + draft_meta_info + 时间轴 + 字幕 + BGM）；可手动导入剪映查看",
-                })
-            except ValueError as e:
+                task_id = data.get("task_id") if self.path == "/api/step6_jianying_draft" else self.path.split("/")[3]
+                if not task_id or not re.fullmatch(r"[\w-]+", task_id): raise ValueError("无效任务 ID")
+                task_dir = _tasks_root() / task_id
+                jy = load_settings().get("jianying") or {}
+                options = dict(data)
+                if self.path.endswith("/repack"):
+                    previous = json.loads((task_dir / "06-draft-meta.json").read_text("utf-8"))
+                    options = {**previous, **options}
+                template = TemplateStore(DATA_DIR, ROOT).resolve("drafts",
+                    options.get("template_id", "default-portrait-9-16"), options.get("template_snapshot"))
+                options["template_snapshot"] = template
+                options.setdefault("bgm_path", jy.get("bgm_path"))
+                if not jy.get("draft_path"): raise ValueError("请在设置中配置剪映草稿目录")
+                self._json(200, export_jianying_draft(task_dir, jy["draft_path"], ROOT, options))
+            except (ValueError, OSError) as e:
                 self._json(400, {"error": str(e)})
-            except RuntimeError as e:
+            except (RuntimeError, subprocess.TimeoutExpired) as e:
                 self._json(502, {"error": str(e)})
+            return
+
+        if self.path.startswith("/api/task/") and self.path.endswith("/captions"):
+            try:
+                task_id = self.path.split("/")[3]
+                if not re.fullmatch(r"[\w-]+", task_id): raise ValueError("无效任务 ID")
+                task_dir = _tasks_root() / task_id
+                shots = json.loads((task_dir / "03-shots.json").read_text("utf-8"))
+                segments = json.loads((task_dir / "05-tts-segments.json").read_text("utf-8"))
+                self._json(200, save_captions(task_dir, shots, segments, data.get("items", [])))
+            except (ValueError, OSError, TypeError, KeyError) as e:
+                self._json(400, {"error": str(e)})
+            return
+
+        if self.path == "/api/open_jianying":
+            payload = data
+            draft_dir = (payload.get("draft_dir") or "").strip() if payload else ""
+            if not draft_dir:
+                tid = (payload.get("task_id") or "").strip() if payload else ""
+                if tid:
+                    dm_path = _tasks_root() / tid / "06-draft-meta.json"
+                    if dm_path.exists():
+                        try:
+                            dm = json.loads(dm_path.read_text(encoding="utf-8"))
+                            draft_dir = dm.get("draft_dir") or ""
+                        except (OSError, ValueError):
+                            pass
+            if not draft_dir:
+                self._json(400, {"error": "未提供 draft_dir 或 task_id"})
+                return
+            draft_path = Path(draft_dir)
+            if not draft_path.exists():
+                self._json(400, {"error": f"草稿目录不存在：{draft_path}"})
+                return
+
+            if sys.platform == "win32":
+                # Story Task-YvCGC7m9.js:8395-8420: try the sibling application, then reveal folder.
+                configured = (load_settings().get("jianying") or {}).get("draft_path", "")
+                executable = re.sub(r"JianyingPro Drafts\s*$",
+                                    lambda match: r"JianyingPro\JianyingPro.exe", configured)
+                if executable and executable != configured:
+                    try:
+                        subprocess.Popen([executable])
+                        self._json(200, {"ok":True,"method":"launch_program","draft_dir":str(draft_path)})
+                        return
+                    except OSError:
+                        pass
+                try:
+                    os.startfile(str(draft_path))
+                    self._json(200, {"ok": True, "method": "startfile", "draft_dir": str(draft_path)})
+                except OSError as e:
+                    self._json(500, {"error": f"打开草稿目录失败：{e}"})
+                return
+            try:
+                subprocess.Popen(["xdg-open", str(draft_path)])
+                self._json(200, {"ok": True, "method": "xdg-open", "draft_dir": str(draft_path)})
+            except OSError as e:
+                self._json(500, {"error": f"打开失败：{e}"})
             return
 
         self.send_error(404)
