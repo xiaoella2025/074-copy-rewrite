@@ -232,7 +232,30 @@ class FullRegressionE2E(unittest.TestCase):
 
     # ----- tests -----
 
-    def test_full_pipeline_narrator_with_materials_intro_and_cover(self):
+    @patch("jianying_export.register_draft", return_value="isolated-test-index")
+    def test_custom_draft_snapshot_reaches_native_generator(self, register):
+        from template_store import TemplateStore
+        store = TemplateStore(server.DATA_DIR, server.ROOT)
+        template = store.list('drafts')[0]
+        template['name'] = '离线自定义模板'
+        template['config']['canvas'].update(width=720, height=1280)
+        template['config']['caption'].update(fontSize=18, maxCharsPerLine=8)
+        template = store.save('drafts', template)
+        result = self._run_pipeline_common('t_custom_template')
+        status, draft = _post_json(self.port, '/api/step6_jianying_draft', {
+            'task_id': result['task_id'], 'template_id': template['id'], 'template_snapshot': template,
+            'shots':result['shots'], 'segments':result['tts']['results']})
+        self.assertEqual(status, 200, draft)
+        content = json.loads((Path(draft['draft_dir'])/'draft_info.json').read_text('utf-8'))
+        self.assertEqual(content['canvas_config']['width'], 720)
+        self.assertEqual(content['canvas_config']['height'], 1280)
+        self.assertEqual(draft['template_snapshot']['config']['caption']['maxCharsPerLine'], 8)
+        captions = json.loads((server.DATA_DIR/'tasks'/result['task_id']/'05-captions.json').read_text('utf-8'))
+        self.assertEqual(captions['max_chars'], 8)
+        self.assertTrue(all(len(line) <= 8 for x in captions['items'] for line in x['lines']))
+
+    @patch("jianying_export.register_draft", return_value="isolated-test-index")
+    def test_full_pipeline_narrator_with_materials_intro_and_cover(self, register):
         """完整链路：素材库 1 个素材 + AI 兜底 1 个 + 动态分镜 3 + 配音 + 草稿 + 封面上传。"""
         # 1) 上传 1 张素材
         png = _synth_png_bytes("blue", height=24)
@@ -268,17 +291,14 @@ class FullRegressionE2E(unittest.TestCase):
         # 5) 草稿目录里应有 draft_content.json + 含 video track
         draft_dir = Path(result["draft"]["draft_dir"])
         self.assertTrue(draft_dir.exists())
-        draft_content = json.loads((draft_dir / "draft_content.json").read_text(encoding="utf-8"))
+        draft_content = json.loads((draft_dir / "draft_info.json").read_text(encoding="utf-8"))
         video_tracks = [t for t in draft_content["tracks"] if t["type"] == "video"]
         self.assertGreater(len(video_tracks), 0)
-        # 视频轨应包含 video material
-        has_video = any(s.get("material_id", "").startswith("video_")
-                        for t in video_tracks for s in t["segments"])
-        self.assertTrue(has_video, "应优先使用动态分镜视频")
-        # 草稿里没有 podcast mp4 引用（旁白模式）
-        self.assertEqual(draft_content["extra"].get("podcast_path", ""), "")
+        self.assertTrue(any(x.get("path", "").endswith(".mp4") for x in draft_content["materials"]["videos"]))
+        self.assertTrue(all(Path(x["path"]).is_file() for x in draft_content["materials"]["audios"]))
 
-    def test_full_pipeline_podcast_end_to_end(self):
+    @patch("jianying_export.register_draft", return_value="isolated-test-index")
+    def test_full_pipeline_podcast_end_to_end(self, register):
         """双人播客全链路：火山双 speaker → podcast.mp3 → 字幕加 A:/B: 前缀。"""
         task_id = f"t_regr_pod_{uuid.uuid4().hex[:8]}"
         result = self._run_pipeline_common(task_id, script_format="podcast", shots_count=4)
@@ -301,13 +321,12 @@ class FullRegressionE2E(unittest.TestCase):
         self.assertEqual([r["speaker"] for r in meta["rounds"]], ["A", "B", "A", "B"])
         # 4) 草稿字幕加 A:/B: 前缀
         draft_dir = Path(result["draft"]["draft_dir"])
-        draft = json.loads((draft_dir / "draft_content.json").read_text(encoding="utf-8"))
+        draft = json.loads((draft_dir / "draft_info.json").read_text(encoding="utf-8"))
         sub_tracks = [t for t in draft["tracks"] if t["type"] == "text"]
-        sub_texts = [s["content"] for t in sub_tracks for s in t["segments"]]
-        self.assertIn("A：第1镜测试文本", sub_texts)
-        self.assertIn("B：第2镜测试文本", sub_texts)
-        # 5) extra.podcast_path 写入
-        self.assertEqual(draft["extra"].get("podcast_path", ""), result["podcast_path"])
+        sub_texts = [json.loads(m["content"])["text"] for m in draft["materials"]["texts"]]
+        self.assertTrue(any(x.startswith("A：") for x in sub_texts))
+        self.assertTrue(any(x.startswith("B：") for x in sub_texts))
+        self.assertTrue(all(Path(x["path"]).is_file() for x in draft["materials"]["audios"]))
 
 
 if __name__ == "__main__":

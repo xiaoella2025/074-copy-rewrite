@@ -7,6 +7,7 @@ import tempfile
 import threading
 import time
 import unittest
+from unittest.mock import patch
 import uuid
 from http.client import HTTPConnection
 from pathlib import Path
@@ -160,7 +161,8 @@ class Step4IntroVideoEndpointTests(unittest.TestCase):
         ok = [r for r in body["results"] if r.get("ok")]
         self.assertEqual([r["idx"] for r in ok], [2, 4])
 
-    def test_step6_prefers_videos_over_images(self):
+    @patch("jianying_export.register_draft", return_value="isolated-test-index")
+    def test_step6_prefers_videos_over_images(self, register):
         """直接构造 payload 验证 step6 优先用 videos。"""
         with tempfile.TemporaryDirectory() as inner:
             inner_p = Path(inner)
@@ -197,21 +199,11 @@ class Step4IntroVideoEndpointTests(unittest.TestCase):
                 "ratio": "9:16",
             })
             self.assertEqual(status, 200, body)
-            # 验证草稿里 video material 是 video 类型
-            draft_files = list(draft_root.glob("**/draft_content.json"))
-            self.assertGreater(len(draft_files), 0)
-            draft = json.loads(draft_files[0].read_text(encoding="utf-8"))
-            video_segs = []
-            for track in draft.get("tracks", []):
-                for seg in track.get("segments", []):
-                    if seg.get("type") == "video":
-                        video_segs.append(seg)
-            # 第一段应该用 video material（material_id 以 video_ 开头）
-            self.assertTrue(any(s.get("material_id", "").startswith("video_")
-                              for s in video_segs),
-                          f"video segment should be used: {video_segs}")
+            draft = json.loads((Path(body["draft_dir"])/"draft_info.json").read_text("utf-8"))
+            self.assertTrue(any(x.get("path", "").endswith("1.mp4") for x in draft["materials"]["videos"]))
+            self.assertTrue(all(Path(x["path"]).is_file() for x in draft["materials"]["audios"]))
 
-    def test_step6_uses_task_local_for_material_library_image(self):
+    def test_step6_rejects_missing_audio_instead_of_fake_success(self):
         with tempfile.TemporaryDirectory() as inner:
             draft_root = Path(inner) / "drafts"
             draft_root.mkdir()
@@ -229,10 +221,9 @@ class Step4IntroVideoEndpointTests(unittest.TestCase):
                             "task_local": "/api/task_image/t_material_draft/1.png"}],
                 "segments": [{"idx": 1, "duration": 2.0, "path": "audio.mp3"}],
             })
-            self.assertEqual(status, 200, body)
-            draft = json.loads((Path(body["draft_dir"]) / "draft_content.json").read_text(encoding="utf-8"))
-            video_track = next(track for track in draft["tracks"] if track["type"] == "video")
-            self.assertEqual(video_track["segments"][0]["material_path"], str(image))
+            self.assertEqual(status, 400, body)
+            self.assertIn("第 1 镜", body["error"])
+            self.assertFalse(list(draft_root.glob("*/draft_info.json")))
 
 
 if __name__ == "__main__":

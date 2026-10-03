@@ -27,7 +27,10 @@
   }
   function field(parent, title, value, wide = false) {
     const box = node("div", "wv-field" + (wide ? " wide" : ""));
-    append(box, node("label", "", title), node("div", "wv-field-value", value ?? ""));
+    const head=node("div","wv-field-head"),copy=node("button","wv-field-copy","复制");copy.type="button";
+    copy.onclick=async()=>{try{await navigator.clipboard.writeText(String(value??""));copy.textContent="已复制";}catch(e){alert(e.message);}};
+    append(head,node("label","",title),copy);
+    append(box,head,node("div", "wv-field-value", value ?? ""));
     parent.append(box);
   }
   function numbered(value) {
@@ -35,7 +38,12 @@
   }
   function empty(parent, text) { parent.append(node("div", "wv-empty", text)); }
 
-  function mount(container) {
+  function mount(container, options) {
+    const handlers = {
+      onRetry: (options && options.onRetry) || null,
+      onEditStep: (options && options.onEditStep) || null,
+      onTaskUpdated: (options && options.onTaskUpdated) || null,
+    };
     container.classList.add("wv");
     const left = node("div", "wv-left"), right = node("div", "wv-right");
     const summary = node("section", "wv-card wv-summary");
@@ -76,6 +84,21 @@
     });
     selectTab("preview");
 
+    // Story Task Bi viewer: same-page overlay, scene caption, arrows and Escape.
+    function openViewer(items,startIndex) {
+      let current=startIndex;
+      const overlay=node('div','wv-viewer');overlay.setAttribute('role','dialog');overlay.setAttribute('aria-modal','true');overlay.setAttribute('aria-label','分镜图片预览');
+      const close=node('button','wv-viewer-close','×'),previous=node('button','wv-viewer-prev','‹'),next=node('button','wv-viewer-next','›');
+      close.setAttribute('aria-label','关闭图片预览');previous.setAttribute('aria-label','上一张');next.setAttribute('aria-label','下一张');
+      const count=node('div','wv-viewer-count'),img=node('img','wv-viewer-image'),caption=node('div','wv-viewer-caption');
+      const render=()=>{const item=items[current],idx=Number(item.name?.split('.')[0]||current+1);img.src=item.url;img.alt='#'+idx;count.textContent=`#${idx} · ${current+1}/${items.length}`;caption.textContent=detail?.steps?.shots?.find(s=>Number(s.idx)===idx)?.text||'';previous.disabled=current===0;next.disabled=current===items.length-1;};
+      const key=e=>{if(e.key==='Escape')finish();if(e.key==='ArrowLeft'&&current>0){current--;render();}if(e.key==='ArrowRight'&&current<items.length-1){current++;render();}};
+      const finish=()=>{window.removeEventListener('keydown',key);overlay.remove();};
+      overlay.onclick=finish;img.onclick=caption.onclick=e=>e.stopPropagation();close.onclick=finish;
+      previous.onclick=e=>{e.stopPropagation();if(current>0){current--;render();}};next.onclick=e=>{e.stopPropagation();if(current<items.length-1){current++;render();}};
+      append(overlay,close,count,previous,img,caption,next);document.body.append(overlay);window.addEventListener('keydown',key);render();close.focus();
+    }
+
     function renderSummary() {
       const info = detail?.info || {};
       const steps = detail?.steps || {};
@@ -85,7 +108,7 @@
       summary.append(node("div", "wv-summary-title", info.title || steps.meta?.title || "图文任务"));
       summary.append(node("div", "wv-summary-id", info.created_at || ""));
       const stats = node("div", "wv-stats");
-      [[info.total_duration_sec ? `${Math.round(info.total_duration_sec)}s` : "—", "总时长"],
+      [[info.elapsed_sec!=null ? `${Math.floor(Math.round(info.elapsed_sec)/60)}:${String(Math.round(info.elapsed_sec)%60).padStart(2,'0')}` : "—", "总耗时"],
         [`${NODES.filter(item => completed.map(String).includes(item.key)).length}/7`, "当前步骤"], [info.shot_count ?? steps.shots?.length ?? 0, "分镜数"]]
         .forEach(([value, label]) => {
           const stat = node("div", "wv-stat");
@@ -101,24 +124,37 @@
       timeline.replaceChildren();
       NODES.forEach((item, index) => {
         const over = overrides.get(item.key);
-        const status = over?.status || (completed.has(item.key) ? "done" :
+        const persisted=info.stage_timings?.[item.key];
+        const status = over?.status || (info.progress?.step===item.key&&['running','failed'].includes(info.progress.status)?info.progress.status:completed.has(item.key) ? "done" :
           item.key === "0" && completed.has("1") ? "skipped" : "pending");
         const row = node("div", "wv-node " + status);
         row.dataset.step = item.key;
         const mark = status === "done" ? "✓" : status === "failed" ? "!" : status === "skipped" ? "–" : String(index + 1);
         const text = node("div");
         append(text, node("div", "wv-node-title", item.label),
-          node("div", "wv-node-note", over?.note || (status === "skipped" ? "已跳过" : status === "done" ? "已完成" : item.description)));
+          node("div", "wv-node-note", over?.note || (status === "skipped" ? "已跳过" : status === "done" ? `已完成${persisted?.elapsed_sec!=null?' · '+persisted.elapsed_sec+'s':''}` : status==='running'?'运行中…':status==='failed'?'此步骤失败':item.description)));
         const retry = node("button", "wv-node-retry", "↻ 从这里重跑");
         retry.type = "button";
-        retry.title = `从「${item.label}」重新执行后续步骤`;
+        retry.title = `从「${item.label}」继续执行后续步骤（沿用上次参数）`;
         retry.onclick = event => {
           event.stopPropagation();
           const id = taskId || info.task_id;
           if (!id) return;
-          location.href = "/index.html?resume=" + encodeURIComponent(id) + "&from=" + encodeURIComponent(item.key);
+          if (handlers.onRetry) handlers.onRetry(item.key, id);
+          else location.href = "/result.html?task=" + encodeURIComponent(id) + "&resume=" + encodeURIComponent(item.key);
         };
-        append(row, node("span", "wv-dot", mark), text, retry);
+        const edit = node("button", "wv-node-edit", "✎ 改参数");
+        edit.type = "button";
+        edit.title = `只编辑「${item.label}」这一步骤的参数`;
+        edit.onclick = event => {
+          event.stopPropagation();
+          const id = taskId || info.task_id;
+          if (!id) return;
+          if (handlers.onEditStep) handlers.onEditStep(item.key, id);
+        };
+        const actions = node("div", "wv-node-actions");
+        append(actions, retry, edit);
+        append(row, node("span", "wv-dot", mark), text, actions);
         timeline.append(row);
       });
     }
@@ -140,7 +176,8 @@
       if (steps.meta) {
         const box = card(panel, "封面与发布文案"), fields = node("div", "wv-fields"), meta = steps.meta;
         field(fields, "封面主标题", meta.title);
-        field(fields, "短标题", meta.short_title);
+        field(fields, "副标题", numbered(meta.subtitle), true);
+        field(fields, "短标题（≤16字）", meta.short_title);
         field(fields, "发布文案", meta.summary, true);
         field(fields, "话题标签", numbered(meta.tags), true);
         field(fields, "种子评论", numbered(meta.comments), true);
@@ -149,19 +186,84 @@
       }
       if (steps.shots?.length) {
         const box = card(panel, `分镜与画面提示词 · ${steps.shots.length} 镜`);
-        const prompts = new Map((steps.prompts || []).map(item => [Number(item.idx), item.desc_prompt]));
+        const prompts = new Map((steps.prompts || []).map(item => [Number(item.idx), item]));
         steps.shots.forEach((shot, index) => {
           const row = node("div", "wv-shot"), head = node("div", "wv-shot-head");
           append(head, node("span", "wv-shot-no", String(shot.idx ?? index + 1).padStart(2, "0")), node("span", "", shot.text || ""));
           row.append(head);
+          const picture = (steps.images || []).find(x => Number(x.name?.split('.')[0]) === Number(shot.idx ?? index + 1));
+          if (picture) {
+            const img = node("img", "wv-preview-image");
+            img.src = picture.url; img.alt = `第 ${index + 1} 镜`; img.loading = "lazy";
+            const link = node("a"); link.href = picture.url; link.target = "_blank"; link.append(img);
+            link.onclick=e=>{e.preventDefault();e.stopPropagation();openViewer(steps.images,steps.images.indexOf(picture));};
+            row.prepend(link);
+          }
           const prompt = prompts.get(Number(shot.idx));
-          if (prompt) row.append(node("div", "wv-prompt", "→ " + prompt));
+          if (prompt) {
+            row.append(node("div", "wv-prompt", "→ " + prompt.desc_prompt));
+            if(prompt.diagnostic?.fellBackToSkeleton)row.append(node('div','wv-prompt-warning','AI 提示词未通过校验，当前使用赛道兜底画面；可从绘图提示词步骤重跑。'));
+          }
           box.append(row);
         });
       }
       if (steps.draft?.draft_dir) {
+        const d = steps.draft;
         const box = node("div", "wv-draft");
-        append(box, node("strong", "", "✓ 剪映草稿已生成"), node("small", "", steps.draft.draft_dir));
+        append(box, node("div", "wv-draft-title", "✓ 剪映草稿已生成"));
+        const folderName = String(d.draft_dir).split(/[\\/]/).pop();
+        const pathWrap = node("div", "wv-draft-path-wrap");
+        const pathSpan = node("span", "wv-draft-path", folderName);
+        const copyBtn = node("button", "wv-draft-path-copy", "复制");
+        copyBtn.type = "button";
+        copyBtn.title = "复制草稿路径";
+        copyBtn.onclick = () => navigator.clipboard.writeText(d.draft_dir).catch(err => alert(err.message));
+        append(pathWrap, pathSpan, copyBtn);
+        box.append(pathWrap);
+        const actions = node("div", "wv-draft-actions");
+        const templateSelect = node("select", "wv-draft-select");templateSelect.setAttribute("aria-label","草稿模板");
+        const currentTemplate=d.template_snapshot||detail?.client_config?.image?.templateSnapshot;
+        templateSelect.append(new Option(currentTemplate?.name||"当前草稿模板", d.template_id||currentTemplate?.id||""));
+        const bgmSelect=node("select","wv-draft-select");bgmSelect.setAttribute("aria-label","背景音乐");
+        bgmSelect.append(new Option(d.bgm_path?"🎵 "+String(d.bgm_path).split(/[\\/]/).pop():"无背景音乐",d.bgm_path||""));
+        let availableTemplates=[];
+        Promise.all([fetch('/api/templates/drafts').then(r=>r.json()),fetch('/api/settings').then(r=>r.json())]).then(([library,settings])=>{
+          if(!templateSelect.isConnected)return;
+          availableTemplates=library.templates||[];
+          for(const t of availableTemplates)if(![...templateSelect.options].some(o=>o.value===t.id))templateSelect.append(new Option(t.name,t.id));
+          if(![...bgmSelect.options].some(o=>o.value===''))bgmSelect.append(new Option('无背景音乐',''));
+          const bgm=settings.jianying?.bgm_path;
+          if(bgm&&![...bgmSelect.options].some(o=>o.value===bgm))bgmSelect.append(new Option('🎵 内置 BGM',bgm));
+        }).catch(()=>{});
+        append(actions,templateSelect,bgmSelect);
+        const repack = node("button", "wv-draft-repack", "重新打包");
+        repack.type = "button";
+        repack.title = "按当前断行重新打包剪映草稿（不重配音、不重出图）";
+        repack.onclick = async () => {
+          repack.disabled = true; repack.textContent = "打包中…";
+          try {
+            const selected=availableTemplates.find(t=>t.id===templateSelect.value);
+            await postTask("repack", {bgm_path:bgmSelect.value,
+              ...(selected?{template_id:selected.id,template_snapshot:selected}:{})});
+            if (handlers.onTaskUpdated) await handlers.onTaskUpdated();
+          } catch (err) { alert(err.message); }
+          finally { repack.disabled = false; repack.textContent = "重新打包"; }
+        };
+        const open = node("button", "wv-draft-open-jianying", "在剪映打开");
+        open.type = "button";
+        open.title = "在剪映中打开该草稿；未检测到剪映则打开草稿目录";
+        open.onclick = async () => {
+          const originalText = open.textContent;
+          open.disabled = true; open.textContent = "打开中…";
+          try {
+            const res = await fetch("/api/open_jianying", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({task_id:taskId, draft_dir:d.draft_dir})});
+            const value = await res.json();
+            if (!res.ok) throw new Error(value.error || `HTTP ${res.status}`);
+          } catch (err) { alert(err.message); }
+          finally { open.disabled = false; open.textContent = originalText; }
+        };
+        append(actions, repack, open);
+        box.append(actions);
         panel.append(box);
       }
       if (!panel.children.length) empty(panel, notice);
@@ -187,11 +289,12 @@
       panel.replaceChildren();
       if (!images.length) return empty(panel, "分镜图片尚未完成。");
       const box = card(panel, `分镜画廊 · ${images.length} 张`), grid = node("div", "wv-gallery");
-      images.forEach(item => {
+      images.forEach((item,index) => {
         const link = node("a"), img = node("img");
         link.href = item.url;
         link.target = "_blank";
         link.rel = "noopener";
+        link.onclick=e=>{e.preventDefault();e.stopPropagation();openViewer(images,index);};
         img.src = item.url;
         img.alt = item.name || "分镜图片";
         img.loading = "lazy";
@@ -201,17 +304,53 @@
       box.append(grid);
     }
 
+    async function postTask(action, body) {
+      const res = await fetch(`/api/task/${encodeURIComponent(taskId)}/${action}`, {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+      const value = await res.json(); if (!res.ok) throw new Error(value.error || "操作失败"); return value;
+    }
+    async function refreshDetail() {
+      const res = await fetch(`/api/task/${encodeURIComponent(taskId)}`);
+      if (!res.ok) throw new Error("无法刷新任务");
+      detail = await res.json(); render();
+    }
     function renderCaptions() {
-      const panel = panels.captions, segments = detail?.steps?.segments || [];
+      const panel = panels.captions, items = detail?.steps?.captions?.items || [];
       panel.replaceChildren();
-      if (!segments.length) return empty(panel, "尚无逐句时间轴；配音完成后会显示可用的字幕文本。");
-      const box = card(panel, `字幕文本与时间轴 · ${segments.length} 段`);
-      segments.forEach((part, index) => {
-        const row = node("div", "wv-shot"), head = node("div", "wv-shot-head");
-        append(head, node("span", "wv-shot-no", index + 1), node("span", "", part.text || ""));
-        row.append(head);
-        if (part.duration != null) row.append(node("div", "wv-prompt", `时长 ${Number(part.duration).toFixed(1)} 秒`));
-        box.append(row);
+      if (!items.length) return empty(panel, "配音完成后显示字幕断行。");
+      const box = card(panel, `字幕断行 · ${items.reduce((n,x) => n+x.lines.length,0)} 条短字幕`);
+      const controls = node("div", "wv-draft-actions"), editors = [];
+      const save = node("button", "", "保存断行");
+      const pack = node("button", "", "保存并重新打包");
+      const estimated=items.some(part=>(part.cues||[]).some(cue=>cue.timing_source==='estimated'));
+      const hint = node("small", "", `每行一条字幕，最多 ${detail?.steps?.captions?.max_chars||12} 字；${estimated?'包含按配音时长估算的时间点':'使用已保存的识别时间轴'}。可调整换行，保留原文。` );
+      const submit = async rebuild => {
+        save.disabled = pack.disabled = true;
+        try {
+          await postTask("captions", {items:editors.map(x => ({id:x.id,lines:x.input.value.split(/\r?\n/).map(s=>s.trim()).filter(Boolean)}))});
+          if (rebuild) await postTask("repack", {});
+          await refreshDetail(); selectTab("captions");
+        } catch (e) { alert(e.message); }
+        finally { save.disabled = pack.disabled = false; }
+      };
+      save.onclick = () => submit(false); pack.onclick = () => submit(true);
+      append(controls, save, pack, hint); box.append(controls);
+      let offset = 0;
+      items.forEach((part,index) => {
+        const row = node("div", "wv-caption-row");
+        row.append(node("strong", "", `第 ${part.id} 镜 · ${part.lines.length} 条`));
+        const input = node("textarea", "wv-caption-editor"); input.value = part.lines.join("\n"); input.rows = Math.min(12,Math.max(3,part.lines.length));
+        input.setAttribute("aria-label", `第 ${part.id} 镜字幕断行`); editors.push({id:part.id,input});
+        const timings = node("div", "wv-caption-timings");
+        (part.cues || []).forEach(cue => {
+          const line = node("div", "wv-caption-cue");
+          const ts = node("span", "wv-caption-time", `${(offset + cue.start).toFixed(2)}–${(offset + cue.end).toFixed(2)}s`);
+          const text = node("span", "wv-caption-text", cue.text);
+          if (cue.timing_source === "estimated") text.dataset.estimated = "1";
+          append(line, ts, text);
+          timings.append(line);
+        });
+        append(row, input, timings); box.append(row);
+        offset += Number(detail?.steps?.segments?.find(s=>Number(s.index??s.idx)===Number(part.id))?.duration || 0);
       });
     }
 
@@ -255,6 +394,7 @@
       },
       selectTab,
       getTaskId() { return taskId; },
+      beginRerun(step) {const first=NODES.findIndex(n=>n.key===String(step));NODES.slice(first).forEach(n=>overrides.delete(n.key));},
     };
   }
 

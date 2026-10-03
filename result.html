@@ -14,20 +14,87 @@
 main{margin-left:240px;padding:56px 20px 82px;height:100vh;display:flex;flex-direction:column;min-width:0}.page-heading{display:flex;align-items:center;gap:12px;padding:0 2px 12px}.page-heading h1{font-size:17px;margin:0}.page-heading small{color:var(--muted);font-size:11px}.page-heading .spacer{flex:1}.status-pill{border:1px solid #1d624f;color:var(--accent);background:var(--soft);border-radius:999px;padding:4px 10px;font-size:11px;white-space:nowrap}.result-view{flex:1;min-height:0}.bottom-actions{position:fixed;bottom:0;left:240px;right:0;z-index:3;background:#0c1215ee;border-top:1px solid var(--border);padding:10px 20px;display:flex;justify-content:flex-end;gap:8px}.btn{border:1px solid var(--border);background:var(--raised);color:var(--text);padding:8px 13px;border-radius:7px;font-size:12px}.btn:hover{border-color:var(--accent)}.btn.primary{background:var(--accent);border-color:var(--accent);color:#06110e;font-weight:700}.notice{border:1px solid var(--border);background:var(--panel);padding:25px;border-radius:10px;color:var(--muted);font-size:13px}.error{color:#ff8b8b}
 @media(max-width:800px){.sidebar{display:none}main{margin-left:0;padding:52px 10px 83px}.bottom-actions{left:0;padding:10px}.page-heading{flex-wrap:wrap}}
 </style>
+<script src="/assets/desktop_bridge.js"></script>
+<link rel="stylesheet" href="/assets/app_nav.css">
 </head>
 <body>
-<div class="titlebar"><b>▣</b> app074 · 图文创作</div>
-<aside class="sidebar" aria-label="主导航"><div class="brand"><span>07</span>app074</div><a class="new" href="/index.html?new=1">＋ 新建任务</a><a href="/tasks.html">☷ 任务列表</a><a class="active" href="#" aria-current="page">▤ 任务详情</a><div class="bottom"><a href="/settings.html">⚙ 系统设置</a></div></aside>
+
+<aside id="app-nav" aria-label="主导航"></aside><script src="/assets/app_nav.js"></script>
 <main>
   <div class="page-heading"><div><h1>任务详情</h1><small>历史任务 › 产物预览与流水线</small></div><span class="spacer"></span><span class="status-pill" id="status">读取中…</span></div>
   <div id="result-view" class="result-view"><div class="notice">正在读取已保存的任务产物…</div></div>
 </main>
 <div class="bottom-actions"><a class="btn" id="detail-link" href="/tasks.html">人工修改</a><a class="btn" href="/index.html?new=1">新建任务</a><a class="btn primary" id="resume-link" href="/tasks.html">继续未完成阶段</a></div>
 <script src="/assets/workflow_view.js"></script>
+<script src="/assets/image_pipeline.js"></script>
+<script src="/assets/workflow_actions.js"></script>
 <script>
 const taskId = new URLSearchParams(location.search).get("task");
 const host = document.getElementById("result-view");
 let workflow = null;
+let resumePoll = null;
+
+async function api(path, method = "GET", body) {
+  const opts = {method, cache: "no-store", headers: {}};
+  if (body !== undefined) {
+    opts.headers["Content-Type"] = "application/json";
+    opts.body = JSON.stringify(body);
+  }
+  const r = await fetch(path, opts);
+  let data = null;
+  try { data = await r.json(); } catch (_) { /* 非 JSON 响应 */ }
+  if (!r.ok) throw new Error((data && data.error) || `HTTP ${r.status}`);
+  return data;
+}
+
+const STAGE_NAMES = {generate:"文案预审、改写与分镜", tts:"逐镜配音", prompts:"绘图提示词", images:"批量生图", videos:"动态分镜", draft:"剪映草稿", cover:"封面海报"};
+function setRunStage(stage, status, data) {
+  if (!workflow) return;
+  const note = status === "fail" || status === "failed" ? (data?.message || "此步骤失败") : "";
+  workflow.setStage(stage, status === "complete" ? "done" : status, note);
+  const pill = document.getElementById("status");
+  if (pill) {
+    const labels = {running:"运行中", done:"已完成", paused:"等待确认", failed:"失败"};
+    pill.textContent = `${STAGE_NAMES[stage] || stage}：${labels[status] || status}`;
+  }
+}
+function setRunTaskId(tId) {
+  if (workflow) workflow.setTaskId(tId);
+}
+
+function startResumePoll(tid) {
+  stopResumePoll();
+  const tick = async () => {
+    try {
+      const progress = await api("/api/task_progress/" + encodeURIComponent(tid));
+      if (workflow) {
+        const stage = progress.step;
+        if (stage) {
+          const status = progress.status === "complete" ? "done" : progress.status;
+          workflow.setStage(stage, status);
+        }
+      }
+      const detail = await api("/api/task/" + encodeURIComponent(tid));
+      if (workflow) workflow.renderTask(detail);
+    } catch (_) { /* ignore */ }
+  };
+  resumePoll = setInterval(tick, 800);
+  tick();
+}
+function stopResumePoll() { if (resumePoll) { clearInterval(resumePoll); resumePoll = null; } }
+
+function showResumeError(message) {
+  const old = document.getElementById("resume-banner");
+  if (old) old.remove();
+  const div = document.createElement("div");
+  div.id = "resume-banner";
+  div.className = "notice error";
+  div.style.cssText = "margin-bottom:12px";
+  div.textContent = "⚠ " + message;
+  host.parentNode.insertBefore(div, host);
+  setTimeout(() => div.remove(), 6000);
+}
+
 async function load() {
   if (!taskId || !/^[A-Za-z0-9_-]{1,100}$/.test(taskId)) {
     host.innerHTML = '<div class="notice error">缺少有效的任务编号。请从任务列表打开结果。</div>';
@@ -40,12 +107,38 @@ async function load() {
     const response = await fetch("/api/task/" + encodeURIComponent(taskId), {cache:"no-store"});
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
-    if (!workflow) { host.replaceChildren(); workflow = WorkflowView.mount(host); }
+    if (!workflow) {
+      host.replaceChildren();
+      workflow = WorkflowView.mount(host, {
+        onRetry: async (stepKey, tId) => {
+          const buttons = host.querySelectorAll(".wv-node-retry");
+          buttons.forEach(b => b.disabled = true);
+          startResumePoll(tId);
+          try {
+            await resumeTaskFromStep(tId, stepKey);
+            stopResumePoll();
+            const detail = await api("/api/task/" + encodeURIComponent(tId));
+            if (workflow) workflow.renderTask(detail);
+          } catch (e) {
+            showResumeError("重跑失败：" + e.message);
+            stopResumePoll();
+          } finally {
+            buttons.forEach(b => b.disabled = false);
+          }
+        },
+        onEditStep: (stepKey, tId) => openStepEditor(tId, stepKey),
+        onTaskUpdated: async () => {
+          const detail = await api("/api/task/" + encodeURIComponent(taskId));
+          if (workflow) workflow.renderTask(detail);
+        },
+      });
+    }
     workflow.renderTask(data);
     document.title = (data.info?.title || "任务详情") + " · app074";
     const completed = data.info?.completed_steps || [];
     document.getElementById("status").textContent = completed.includes(6) ? "已完成" : `${[0,1,2,5,3,4,6].filter(step => completed.includes(step)).length}/7 步已保存`;
     document.getElementById("resume-link").hidden = completed.includes(6);
+    if (data.info?.running) startResumePoll(taskId);
   } catch (error) {
     host.replaceChildren();
     const notice = document.createElement("div");

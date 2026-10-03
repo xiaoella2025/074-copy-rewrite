@@ -73,7 +73,8 @@ class KnowledgeWorkflowTests(unittest.TestCase):
         }):
             (self.folder / "人物.md").write_text("人物生平材料。", encoding="utf-8")
             selected = server.task_knowledge({"sources": ["obsidian"], "keywords": "人物"})
-            unselected = server.task_knowledge({"sources": ["search"], "keywords": "人物"})
+            with patch.object(server, "search_web_summaries", return_value=[]):
+                unselected = server.task_knowledge({"sources": ["search"], "keywords": "人物"})
         self.assertEqual(len(selected), 1)
         self.assertEqual(unselected, [])
         block = server.build_context_block({"sources": ["obsidian"], "knowledge_results": selected})

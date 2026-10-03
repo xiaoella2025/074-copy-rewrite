@@ -182,9 +182,8 @@ class Step2PodcastScriptFormatTests(unittest.TestCase):
         for sh in shots:
             self.assertNotIn("speaker", sh)
 
-    def test_step2_podcast_fallback_assigns_alternating_speakers(self):
-        # 没 LLM 凭据走兜底，但仍按 i % 2 分配 A/B
-        result = s.step2_split({}, "第一句。第二句。\n第三句！第四句？",
+    def test_step2_podcast_preserves_labelled_turns_without_ai(self):
+        result = s.step2_split({}, "[A]第一句。第二句。\n[B]第三句！第四句？",
                                 target_shots=4, script_format="podcast")
         shots = result["shots"]
         self.assertGreater(len(shots), 0)
@@ -195,11 +194,15 @@ class Step2PodcastScriptFormatTests(unittest.TestCase):
         # 相邻不应全相同
         self.assertNotEqual(speakers[0], speakers[1])
 
+    def test_step2_podcast_rejects_unlabelled_dialogue(self):
+        with self.assertRaisesRegex(ValueError, "A.*B"):
+            s.step2_split({}, "未标注说话人的整段文案。", script_format="podcast")
+
 
 class Step6PodcastSubtitleTests(unittest.TestCase):
     """step6 字幕加 speaker 前缀 + extra.podcast_path。"""
 
-    def test_subtitle_prefixes_speaker(self):
+    def test_export_rejects_missing_podcast_media(self):
         # 直接构造 step6 的 subtitle_segments 切片（用本地 HTTP，避免依赖 settings）
         with tempfile.TemporaryDirectory() as tmp:
             tmp_p = Path(tmp)
@@ -244,20 +247,8 @@ class Step6PodcastSubtitleTests(unittest.TestCase):
                     resp = conn.getresponse()
                     data = resp.read()
                     conn.close()
-                    self.assertEqual(resp.status, 200, data.decode("utf-8"))
-                    # 解析草稿验证字幕加前缀 + extra.podcast_path
-                    draft_files = list(draft_root.glob("**/draft_content.json"))
-                    self.assertGreater(len(draft_files), 0)
-                    draft = json.loads(draft_files[0].read_text(encoding="utf-8"))
-                    extra = draft.get("extra", {})
-                    self.assertEqual(extra.get("podcast_path"), "/tmp/podcast.mp3")
-                    subs = []
-                    for track in draft["tracks"]:
-                        if track["type"] == "text":
-                            subs.extend(track["segments"])
-                    texts = [seg["content"] for seg in subs]
-                    self.assertIn("A：你好", texts)
-                    self.assertIn("B：今天聊 AI", texts)
+                    self.assertEqual(resp.status, 400)
+                    self.assertFalse(list(draft_root.glob("*/draft_info.json")))
                 finally:
                     srv.shutdown(); srv.server_close()
             finally:

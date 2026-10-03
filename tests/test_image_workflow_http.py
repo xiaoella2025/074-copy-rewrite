@@ -97,9 +97,11 @@ class ImageWorkflowHttpTests(unittest.TestCase):
         with patch.object(server, "call_llm", return_value="cover prompt") as llm:
             prompt = server.build_cover_prompt({}, "主标题", "文案", "写实", [],
                                                "title", "副标题", "emotional")
-        self.assertEqual(prompt, "cover prompt")
-        self.assertIn("人物情绪", llm.call_args.args[2])
-        self.assertIn("副标题", llm.call_args.args[2])
+        self.assertTrue(prompt.startswith('cover prompt'))
+        self.assertIn('情绪海报构图法',llm.call_args.args[1])
+        self.assertIn('主标题「主标题」',prompt)
+        self.assertIn('「副标题」',prompt)
+        self.assertNotIn('{{',prompt)
 
     def test_runninghub_probe_accepts_unsaved_key_without_writing_settings(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -177,6 +179,8 @@ class ImageWorkflowHttpTests(unittest.TestCase):
             }
             (root / "settings.json").write_text(json.dumps(config), encoding="utf-8")
             patches = [
+                patch.object(server, "export_jianying_draft", side_effect=lambda task, draft, app, options: {
+                    "ok":True, "draft_dir":str(draft), "template_id":options["template_id"]}),
                 patch.object(server, "DATA_DIR", root),
                 patch.object(server, "SETTINGS_PATH", root / "settings.json"),
                 patch.object(server, "PROFILES_PATH", root / "profiles.json"),
@@ -239,10 +243,8 @@ class ImageWorkflowHttpTests(unittest.TestCase):
                                                               "shots": shots, "images": images["results"],
                                                               "segments": speech["results"]})
                 self.assertTrue(Path(draft["draft_dir"]).exists())
-                draft_content = json.loads((Path(draft["draft_dir"]) / "draft_content.json").read_text(encoding="utf-8"))
-                self.assertEqual((draft_content["width"], draft_content["height"]), (1080, 1920))
-                self.assertEqual(draft_content["template_id"], "builtin-portrait-4-3")
-                self.assertEqual(draft_content["tracks"][0]["segments"][0]["image_layout"]["height"], 0.421875)
+                self.assertEqual(draft["template_id"], "builtin-portrait-4-3")
+                self.assertEqual(server.export_jianying_draft.call_args.args[0], root / "tasks" / task_id)
                 self.assertEqual(len(server.load_tasks()["tasks"]), 1)
                 self.assertIn(0, server.get_task_detail(task_id)["info"]["completed_steps"])
                 self.assertEqual(speech["results"][0]["duration_source"], "ffprobe")

@@ -7,3 +7,10 @@ _story_assets/
 *.log
 .DS_Store
 *.tmp
+.desktop-tools/
+node_modules/
+desktop-dist/
+desktop-build/
+src-tauri/target/
+src-tauri/binaries/
+src-tauri/gen/

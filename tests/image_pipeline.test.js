@@ -70,6 +70,28 @@ function firstGeneration() {
   };
 }
 
+test('提示词与草稿模板快照传到实际生成请求，素材选择沿用', async () => {
+  const calls = [];
+  const prompt = {id:'saved-prompt',name:'提示词',step3SystemPrompt:'选定提示词'};
+  const draft = {id:'saved-draft',name:'草稿',config:{canvas:{width:720,height:1280}}};
+  const replies = [firstGeneration(),
+    {results:[{idx:1,ok:true,duration:2,path:'audio.mp3'}]},
+    {steps:{'3':[{idx:1,desc_prompt:'画面'}]}},
+    {results:[{idx:1,ok:true,url:'/covers/one.png'}]},
+    {draft_dir:'draft'}];
+  await runImagePipeline({
+    request: async (path,body)=>{calls.push({path,body});return replies.shift();},
+    generate:{reference:'原文',prompt_template_id:prompt.id,prompt_template:prompt},
+    tts:{provider:'aura'},
+    image:{source:'mine',templateId:draft.id,templateSnapshot:draft,
+      materials:{selected:['material-1'],fallback:'off'}}});
+  assert.deepEqual(calls[0].body.prompt_template,prompt);
+  assert.deepEqual(calls[2].body.prompt_template,prompt);
+  assert.equal(calls[3].path,'/api/step4_from_materials');
+  assert.equal(calls[3].body.assignments[0].material_id,'material-1');
+  assert.deepEqual(calls[4].body.template_snapshot,draft);
+});
+
 test('图文全链路按 0/1/2 → 5 → 3 → 4 → 6 运行并沿用任务 ID', async () => {
   const calls = [];
   const replies = [
@@ -568,4 +590,52 @@ test('素材来源=external 把 provider 强制成 custom', async () => {
   });
   const gen = calls.find(c => c.path === '/api/step4_generate_images');
   assert.equal(gen.body.provider, 'custom');
+});
+
+for (const [step,expected] of Object.entries({
+  '0':['/api/generate','/api/step5_tts','/api/generate','/api/step4_generate_images','/api/step6_jianying_draft'],
+  '1':['/api/generate','/api/step5_tts','/api/generate','/api/step4_generate_images','/api/step6_jianying_draft'],
+  '2':['/api/generate','/api/step5_tts','/api/generate','/api/step4_generate_images','/api/step6_jianying_draft'],
+  '5':['/api/step5_tts','/api/generate','/api/step4_generate_images','/api/step6_jianying_draft'],
+  '3':['/api/generate','/api/step4_generate_images','/api/step6_jianying_draft'],
+  '4':['/api/step4_generate_images','/api/step6_jianying_draft'],
+  '6':['/api/step6_jianying_draft'],
+})) test(`从第 ${step} 步重跑使该步及后续产物失效，上游产物保持`,async()=>{
+  const calls=[];
+  const resume={info:{task_id:'task_1'},steps:{rewrite:'改写稿',meta:{title:'标题'},
+    shots:[{idx:1,text:'第一镜'}],prompts:[{idx:1,desc_prompt:'保存提示词'}],
+    audios:[{name:'seg_001.mp3'}],segments:[{index:1,path:'a.mp3',duration:2}],
+    images:[{name:'1.png',url:'/api/task_image/task_1/1.png'}],draft:{draft_dir:'旧草稿'}}};
+  const original=JSON.stringify(resume);
+  await runImagePipeline({resume,rerunFrom:step,mode:'half',generate:{reference:'原文'},
+    tts:{provider:'aura'},image:{provider:'gpt_image'},
+    request:async(path,body)=>{calls.push({path,body});
+      if(path==='/api/generate')return body.run_steps.includes('3')?{steps:{'3':[{idx:1,desc_prompt:'新提示词',use_reference:false}]}}:firstGeneration();
+      if(path==='/api/step5_tts')return {results:[{idx:1,ok:true,duration:2,path:'new.mp3'}]};
+      if(path==='/api/step4_generate_images')return {results:[{idx:1,ok:true,url:'/covers/new.png'}]};
+      return {draft_dir:'新草稿'};}});
+  assert.deepEqual(calls.map(x=>x.path),expected);
+  assert.equal(JSON.stringify(resume),original,'保留原任务产物对象');
+  if(step==='0'||step==='1')assert.equal(calls[0].body.rewritten,undefined,'显式重跑改写不沿用半自动原文');
+  if(step==='2'){assert.deepEqual(calls[0].body.run_steps,['2']);assert.deepEqual(calls[0].body.meta,resume.steps.meta);}
+  const images=calls.find(x=>x.path==='/api/step4_generate_images');
+  if(images&&step!=='4')assert.equal(images.body.prompts[0].use_reference,false,'参考图判断传入出图');
+});
+
+test('重新打包保留上传的 BGM，默认新任务不覆盖全局 BGM',async()=>{
+  const resume={info:{task_id:'task_1'},steps:{rewrite:'改写稿',meta:{title:'标题'},
+    shots:[{idx:1,text:'第一镜'}],prompts:[{idx:1,desc_prompt:'p'}],
+    audios:[{name:'seg_001.mp3'}],segments:[{index:1,path:'a.mp3',duration:2}],
+    images:[{name:'1.png',url:'/api/task_image/task_1/1.png'}],
+    draft:{draft_dir:'old',bgm_path:'saved-bgm.mp3'}}};
+  let payload;
+  await runImagePipeline({resume,rerunFrom:'6',generate:{},tts:{},image:{},
+    request:async(path,body)=>{payload=body;return {draft_dir:'new'};}});
+  assert.equal(payload.bgm_path,'saved-bgm.mp3');
+  const replies=[firstGeneration(),{results:[{idx:1,ok:true,duration:2}]},
+    {steps:{'3':[{idx:1,desc_prompt:'p'}]}},{results:[{idx:1,ok:true,url:'/a.png'}]},
+    {draft_dir:'new'}];
+  await runImagePipeline({generate:{reference:'原文'},tts:{},image:{},
+    request:async(path,body)=>{if(path==='/api/step6_jianying_draft')payload=body;return replies.shift();}});
+  assert.equal(Object.hasOwn(payload,'bgm_path'),false);
 });

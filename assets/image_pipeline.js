@@ -13,7 +13,7 @@ function assignMaterialsToShots(selectedIds, idxText, shotIndices) {
 }
 
 async function runImagePipeline({ request, generate, tts, image, cover, resume, dynamic, mode = 'full',
-  scriptFormat = 'narrator',
+  scriptFormat = 'narrator', rerunFrom = null,
   pauseMode = 'never', pauseStages = [], onPause = async () => true, onStage = () => {} }) {
   const makeFormData = (fields) => {
     const fd = new FormData();
@@ -24,7 +24,20 @@ async function runImagePipeline({ request, generate, tts, image, cover, resume, 
     }
     return fd;
   };
-  const prior = resume?.steps || {};
+  if (rerunFrom !== null) rerunFrom = String(rerunFrom);
+  const prior = {...(resume?.steps || {})};
+  if (rerunFrom !== null) {
+    const invalidate = {
+      '0':['review','rewrite','meta','shots','segments','audios','podcast','prompts','images','videos','captions','draft','cover'],
+      '1':['rewrite','meta','shots','segments','audios','podcast','prompts','images','videos','captions','draft','cover'],
+      '2':['shots','segments','audios','podcast','prompts','images','videos','captions','draft','cover'],
+      '5':['segments','audios','podcast','prompts','images','videos','captions','draft','cover'],
+      '3':['prompts','images','videos','draft','cover'],
+      '4':['images','videos','draft','cover'], '6':['draft','cover'],
+    }[String(rerunFrom)];
+    if (!invalidate) throw new Error('未知重跑步骤');
+    invalidate.forEach(key => delete prior[key]);
+  }
   const resumeReady = !!(resume?.info?.task_id && prior.rewrite && prior.meta && prior.shots?.length);
   const resumeRewrite = !!(resume?.info?.task_id && prior.rewrite && !resumeReady);
   if (image?.referenceFile) {
@@ -70,9 +83,11 @@ async function runImagePipeline({ request, generate, tts, image, cover, resume, 
   } : await call('generate', '/api/generate', {
     ...generate, ...(resume?.info?.task_id ? {task_id: resume.info.task_id} : {}),
     ...(resumeRewrite ? {reference: '', rewritten: prior.rewrite}
-      : mode === 'full' ? {} : { rewritten: generate.reference }),
+      : (mode === 'full' || rerunFrom === '0' || rerunFrom === '1') ? {} : { rewritten: generate.reference }),
+    process_mode: mode,
     ...(scriptFormat ? { script_format: scriptFormat } : {}),
-    run_steps: resumeRewrite ? ['meta', '2'] : mode === 'full' ? ['0', '1', 'meta', '2'] : ['meta', '2'],
+    ...(rerunFrom === '2' ? {meta:prior.meta} : {}),
+    run_steps: rerunFrom === '2' ? ['2'] : rerunFrom === '1' ? ['1','meta','2'] : resumeRewrite ? ['meta', '2'] : (mode === 'full' || rerunFrom === '0') ? ['0', '1', 'meta', '2'] : ['meta', '2'],
   });
   if (resumeReady) onStage('generate', 'done', gen);
   const taskId = gen?.task_id;
@@ -206,7 +221,7 @@ async function runImagePipeline({ request, generate, tts, image, cover, resume, 
       };
     } else {
       payload = {
-        prompts: missingImages.map(item => ({ idx: item.idx, desc_prompt: item.desc_prompt })),
+        prompts: missingImages.map(item => ({ idx: item.idx, desc_prompt: item.desc_prompt, ...(typeof item.use_reference==='boolean'?{use_reference:item.use_reference}:{}) })),
         ratio: image.ratio, resolution: image.resolution, concurrency: image.concurrency,
         provider: externalProvider, retry: !!image.retry, task_id: taskId,
       };
@@ -256,8 +271,8 @@ async function runImagePipeline({ request, generate, tts, image, cover, resume, 
   if (dynamicMode !== 'off' && newVideos.length) onStage('videos', 'done', step4WithVideo);
 
   const title = meta.title || generate.title || '未命名任务';
-  let bgmPath = '';
-  if (image?.bgmFile && !prior.draft?.draft_dir) {
+  let bgmPath = image?.bgmPath ?? resume?.steps?.draft?.bgm_path;
+  if (image?.bgmFile instanceof Blob && !prior.draft?.draft_dir) {
     const bgm = await request('/api/bgm_upload', makeFormData({task_id: taskId, file: image.bgmFile}));
     bgmPath = bgm?.path || '';
     if (!bgmPath) throw new Error('背景音乐上传后未返回文件路径');
@@ -272,7 +287,8 @@ async function runImagePipeline({ request, generate, tts, image, cover, resume, 
     title,
     ratio: image.ratio,
     template_id: image.templateId || 'default-portrait-9-16',
-    bgm_path: bgmPath,
+    template_snapshot: image.templateSnapshot || undefined,
+    ...(bgmPath!==undefined?{bgm_path:bgmPath}:{}),
     cover_title: meta,
   });
   if (prior.draft?.draft_dir) onStage('draft', 'done', step6);

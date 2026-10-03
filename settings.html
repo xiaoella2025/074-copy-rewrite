@@ -239,8 +239,11 @@ textarea{resize:vertical;min-height:60px;font-family:var(--font-mono);font-size:
 code{background:var(--bg);padding:1px 5px;border-radius:3px;font-family:var(--font-mono);font-size:11px;}
 .hidden{display:none!important;}
 </style>
+<script src="/assets/desktop_bridge.js"></script>
+<link rel="stylesheet" href="/assets/app_nav.css">
 </head>
 <body data-theme="dark">
+<aside id="app-nav" aria-label="主导航"></aside><script src="/assets/app_nav.js"></script>
 <div class="topbar">
   <h1>⚙ 系统设置</h1>
   <span class="crumb">app074 · v1.0</span>
@@ -251,66 +254,35 @@ code{background:var(--bg);padding:1px 5px;border-radius:3px;font-family:var(--fo
 </div>
 <div class="layout">
   <!-- 侧边导航（参考 STORY Settings-XLgSTp15.js:5232 ii 8 大块） -->
-  <aside class="sidebar" id="sidebar">
-    <!-- 与 index.html 一致的 brand 区 -->
-    <a class="brand" href="/" title="返回首页">
-      <div class="logo">07</div>
-      <div>
-        <div class="name">app074</div>
-        <div class="ver">v1.0.0 · 文案改写</div>
-      </div>
-    </a>
-
-    <!-- 全局导航：与 index.html sidebar 一致 -->
-    <div class="nav-section">导航</div>
-    <a class="nav-item" href="/index.html"><div class="icon">🏠</div><div class="meta"><div class="name">新建任务</div><div class="sub">返回首页</div></div></a>
-    <a class="nav-item" href="/tasks.html"><div class="icon">📋</div><div class="meta"><div class="name">任务队列</div><div class="sub">查看历史</div></div></a>
-
-    <div class="nav-section">系统</div>
-    <a class="nav-item active" data-section="llm" href="#llm">
+  <aside class="sidebar" id="sidebar" aria-label="设置分类"><a class="nav-item active" data-section="llm" href="#llm">
       <div class="icon">🤖</div>
       <div class="meta"><div class="name">LLM</div><div class="sub">文案与分镜</div></div>
       <span class="dot checking" id="dot-llm"></span>
-    </a>
-    <a class="nav-item" data-section="image" href="#image">
+    </a><a class="nav-item" data-section="image" href="#image">
       <div class="icon">🎨</div>
       <div class="meta"><div class="name">AI 绘图</div><div class="sub">分镜图片</div></div>
       <span class="dot" id="dot-image"></span>
-    </a>
-    <a class="nav-item" data-section="tts" href="#tts">
+    </a><a class="nav-item" data-section="tts" href="#tts">
       <div class="icon">🎤</div>
       <div class="meta"><div class="name">TTS 配音</div><div class="sub">每镜语音</div></div>
       <span class="dot" id="dot-tts"></span>
-    </a>
-    <a class="nav-item" data-section="asr" href="#asr">
+    </a><a class="nav-item" data-section="asr" href="#asr">
       <div class="icon">🎙</div>
       <div class="meta"><div class="name">语音识别</div><div class="sub">歌词 · 字幕对齐</div></div>
       <span class="dot" id="dot-asr"></span>
-    </a>
-    <a class="nav-item" data-section="draft" href="#draft">
+    </a><a class="nav-item" data-section="draft" href="#draft">
       <div class="icon">📦</div>
       <div class="meta"><div class="name">剪映</div><div class="sub">草稿目录 · BGM</div></div>
       <span class="dot" id="dot-draft"></span>
-    </a>
-    <a class="nav-item" data-section="ai-creation" href="#ai-creation">
+    </a><a class="nav-item" data-section="ai-creation" href="#ai-creation">
       <div class="icon">💡</div>
       <div class="meta"><div class="name">AI 创作</div><div class="sub">IMA · Obsidian 知识库</div></div>
       <span class="dot" id="dot-ai-creation"></span>
-    </a>
-    <a class="nav-item" data-section="about" href="#about">
+    </a><a class="nav-item" data-section="about" href="#about">
       <div class="icon">ℹ</div>
       <div class="meta"><div class="name">关于 · 诊断</div><div class="sub">日志 · 重置</div></div>
       <span class="dot" id="dot-about"></span>
-    </a>
-
-    <!-- 底部：本机部署信息（与 index.html user-box 一致） -->
-    <div class="sidebar-bottom">
-      <div class="user-box">
-        <div class="name">本机部署</div>
-        <div>独立运行 · 不依赖官方</div>
-      </div>
-    </div>
-  </aside>
+    </a></aside>
 
   <main class="main">
     <!-- ============ LLM（LIST+EDIT 双页） ============ -->
@@ -2138,7 +2110,10 @@ async function saveJY() {
 
 async function browseFolder(targetId) {
   try {
-    const r = await api("/api/browse_folder", "POST", { initial: $(targetId).value.trim() || "" });
+    const initial = $(targetId).value.trim() || "";
+    const r = window.app074Desktop
+      ? { path: await window.app074Desktop.choosePath(initial, targetId === "jy-bgm-path") }
+      : await api("/api/browse_folder", "POST", { initial });
     if (r && r.path) $(targetId).value = r.path;
   } catch (e) { toast("⚠ 无法打开文件夹选择：" + e.message, false); }
 }
