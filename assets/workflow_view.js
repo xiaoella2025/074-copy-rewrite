@@ -43,6 +43,7 @@
       onRetry: (options && options.onRetry) || null,
       onEditStep: (options && options.onEditStep) || null,
       onTaskUpdated: (options && options.onTaskUpdated) || null,
+      onRedraw: (options && options.onRedraw) || null,
     };
     container.classList.add("wv");
     const left = node("div", "wv-left"), right = node("div", "wv-right");
@@ -198,6 +199,37 @@
             const link = node("a"); link.href = picture.url; link.target = "_blank"; link.append(img);
             link.onclick=e=>{e.preventDefault();e.stopPropagation();openViewer(steps.images,steps.images.indexOf(picture));};
             row.prepend(link);
+          }
+          const promptItem = prompts.get(Number(shot.idx));
+          if (picture && promptItem && handlers.onRedraw) {
+            const shotIdx = Number(shot.idx ?? index + 1);
+            const redrawWrap = node("div", "wv-shot-actions");
+            const redrawBtn = node("button", "wv-shot-redraw", "↻ 重画");
+            redrawBtn.type = "button";
+            redrawBtn.title = "用同 prompt 重新生成该镜图片";
+            redrawBtn.onclick = async (e) => {
+              e.stopPropagation();
+              redrawBtn.disabled = true;
+              const old = redrawBtn.textContent;
+              redrawBtn.textContent = "⏳ 重画中…";
+              try {
+                const newImg = await handlers.onRedraw(shotIdx, promptItem.desc_prompt, picture);
+                if (newImg) {
+                  img.src = newImg + "?t=" + Date.now();
+                  picture.url = newImg;
+                  redrawBtn.textContent = "✓ 已重画";
+                } else {
+                  throw new Error("重画返回为空");
+                }
+              } catch (err) {
+                alert("重画失败：" + err.message);
+                redrawBtn.textContent = old;
+              } finally {
+                setTimeout(() => { redrawBtn.disabled = false; redrawBtn.textContent = old; }, 1500);
+              }
+            };
+            redrawWrap.append(redrawBtn);
+            row.append(redrawWrap);
           }
           const prompt = prompts.get(Number(shot.idx));
           if (prompt) {

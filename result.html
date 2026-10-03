@@ -131,6 +131,15 @@ async function load() {
           const detail = await api("/api/task/" + encodeURIComponent(taskId));
           if (workflow) workflow.renderTask(detail);
         },
+        onRedraw: async (idx, prompt, oldPicture) => {
+          const r = await api("/api/step4_generate_images", "POST", {
+            prompts: [{ idx, desc_prompt: prompt }],
+            task_id: taskId,
+          });
+          const ok = (r.results || []).find(x => x && Number(x.idx) === Number(idx));
+          if (!ok || !ok.ok) throw new Error(ok?.error || "重画失败");
+          return ok.url;
+        },
       });
     }
     workflow.renderTask(data);

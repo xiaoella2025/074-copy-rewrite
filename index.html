@@ -291,6 +291,7 @@ body{padding-left:220px;}
 .shot-item,.prompt-item{display:flex;gap:8px;background:white;padding:8px 10px;border-radius:4px;border:1px solid var(--border);font-size:12px;line-height:1.6;}
 .shot-item .idx,.prompt-item .idx{flex-shrink:0;width:24px;height:24px;background:var(--accent-soft);color:var(--accent-2);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;}
 .shot-item .txt,.prompt-item .txt{flex:1;white-space:pre-wrap;word-break:break-word;}
+.shot-item{flex-wrap:wrap;align-items:flex-start}.shot-item .shot-img-wrap{flex:1;min-width:160px}.shot-item .btn-redraw:hover,.shot-item .btn-edit-redraw:hover,.shot-item .btn-view:hover{background:var(--brand-soft);border-color:var(--brand);color:var(--brand)}
 .prompt-item .txt{color:var(--text);font-family:"SF Mono","Cascadia Code",Consolas,monospace;font-size:11.5px;}
 
 /* New-task layout, following the 1.24.0 home and image-story form. */
@@ -2404,20 +2405,86 @@ function renderStep4(r) {
   $("step4-block").style.display = "";
   $("step4-meta").textContent = `（${ok}/${results.length} 成功 · ${r.total_elapsed}s · concurrency=${r.concurrency}）`;
   $("step4-note").textContent = `provider: ${r.provider}`;
+  // 配 desc_prompt：优先来自 server 返回，否则从 lastFullResult.steps['3'] 取
+  const promptByIdx = new Map();
+  (lastFullResult?.steps?.["3"] || []).forEach(p => promptByIdx.set(Number(p.idx), p.desc_prompt || ""));
+  const taskId = (runView && runView.getTaskId && runView.getTaskId()) || "";
   $("shots-images-list").innerHTML = results.map(x => {
     if (!x) return "";
     if (x.ok) {
-      return `<div class="shot-item">
+      const prompt = x.desc_prompt || promptByIdx.get(Number(x.idx)) || "";
+      const safePrompt = escapeHtml(prompt);
+      return `<div class="shot-item" data-idx="${x.idx}" data-prompt="${safePrompt}">
         <div class="idx">${x.idx}</div>
         <img class="shot-img" src="${escapeHtml(x.url)}" loading="lazy" style="max-width:160px;border-radius:6px;margin:6px 0">
         <div class="muted" style="font-size:11px">${x.elapsed || 0}s · 尝试 ${x.attempt || 1} 次</div>
+        <div style="margin-top:6px;display:flex;gap:4px;flex-wrap:wrap">
+          <button class="btn-redraw" data-idx="${x.idx}" title="用同 prompt 重新生成该镜图片" style="font-size:11px;padding:3px 8px;border:1px solid var(--border);border-radius:4px;background:var(--bg-raised);color:var(--text);cursor:pointer">↻ 重画</button>
+          <button class="btn-edit-redraw" data-idx="${x.idx}" title="改 prompt 后再重画" style="font-size:11px;padding:3px 8px;border:1px solid var(--border);border-radius:4px;background:var(--bg-raised);color:var(--text);cursor:pointer">✎ 改 prompt</button>
+          ${taskId ? `<a class="btn-view" href="/result.html?task=${encodeURIComponent(taskId)}" target="_blank" style="font-size:11px;padding:3px 8px;border:1px solid var(--border);border-radius:4px;background:var(--bg-raised);color:var(--text);text-decoration:none">↗ 大图</a>` : ""}
+        </div>
       </div>`;
     }
-    return `<div class="shot-item">
+    return `<div class="shot-item" data-idx="${x.idx}">
       <div class="idx">${x.idx}</div>
       <div class="txt" style="color:var(--danger)">❌ ${escapeHtml(x.error || "失败")}</div>
+      ${promptByIdx.get(Number(x.idx)) ? `<button class="btn-redraw" data-idx="${x.idx}" style="margin-top:6px;font-size:11px;padding:3px 8px;border:1px solid var(--border);border-radius:4px;background:var(--bg-raised);color:var(--text);cursor:pointer">↻ 重画</button>` : ""}
     </div>`;
   }).join("");
+  bindImageRedraw();
+}
+
+function bindImageRedraw() {
+  document.querySelectorAll("#shots-images-list .btn-redraw").forEach(btn => {
+    btn.onclick = async () => {
+      const idx = Number(btn.dataset.idx);
+      const item = btn.closest(".shot-item");
+      const prompt = item?.dataset.prompt || "";
+      if (!prompt) { alert("无 prompt 可重画，请用「✎ 改 prompt」输入"); return; }
+      await redrawImage(idx, prompt, btn);
+    };
+  });
+  document.querySelectorAll("#shots-images-list .btn-edit-redraw").forEach(btn => {
+    btn.onclick = async () => {
+      const idx = Number(btn.dataset.idx);
+      const item = btn.closest(".shot-item");
+      const oldPrompt = item?.dataset.prompt || "";
+      const newPrompt = prompt("改 prompt 后重画（镜 #" + idx + "）：", oldPrompt);
+      if (!newPrompt || newPrompt === oldPrompt) return;
+      await redrawImage(idx, newPrompt, btn);
+    };
+  });
+}
+
+async function redrawImage(idx, prompt, btn) {
+  const taskId = (runView && runView.getTaskId && runView.getTaskId()) || "";
+  if (!taskId) {
+    if (!confirm("当前任务尚未保存，重画结果无法写入任务目录。仍然重画？")) return;
+  }
+  const provider = $("img-engine")?.value || "";
+  const ratio = getActiveChip("img-ratio", "data-img-ratio", "9:16");
+  const resolution = getActiveChip("resolution", "data-res", "1k");
+  const retry = !!document.querySelector("#image-retry-failed")?.classList.contains("active");
+  btn.disabled = true;
+  const oldText = btn.textContent;
+  btn.textContent = "⏳ 重画中…";
+  try {
+    const r = await api("/api/step4_generate_images", "POST", {
+      prompts: [{ idx, desc_prompt: prompt }],
+      ratio, resolution, provider, retry, task_id: taskId,
+    });
+    const ok = (r.results || []).find(x => x && x.idx === idx);
+    if (!ok || !ok.ok) throw new Error(ok?.error || "未返回有效结果");
+    const img = btn.closest(".shot-item")?.querySelector(".shot-img");
+    if (img) img.src = ok.url + "?t=" + Date.now();
+    btn.textContent = "✓ 已重画";
+  } catch (e) {
+    alert("重画失败：" + e.message);
+    btn.textContent = oldText;
+    btn.disabled = false;
+    return;
+  }
+  setTimeout(() => { btn.textContent = oldText; btn.disabled = false; }, 1500);
 }
 
 function renderStep5(r) {
