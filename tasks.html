@@ -159,14 +159,20 @@ const $ = id => document.getElementById(id);
 const STEP_LABELS = {0:"预审",1:"改写","meta":"元信息",2:"分镜",3:"出图Prompt",4:"出图",5:"配音",6:"草稿"};
 let currentTaskId = null;
 const editMode = new URLSearchParams(location.search).get("edit") === "1";
-const filter = new URLSearchParams(location.search).get("filter") === "done" ? "done" : "active";
+const urlFilter = new URLSearchParams(location.search).get("filter");
+const filter = urlFilter === "done" ? "done" : (urlFilter === "active" ? "active" : "all");
 document.body.classList.toggle("editing", editMode);
 document.body.dataset.filter = filter;
 if (filter === "done") {
   $("page-title").textContent = "历史任务";
   $("page-sub").textContent = "查看任务记录 · 分步产物 · 草稿路径";
   document.querySelector('[data-side="history"]')?.classList.add("active");
+} else if (filter === "active") {
+  $("page-sub").textContent = "查看正在进行的任务 · 继续未完成阶段";
+  document.querySelector('[data-side="queue"]')?.classList.add("active");
 } else {
+  $("page-title").textContent = "任务列表";
+  $("page-sub").textContent = "全部任务 · 进行中和已完成一起看 · 默认按状态分组";
   document.querySelector('[data-side="queue"]')?.classList.add("active");
 }
 
@@ -208,9 +214,9 @@ async function loadList() {
   try {
     const r = await api("/api/tasks");
     const all = r.tasks || [];
-    const tasks = filter === "done" ? all : all.filter(isActiveTask);
-    if(filter === "done" && !editMode){StoryHistory.render(all,{select:selectTask,api});return;}
-    $("badge-count").innerHTML = `<span class="settings-pip-dot"></span>${tasks.length} 个${filter === "done" ? "已完成" : "进行中"}`;
+    const tasks = filter === "done" ? all : (filter === "active" ? all.filter(isActiveTask) : all);
+    if((filter === "done" || filter === "all") && !editMode){StoryHistory.render(all,{select:selectTask,api});return;}
+    $("badge-count").innerHTML = `<span class="settings-pip-dot"></span>${tasks.length} 个${filter === "done" ? "已完成" : filter === "active" ? "进行中" : "全部"}`;
     $("badge-count").className = "settings-pip ok";
     if (tasks.length === 0) {
       $("list-panel").innerHTML = '<div class="empty-state">暂无任务<br><br><a href="index.html" style="color:var(--accent)">→ 去创建一个</a></div>';
