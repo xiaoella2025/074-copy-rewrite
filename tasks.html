@@ -71,9 +71,13 @@ body.editing .layout{display:grid;grid-template-columns:minmax(260px,320px) minm
 .task-card:hover{background:var(--bg-hover);}
 .task-card.active{background:var(--brand-soft);border-color:var(--brand);box-shadow:0 0 0 1px var(--brand);}
 .task-card.active::before{content:"";position:absolute;left:0;top:6px;bottom:6px;width:3px;background:var(--brand);border-radius:0 3px 3px 0;}
-.task-card .title{font-size:14px;font-weight:600;color:var(--text);margin-bottom:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.task-card .meta{font-size:11px;color:var(--muted);margin-bottom:8px;}
-.task-card .steps{display:flex;gap:4px;flex-wrap:wrap;}
+.task-card .title{font-size:14px;font-weight:600;color:var(--text);margin-bottom:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:24px;}
+.task-card .meta{font-size:11px;color:var(--muted);margin-bottom:8px;display:flex;gap:10px;flex-wrap:wrap;}
+.task-card .meta>span{display:inline-flex;align-items:center;gap:3px;}
+.task-card .progress{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--text-muted);margin-top:6px;}
+.task-card .progress-bar{flex:1;height:6px;background:var(--bg-sunken);border-radius:3px;overflow:hidden;min-width:60px;}
+.task-card .progress-fill{height:100%;background:var(--brand);border-radius:3px;transition:width .2s;}
+.task-card .progress-label{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap;}
 /* === step-pill 改 settings-pip 4 态 === */
 .step-pill{display:inline-flex;align-items:center;gap:4px;background:var(--bg-raised);color:var(--text-muted);padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:500;border:1px solid var(--border-subtle);}
 .step-pill.done{background:color-mix(in oklch,var(--ok) 14%,transparent);color:var(--ok);border-color:color-mix(in oklch,var(--ok) 24%,transparent);}
@@ -212,14 +216,27 @@ async function loadList() {
       $("list-panel").innerHTML = '<div class="empty-state">暂无任务<br><br><a href="index.html" style="color:var(--accent)">→ 去创建一个</a></div>';
       return;
     }
-    $("list-panel").innerHTML = tasks.map(t => `
+    $("list-panel").innerHTML = tasks.map(t => {
+      const title = t.title || (t.task_id && t.task_id.length > 16 ? t.task_id.slice(0, 12) + '…' : t.task_id);
+      const done = (t.completed_steps || []).filter(k => k !== 'meta').length;
+      const total = 7;
+      const pct = Math.min(100, Math.round(done / total * 100));
+      return `
       <div class="task-card ${t.task_id === currentTaskId ? 'active' : ''}" data-id="${escapeHtml(t.task_id)}">
         <button type="button" class="task-delete" data-action="delete" title="删除任务" aria-label="删除任务">×</button>
-        <div class="title">${escapeHtml(t.title || t.task_id)}</div>
-        <div class="meta">${t.created_at} · ${t.shot_count} 镜 · ${t.image_count} 图 · ${t.audio_count} 音频${t.total_duration_sec ? ' · ' + t.total_duration_sec + 's' : ''}</div>
-        <div class="steps">${renderStepPills(t.completed_steps)}</div>
+        <div class="title">${escapeHtml(title)}</div>
+        <div class="meta">
+          <span>🕒 ${escapeHtml((t.created_at || '').slice(5, 16))}</span>
+          <span>🎬 ${t.shot_count || 0} 镜</span>
+          <span>🖼 ${t.image_count || 0} 图</span>
+          <span>🎤 ${t.audio_count || 0} 音${t.total_duration_sec ? ' · ' + t.total_duration_sec + 's' : ''}</span>
+        </div>
+        <div class="progress">
+          <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
+          <div class="progress-label">${done}/${total} 步</div>
+        </div>
       </div>
-    `).join("");
+    `;}).join("");
     $("list-panel").querySelectorAll(".task-card").forEach(card => {
       card.onclick = (e) => {
         if (e.target.closest('[data-action="delete"]')) return;
