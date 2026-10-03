@@ -163,6 +163,54 @@
     function renderPreview() {
       const panel = panels.preview, steps = detail?.steps || {};
       panel.replaceChildren();
+      const cfg = detail?.client_config || {};
+      const req = detail?.request || {};
+      if (cfg || req) {
+        const card1 = card(panel, "创建参数");
+        const fields1 = node("div", "wv-fields");
+        const mode = cfg.mode || req.process_mode;
+        const pause = cfg.pauseMode || req.pause_mode;
+        const rounds = cfg.generate?.rounds || req.rounds;
+        const viewpoint = cfg.generate?.viewpoint || req.viewpoint;
+        const line = cfg.generate?.line || req.line;
+        const level = cfg.generate?.level || req.level;
+        const ttsMode = cfg.tts?.mode || req.tts_mode;
+        const ttsProvider = cfg.tts?.provider || req.tts_provider;
+        if (mode) field(fields1, "处理模式", {full:"全流程自动", half:"半自动", manual:"手动分段"}[mode] || mode);
+        if (pause) field(fields1, "暂停时机", {never:"不暂停", auto:"关键节点", custom:Array.isArray(cfg.pauseStages)?`自定义：${cfg.pauseStages.join(" / ")}`:"自定义"}[pause] || pause);
+        if (rounds) field(fields1, "改写强度", {std:"标准", deep:"深度", concise:"精简", custom:"自定义"}[rounds] || rounds);
+        if (line) field(fields1, "赛道", line);
+        if (level) field(fields1, "层级", level);
+        if (viewpoint) field(fields1, "视角", {keep:"保留原文", first:"第一人称", third:"第三人称", story:"故事化"}[viewpoint] || viewpoint);
+        if (ttsMode) field(fields1, "配音模式", {system:"系统配音", upload:"上传配音", podcast:"双人播客"}[ttsMode] || ttsMode);
+        if (ttsProvider) field(fields1, "配音引擎", ttsProvider);
+        if (fields1.children.length) card1.append(fields1);
+        else card1.append(node("div", "wv-empty", "无创建参数（任务未走完整流程）"));
+
+        const card2 = card(panel, "发布素材");
+        const fields2 = node("div", "wv-fields");
+        const coverMode = cfg.cover?.mode || req.cover_mode;
+        const coverTpl = cfg.cover?.template || req.cover_template;
+        const coverDir = typeof cfg.cover?.direction === "number" ? cfg.cover.direction : req.cover_direction;
+        const imgSrc = cfg.image?.source || req.image_source;
+        const imgProv = cfg.image?.provider || req.image_provider;
+        const ratio = cfg.image?.ratio || req.image_ratio;
+        const dyn = cfg.dynamic?.mode || req.dynamic_mode;
+        const bgm = cfg.bgm_choice === "upload" ? "上传 BGM" : cfg.bgm_choice === "builtin" ? "内置 BGM" : (req.bgm_choice || "");
+        if (coverMode) field(fields2, "封面模式", {ai:"AI 生成", upload:"上传", local:"本地素材", none:"不生成"}[coverMode] || coverMode);
+        if (coverTpl) field(fields2, "封面模板", ({cinematic_poster:"电影海报感", minimal_clean:"极简留白", portrait_emotion:"人物情绪", typographic_impact:"文字冲击", guofeng_poster:"国风古韵", legend_portrait:"人物传奇", movie:"电影海报感", minimal:"极简留白", emotional:"人物情绪", impact:"文字冲击", chinese:"国风古韵", legend:"人物传奇"}[coverTpl] || coverTpl));
+        if (typeof coverDir === "number") field(fields2, "封面构图方向", `方向 ${coverDir + 1}`);
+        if (imgSrc) field(fields2, "图片来源", {ai:"AI 生图", mine:"我的素材库", web:"网搜", external:"外部服务"}[imgSrc] || imgSrc);
+        if (imgProv) field(fields2, "出图引擎", imgProv);
+        if (ratio) field(fields2, "画幅", ratio);
+        if (dyn) field(fields2, "动态分镜", {off:"关闭", 3:"前 3 镜", all:"全部", custom:"自定义镜头"}[dyn] || dyn);
+        if (bgm) field(fields2, "背景音乐", bgm);
+        const publish = cfg.generate?.publish || req.publish || {};
+        const publishOn = Object.entries(publish).filter(([k, v]) => v).map(([k]) => k);
+        if (publishOn.length) field(fields2, "发布渠道", publishOn.join("、"));
+        if (fields2.children.length) card2.append(fields2);
+        else card2.append(node("div", "wv-empty", "无发布素材配置"));
+      }
       if (steps.review) {
         const box = card(panel, "文案预审");
         const review = steps.review;

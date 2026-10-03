@@ -2296,6 +2296,7 @@ async function runPipeline() {
         profileId: $("model-pick").value,
         title: $("cover-title").value.trim(), subtitle: $("cover-subtitle").value.trim(),
         template: selectedCoverTemplate(),
+        direction: selectedCoverDirection(),
         ratio: getActiveChip("cover-ratio", "data-cover-ratio", "3:4")},
       dynamic: {
         mode: getActiveChip("dynamic-shots", "data-dynamic", "off"),
