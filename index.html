@@ -989,6 +989,7 @@ body[data-view="editor"] #home-screen{display:none;}
     <div class="full-step" id="step4-block" style="display:none">
       <div class="step-label"><span class="step-no">4</span> 出图 <span class="muted" id="step4-meta" style="font-weight:400"></span></div>
       <div class="step-note" id="step4-note"></div>
+      <div style="margin:6px 0;display:flex;gap:6px;flex-wrap:wrap"><button id="btn-retry-all-failed" style="display:none;font-size:11px;padding:3px 9px;border:1px solid var(--border);border-radius:4px;background:var(--bg-raised);color:var(--text);cursor:pointer">↻ 重画全部失败镜</button></div>
       <div class="shots-list" id="shots-images-list"></div>
     </div>
 
@@ -2433,6 +2434,46 @@ function renderStep4(r) {
     </div>`;
   }).join("");
   bindImageRedraw();
+  const failedItems = results.filter(x => x && !x.ok);
+  const retryAllBtn = $("btn-retry-all-failed");
+  if (retryAllBtn) {
+    retryAllBtn.style.display = failedItems.length ? "" : "none";
+    retryAllBtn.textContent = failedItems.length ? `↻ 重画全部失败镜 (${failedItems.length})` : "";
+    retryAllBtn.onclick = async () => {
+      const taskId = (runView && runView.getTaskId && runView.getTaskId()) || "";
+      if (!taskId) { alert("当前任务未保存，无法批量重画"); return; }
+      const prompts = failedItems.map(x => {
+        const dp = x.desc_prompt || promptByIdx.get(Number(x.idx)) || "";
+        return { idx: x.idx, desc_prompt: dp };
+      }).filter(p => p.desc_prompt);
+      if (!prompts.length) { alert("失败的镜没有可用 prompt，请用「✎ 改 prompt」单镜重画"); return; }
+      retryAllBtn.disabled = true;
+      const old = retryAllBtn.textContent;
+      retryAllBtn.textContent = `⏳ 重画 ${prompts.length} 镜…`;
+      try {
+        const provider = $("img-engine")?.value || "";
+        const ratio = getActiveChip("img-ratio", "data-img-ratio", "9:16");
+        const resolution = getActiveChip("resolution", "data-res", "1k");
+        const r = await api("/api/step4_generate_images", "POST", { prompts, ratio, resolution, provider, retry: true, task_id: taskId });
+        const okMap = new Map((r.results || []).filter(x => x.ok).map(x => [Number(x.idx), x]));
+        document.querySelectorAll("#shots-images-list .shot-item").forEach(item => {
+          const idx = Number(item.dataset.idx);
+          const ok = okMap.get(idx);
+          if (ok) {
+            const img = item.querySelector(".shot-img");
+            if (img) img.src = ok.url + "?t=" + Date.now();
+          }
+        });
+        retryAllBtn.textContent = "✓ 已重画";
+        renderStep4(r);
+      } catch (e) {
+        alert("批量重画失败：" + e.message);
+        retryAllBtn.textContent = old;
+      } finally {
+        setTimeout(() => { retryAllBtn.disabled = false; }, 1500);
+      }
+    };
+  }
 }
 
 function bindImageRedraw() {
