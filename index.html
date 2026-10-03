@@ -796,6 +796,7 @@ body[data-view="editor"] #home-screen{display:none;}
       <div id="cover-text-fields" class="cover-fields">
         <input type="text" id="cover-title" placeholder="封面大字标题（选填）——留空由 AI 根据文案自动起">
         <textarea id="cover-subtitle" placeholder="副标题（选填，一行一句，最多 2 句）——留空不指定副标题"></textarea>
+        <div id="cover-subtitle-hint" style="display:none;margin:6px 0 0;padding:6px 9px;background:var(--bg-sunken);border-left:3px solid var(--brand);border-radius:4px;font-size:11px;line-height:1.55;color:var(--text-muted)"></div>
       </div>
       <div class="help" style="margin:11px 0 6px">封面模板 <small style="color:var(--muted);font-weight:400">· 点 chip 下方看 3 个构图方向 + 标题副标题排版规则</small></div>
       <div class="chips" id="cover-template" style="margin-bottom:10px">
@@ -1268,7 +1269,24 @@ bindChips("cover-mode");
 bindChips("cover-template", chip => {
   $("cover-template-custom").style.display = chip.dataset.template === "custom" ? "" : "none";
   renderCoverTemplateRules(chip.dataset.template);
+  updateCoverSubtitleHint(chip.dataset.template);
 });
+function updateCoverSubtitleHint(tplKey) {
+  const hint = $("cover-subtitle-hint");
+  if (!hint) return;
+  const rec = {
+    emotional: "「人物情绪」+ 副标题讲人物故事钩子最佳；如「一位母亲的十年」/「被误解的医生」",
+    impact:    "「文字冲击」+ 副标题直接放最有冲击的短句；如「别再假装看不见」/「这条规矩要废了」",
+    chinese:   "「国风古韵」+ 副标题用对仗短句最出味；如「山河千里 / 故人归来」",
+    legend:    "「人物传奇」必填副标题——底部金句标语是关键差异化；如「十年一梦 / 他用一支笔改变了一座城」",
+    minimal:   "「极简留白」建议副标题只用一句；如「安静的午后」",
+    movie:     "「电影海报感」副标题可选，留空更聚焦；如「真相从未消失」",
+    custom:    "自定义构图：副标题按你写的描述拼到 prompt，无固定排版规则",
+  }[tplKey];
+  if (!rec) { hint.style.display = "none"; hint.textContent = ""; return; }
+  hint.innerHTML = `💡 <b style="color:var(--text)">${escapeHtml(rec.split("——")[0] || "")}</b>${rec.includes("——") ? "——" + escapeHtml(rec.split("——")[1] || "") : ""}`;
+  hint.style.display = "";
+}
 
 let coverTemplateData = null;
 async function loadCoverTemplateData() {
@@ -2619,6 +2637,7 @@ function populateFromRequest(req, fromStep) {
   }
   if (req.cover_mode) setChipsActive("cover-mode", req.cover_mode, "cv");
   if (req.cover_template) setChipsActive("cover-template", req.cover_template, "template");
+  if (req.cover_template) updateCoverSubtitleHint(req.cover_template === "custom" ? "custom" : (req.cover_template.split(":")[0]));
   // 流程
   if (req.process_mode) setChipsActive("process-mode", req.process_mode, "pm");
   if (req.pause_mode) setChipsActive("pause-mode", req.pause_mode, "pam");
