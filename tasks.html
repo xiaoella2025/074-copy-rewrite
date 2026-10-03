@@ -61,11 +61,13 @@ body{font-family:var(--font-sans);background:var(--bg);color:var(--text);padding
 .layout{display:block;min-height:calc(100vh - 128px);}
 .list-panel{background:var(--panel);border:1px solid var(--border-subtle);border-radius:var(--radius-lg);padding:10px;overflow-y:auto;box-shadow:var(--shadow-sm);}
 .detail-panel{background:var(--panel);border:1px solid var(--border-subtle);border-radius:var(--radius-lg);padding:18px;overflow-y:auto;box-shadow:var(--shadow-sm);}
-body:not(.editing) .list-panel{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:8px;overflow:visible}
+body:not(.editing) .list-panel{display:flex;flex-direction:column;gap:6px;overflow:visible}
 body:not(.editing) .detail-panel{display:none}
 body.editing .layout{display:grid;grid-template-columns:minmax(260px,320px) minmax(0,1fr);gap:18px;height:calc(100vh - 128px)}
 /* === 任务列表卡片 — STORY 真值 === */
-.task-card{padding:12px 14px;border-radius:var(--radius-md);cursor:pointer;margin-bottom:6px;border:1px solid transparent;transition:all .15s;position:relative;}
+.task-card{padding:12px 38px 12px 14px;border-radius:var(--radius-md);cursor:pointer;margin-bottom:6px;border:1px solid var(--border-subtle);transition:all .15s;position:relative;background:var(--panel-2);}
+.task-card .task-delete{position:absolute;right:8px;top:50%;transform:translateY(-50%);width:28px;height:28px;border:1px solid var(--border);background:var(--bg-raised);color:var(--muted);border-radius:var(--radius-sm);cursor:pointer;font-size:18px;line-height:1;transition:.12s;display:grid;place-items:center;font-family:var(--font-sans);}
+.task-card .task-delete:hover{background:rgba(255,107,107,.18);color:#ff7a7a;border-color:rgba(255,107,107,.5);}
 .task-card:hover{background:var(--bg-hover);}
 .task-card.active{background:var(--brand-soft);border-color:var(--brand);box-shadow:0 0 0 1px var(--brand);}
 .task-card.active::before{content:"";position:absolute;left:0;top:6px;bottom:6px;width:3px;background:var(--brand);border-radius:0 3px 3px 0;}
@@ -117,18 +119,13 @@ body.editing .layout{display:grid;grid-template-columns:minmax(260px,320px) minm
 @media(max-width:900px){body{padding-left:20px;padding-top:58px}.app-sidebar{display:none}.layout{grid-template-columns:280px minmax(0,1fr)}}
 @media(max-width:640px){body{padding:56px 10px 10px}body.editing .layout{display:block;height:auto}body.editing .list-panel{max-height:210px;margin-bottom:10px}body.editing .detail-panel{min-height:50vh}.settings-section-head{flex-wrap:wrap}}
 </style>
+<script src="/assets/desktop_bridge.js"></script>
+<link rel="stylesheet" href="/assets/app_nav.css">
+<link rel="stylesheet" href="/assets/story_history.css">
 </head>
 <body data-theme="dark">
-<div class="app-titlebar"><strong>▣</strong> app074 · 图文创作</div>
-<aside class="app-sidebar" aria-label="主导航">
-  <div class="app-brand"><span class="app-logo">07</span><span>app074<small>图文工作台</small></span></div>
-  <a class="new" href="/index.html?new=1">＋ 新建任务</a>
-  <a data-side="queue" href="/tasks.html" aria-current="page">📋 任务队列</a>
-  <a data-side="history" href="/tasks.html?filter=done">🕐 历史任务</a>
-  <div class="app-side-label">工作区</div>
-  <a href="/index.html">▧ 三工作流入口</a>
-  <div class="app-side-bottom"><a href="/settings.html">⚙ 系统设置</a></div>
-</aside>
+
+<aside id="app-nav" aria-label="主导航"></aside><script src="/assets/app_nav.js"></script>
 <div class="settings-section-head">
   <div class="settings-section-icon">📋</div>
   <div class="flex-1">
@@ -142,6 +139,8 @@ body.editing .layout{display:grid;grid-template-columns:minmax(260px,320px) minm
   <button class="btn btn-ghost" id="btn-toggle-theme">🌗 主题</button>
 </div>
 
+<div id="history-controls" hidden></div>
+<script src="/assets/story_history.js"></script>
 <div class="layout">
   <div class="list-panel" id="list-panel">
     <div class="empty-state">加载中...</div>
@@ -161,7 +160,7 @@ document.body.classList.toggle("editing", editMode);
 document.body.dataset.filter = filter;
 if (filter === "done") {
   $("page-title").textContent = "历史任务";
-  $("page-sub").textContent = "查看已完成任务 · 分步产物 · 草稿路径";
+  $("page-sub").textContent = "查看任务记录 · 分步产物 · 草稿路径";
   document.querySelector('[data-side="history"]')?.classList.add("active");
 } else {
   document.querySelector('[data-side="queue"]')?.classList.add("active");
@@ -205,7 +204,8 @@ async function loadList() {
   try {
     const r = await api("/api/tasks");
     const all = r.tasks || [];
-    const tasks = filter === "done" ? all.filter(isDoneTask) : all.filter(isActiveTask);
+    const tasks = filter === "done" ? all : all.filter(isActiveTask);
+    if(filter === "done" && !editMode){StoryHistory.render(all,{select:selectTask,api});return;}
     $("badge-count").innerHTML = `<span class="settings-pip-dot"></span>${tasks.length} 个${filter === "done" ? "已完成" : "进行中"}`;
     $("badge-count").className = "settings-pip ok";
     if (tasks.length === 0) {
@@ -214,12 +214,30 @@ async function loadList() {
     }
     $("list-panel").innerHTML = tasks.map(t => `
       <div class="task-card ${t.task_id === currentTaskId ? 'active' : ''}" data-id="${escapeHtml(t.task_id)}">
+        <button type="button" class="task-delete" data-action="delete" title="删除任务" aria-label="删除任务">×</button>
         <div class="title">${escapeHtml(t.title || t.task_id)}</div>
         <div class="meta">${t.created_at} · ${t.shot_count} 镜 · ${t.image_count} 图 · ${t.audio_count} 音频${t.total_duration_sec ? ' · ' + t.total_duration_sec + 's' : ''}</div>
         <div class="steps">${renderStepPills(t.completed_steps)}</div>
       </div>
     `).join("");
-    $("list-panel").querySelectorAll(".task-card").forEach(card => card.onclick = () => selectTask(card.dataset.id));
+    $("list-panel").querySelectorAll(".task-card").forEach(card => {
+      card.onclick = (e) => {
+        if (e.target.closest('[data-action="delete"]')) return;
+        selectTask(card.dataset.id);
+      };
+      const delBtn = card.querySelector('[data-action="delete"]');
+      if (delBtn) delBtn.onclick = async (e) => {
+        e.stopPropagation();
+        const tid = card.dataset.id;
+        if (!confirm(`确认删除任务 ${tid}？\n将删除该任务的全部产物文件，此操作不可撤销。`)) return;
+        try {
+          await api(`/api/task/${encodeURIComponent(tid)}`, "DELETE");
+          card.remove();
+        } catch (err) {
+          alert("删除失败：" + err.message);
+        }
+      };
+    });
     const requested = new URLSearchParams(location.search).get("task");
     if (requested && !editMode && tasks.some(t => t.task_id === requested)) {
       location.replace("/result.html?task=" + encodeURIComponent(requested));
