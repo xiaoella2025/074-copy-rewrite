@@ -17,6 +17,13 @@ def main():
     with tempfile.TemporaryDirectory(prefix='074-batch-entry-') as directory:
         root=Path(directory);data=root/'data';folder=data/'benchmark/batch-jobs';folder.mkdir(parents=True)
         token=secrets.token_hex(24)
+        config={'generate':{},'tts':{},'image':{}}
+        for tid in ['fixture-current','fixture-next']:
+            task=data/'tasks'/tid;task.mkdir(parents=True);(task/'client_config.json').write_text(json.dumps(config),'utf8')
+        (data/'task-queue.json').write_text(json.dumps({'version':1,'batches':[],'jobs':[
+            {'id':'fixture-'+str(i),'task_id':tid,'kind':'image','config':config,'approved_stages':[],
+             'status':'running' if i==0 else 'queued','stage':'cover','stage_status':'running'}
+            for i,tid in enumerate(['fixture-current','fixture-next'])]}),'utf8')
         items=[{'accountId':'v2_fixture','feedId':str(i)} for i in range(2)]
         (data/'benchmark.json').write_text(json.dumps({'version':1,'accounts':[],
             'feeds':[{**item,'title':'fixture','transcript':'fixture cached manuscript','createdTask':True} for item in items]}),'utf8')
@@ -46,6 +53,10 @@ def main():
                     time.sleep(.05)
                 raise AssertionError('fixture job did not complete')
             assert request('GET','/api/benchmark/batch-jobs',auth=False)[0]==403
+            status,video_queue=request('GET','/api/task-queue')
+            assert status==200
+            assert [x['status'] for x in video_queue['jobs']]==['interrupted','queued']
+            assert video_queue['jobs'][0]['failure_hold'] is True
             status,value=request('GET','/api/benchmark/batch-jobs');assert status==200
             assert value['jobs'][0]['status']=='interrupted'
             assert request('GET','/api/benchmark')[1]['feeds'][1]['createdTask'] is True
@@ -70,6 +81,7 @@ def main():
             result={'installedEntryReady':True,'authenticatedRoutes':True,'wrongOriginRejected':True,
                 'restartWaitsForExplicitResume':True,'succeededRowNotRepeated':True,'backgroundCachedExports':2,
                 'exportDownloadsHttp200':2,'sameIdDoesNotDuplicate':True,'installedAssetsMatch':True,
+                'interruptedVideoBlocksFollowingQueue':True,
                 'providerRequests':0,'productionDataAccess':False}
             target=repo/'.desktop-tools/benchmark-batch-recovery-20261017/installed-entry-verified.json'
             target.write_text(json.dumps(result,indent=2),'utf8');print(json.dumps(result))

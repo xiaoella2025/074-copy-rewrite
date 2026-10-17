@@ -151,6 +151,27 @@
   return {create};
  });
 
+--- before/assets/workflow_view.js
++++ assets/workflow_view.js
+@@ -354,12 +354,14 @@
+         if (job.status === 'pausing') add('暂停中…', 'pause', '等待在途请求返回并保存产物，不再启动下一步骤', true);
+         if (job.status === 'paused') add('从断点续跑', 'confirm', '保留已完成的文案、配音和图片，只补未完成产物；继续当前暂停任务');
+         if (['failed','interrupted','cancelled'].includes(job.status))
+-          add('从断点续跑', 'enqueue', '保留已完成的文案、配音和图片，只补未完成产物；超时出图先查询原任务，排到队尾继续');
++          add('从断点续跑', 'enqueue', '保留已完成的文案、配音和图片，只补未完成产物；超时出图先查询原任务，优先继续当前未完成项');
+         for (const button of controls.children) {
+           if (button.textContent === '从断点续跑') button.className += ' wv-summary-resume';
+         }
+-        if (['queued','running','pausing','paused','cancelling'].includes(job.status))
+-          add(job.status === 'cancelling' ? '正在取消…' : '取消任务', 'cancel', '保留已完成产物，取消当前任务', job.status === 'cancelling');
++        const held=job.failure_hold&&['failed','interrupted'].includes(job.status);
++        if (['queued','running','pausing','paused','cancelling'].includes(job.status)||held)
++          add(job.status === 'cancelling' ? '正在取消…' : held?'跳过此任务，继续后续':'取消任务', 'cancel', '保留已完成产物，取消当前任务', job.status === 'cancelling');
++        if(held)controls.append(node('span','wv-node-note','队列已暂停：当前任务尚未完成，请续跑或明确跳过后再处理下一条。'));
+         if (controls.children.length) summary.append(controls);
+       }
+       const status = job?.status || info.progress?.status;
+
 --- before/benchmark.py
 +++ benchmark.py
 @@ -466,7 +466,10 @@
@@ -214,6 +235,30 @@
          connection.execute('INSERT INTO receipts VALUES (?, ?, ?, ?, NULL)',(key,token,'pending',int(time.time())))
      return {'key':key,'token':token}
 
+--- before/docs/audit/2026-10-17-story1245-remaining.md
++++ docs/audit/2026-10-17-story1245-remaining.md
+@@ -62,3 +62,8 @@
+ ## 现有工作保护
+ 
+ 保留音乐库及编号、MV 原文演唱和未来提示词、独立绘图/封面引擎、紧凑布局、发布文案和话题、标题命名和文件操作、断点续跑、最近完成的参数复用与词组断句。只处理核实仍缺的部分。
++
++
++## 2026-10-17：07 批量后台恢复续修
++
++详见 [07 实施记录](2026-10-17-benchmark-batch-recovery.md)。代码、候选运行时及隔离浏览器验收已完成，正式安装等待现有视频任务空闲；独立单视频解析与 08–12 继续保留待办。
+
+--- before/docs/audit/current-validation.md
++++ docs/audit/current-validation.md
+@@ -141,3 +141,8 @@
+ 已沿中断处完成安装更新，再同步网页18801。定向40Node/21Python通过；安装隔离19销量请求、7旧对标请求、32管理动作及32关闭、48只读地址、121资源通过。新修复包括历史日期趋势、换品打标、行内保存/取消、增长定位同期作品、30次运行日志和原版浮窗结构。桌面85/网页494业务文件变更0、新增0。
+ 
+ 首页原生可访问树可读；点击工具报 `coordinate input geometry is unavailable`、恢复截图报 `FrameArrived timed out`。没有用户Esc证据，不判逐入口点击/像素、真实微信OCR通过。批量结束汇总、自动结果分组/统计、补录返回结果、列表总量趋势和停滞优先排序已补；添加/编辑记录弹窗细节仍须对齐，见[1.24.1逐项记录](2026-10-04-story1241-sales-chain.md)。全部17项提醒仍集中登记，R003自有服务前置条件未消失。
++
++
++## 2026-10-17：07 批量后台恢复续修
++
++详见 [07 实施记录](2026-10-17-benchmark-batch-recovery.md)。代码、候选运行时及隔离浏览器验收已完成，正式安装等待现有视频任务空闲；独立单视频解析与 08–12 继续保留待办。
+
 --- before/story1245_runtime.py
 +++ story1245_runtime.py
 @@ -166,6 +166,8 @@
@@ -225,6 +270,87 @@
      backend._story1245_installed = True
  
  
+
+--- before/task_cover.py
++++ task_cover.py
+@@ -232,12 +232,23 @@
+     if data_url:return _action(backend,folder,tid,slot,'upload',{'slot':slot,'data_url':data_url})['cover']
+     if local_only or info['mode'] in ('local','upload') or cover.get('provider')=='upload':raise ValueError('本地封面缺失，请重新上传；不会改用收费绘图')
+     if cover:raise ValueError('旧封面缓存丢失且没有可查询的供应商编号，请查供应商记录或上传本地图；不会自动再次购买')
++    preset_hint=''
+     if options:
+         options=dict(options)
++        # Creation uses a template preset index; metadata may return fewer
++        # visual alternatives. Keep that preset hint, use an existing visual,
++        # and leave the direct editor's strict generated-index validation intact.
++        selected=backend.story_cover_template(options.get('template',info['template']))
++        requested=options.get('direction',0)
++        presets=selected.get('directions') or []
++        if info['directions'] and type(requested)==int and len(info['directions'])<=requested<len(presets):
++            preset_hint=presets[requested].get('hint','')
++            options['direction']=0
+         # The queued request is a snapshot; a later explicit engine edit owns the choice.
+         if 'provider' in read(folder/'cover-editor.json',{}).get(str(slot),{}):options.pop('provider',None)
+         validate_options(backend,options);_action(backend,folder,tid,slot,'save',{'slot':slot,**options});info=view(backend,tid,slot)
+     prompt=explicit_prompt or info['prompt'] or (prompt_factory() if prompt_factory else '')
++    if preset_hint and not explicit_prompt:prompt+='\n构图要求：'+preset_hint
+     if isinstance(prompt,str) and prompt.strip():write(folder/f'cover-prompt-{slot}.json',{'key':prompt_key(info),'prompt':prompt})
+     if checkpoint:checkpoint()
+     return _action(backend,folder,tid,slot,'generate',{'slot':slot,'operation_id':f'workflow-cover-{slot}','prompt':prompt},checkpoint=checkpoint)['cover']
+
+--- before/task_queue.py
++++ task_queue.py
+@@ -54,6 +54,7 @@
+             if job['status'] in ('running', 'cancelling', 'pausing'):
+                 job.update(status='paused' if job.get('manual_pause') else 'interrupted',
+                            error='软件上次退出时任务尚未结束，请确认后续跑', updated_at=time.time())
++                if not job.get('batch_id'):job['failure_hold']=True
+                 for batch in self.batches:
+                     if job.get('batch_id')==batch['id']:batch['status']='paused'
+                 changed = True
+@@ -208,7 +209,8 @@
+                 or not isinstance(config.get('tts'), dict) or not isinstance(config.get('image'), dict)):
+                 raise ValueError('任务配置不完整，请在创建页保存参数')
+             # Replace the previous terminal record; old results remain in the task directory.
+-            resume_index = self.jobs.index(old) if old and (old['status'] == 'paused' or old.get('manual_pause')) else None
++            resume_index = self.jobs.index(old) if old and (old['status'] == 'paused' or old.get('manual_pause')) else (
++                0 if old and not batch_id and old['status'] in ('failed','interrupted') else None)
+             if old: self.jobs.remove(old)
+             approved = old.get('approved_stages', []) if old and old['status'] == 'paused' and from_step is None else []
+             job = {'id': uuid.uuid4().hex, 'task_id': task_id, 'kind': kind,
+@@ -224,9 +226,10 @@
+     def cancel(self, task_id):
+         with self.lock:
+             job = self._find(task_id)
+-            if not job or job['status'] not in ACTIVE | {'paused'}:
++            if not job or (job['status'] not in ACTIVE | {'paused'} and not (job.get('failure_hold') and job['status'] in ('failed','interrupted'))):
+                 raise ValueError('任务没有在排队、运行或等待确认')
+             job.update(status='cancelling' if job['status'] in ('running', 'cancelling','pausing') else 'cancelled', updated_at=time.time())
++            job.pop('failure_hold',None)
+             if job.get('manual_pause'):
+                 batch=next((b for b in self.batches if b['id']==job.get('batch_id')),None)
+                 if batch and batch['status']=='paused':batch['status']='running'
+@@ -286,6 +289,7 @@
+ 
+     def run_next(self):
+         with self.backend.TASK_OPERATION_LOCK, self.lock:
++            if any(job.get('failure_hold') and job['status'] in ('failed','interrupted') for job in self.jobs):return False
+             if any(job['status'] in ('running', 'cancelling','pausing') for job in self.jobs): return False
+             if any(job.get('manual_pause') and job['status'] in ('paused','interrupted') for job in self.jobs):return False
+             for batch in self.batches:
+@@ -315,10 +319,12 @@
+         except InterruptedError as error:
+             with self.lock:
+                 job.update(status='interrupted' if self.shutdown.is_set() else 'paused' if job['status']=='pausing' else 'cancelled', error=str(error))
++                if job['status']=='interrupted' and not job.get('batch_id'):job['failure_hold']=True
+         except Exception as error:
+             with self.lock:
+                 job.update(status='interrupted' if self.shutdown.is_set() else
+                            'cancelled' if job['status'] == 'cancelling' else 'paused' if job['status']=='pausing' else 'failed', error=str(error))
++                if job['status'] in ('failed','interrupted') and not job.get('batch_id'):job['failure_hold']=True
+         finally:
+             with self.backend.TASK_OPERATION_LOCK, self.lock:
+                 job['updated_at'] = time.time(); self._save()
 
 --- before/tests/benchmark_batch.test.js
 +++ tests/benchmark_batch.test.js
@@ -292,6 +418,22 @@
 - batch.render([feed],'works');await batch.run('promo');await batch.run('promo');assert.equal(calls.length,1);assert.equal(batch.running,false);
 -});
 
+--- before/tests/task_summary_controls.test.js
++++ tests/task_summary_controls.test.js
+@@ -18,6 +18,12 @@
+  return{host,renderer,calls,detail,setState:value=>{state=value;renderer.renderTask(detail());}};
+ }
+ const controls=f=>f.host.querySelectorAll('.wv-summary-control');
++test('held failure offers resume or explicit skip and explains why later jobs wait',async()=>{
++ const f=fixture();f.renderer.renderTask({info:{task_id:'isolated',queue:{status:'failed',failure_hold:true,error:'fixture cover failure'}},steps:{}});
++ assert.deepEqual(controls(f).map(x=>x.textContent),['从断点续跑','跳过此任务，继续后续']);
++ assert.ok(f.host.querySelectorAll('.wv-node-note').some(x=>x.textContent.includes('队列已暂停')));
++ await controls(f)[1].onclick();assert.deepEqual(f.calls[0],{action:'cancel',id:'isolated'});
++});
+ test('running summary has pause and cancel directly below saved parameter entry',async()=>{
+  const f=fixture();assert.deepEqual(controls(f).map(x=>x.textContent),['暂停修改','取消任务']);
+  const summary=f.host.querySelectorAll('.wv-summary')[0];
+
 --- before/tests/test_benchmark_page.cjs
 +++ tests/test_benchmark_page.cjs
 @@ -18,7 +18,7 @@
@@ -312,4 +454,17 @@
  });
  
  test('radar direct share tracking retains the original inline entrance and only submits once',async()=>{
+
+--- before/tests/test_task_queue.py
++++ tests/test_task_queue.py
+@@ -199,7 +199,8 @@
+         recovered=task_queue.TaskQueue(self.backend, executor=lambda job, queue: None)
+         self.assertEqual(recovered.get('one')['status'], 'interrupted')
+         self.assertEqual(recovered.get('two')['status'], 'queued')
+-        self.assertEqual(recovered.enqueue('one')['position'], 2)
++        self.assertFalse(recovered.run_next())
++        self.assertEqual(recovered.enqueue('one')['position'], 1)
+         recovered.stop()
+ 
+     def test_pause_waits_for_confirmation_and_releases_worker_for_other_jobs(self):
 

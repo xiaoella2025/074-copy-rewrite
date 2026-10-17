@@ -1,6 +1,6 @@
 # 074 Benchmark Batch Recovery Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. Default recommendation: execute in the current chat; delegate only if the user selects delegation.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking. Default recommendation: execute in the current chat; delegate only if the user selects delegation.
 
 **Goal:** 让现有对标批量操作关页后继续、重开可见进度、软件中断后显式续跑，并保护手改文案和收费回执。
 
@@ -52,11 +52,11 @@
 
 **Interfaces:** 保持 `transcribe(backend,data)->feed`；只在已有 `LOCK` 内记录/比较 `transcript`、`transcriptReviewed`，修改或删除时抛出 ValueError，不覆盖用户修改。
 
-- [ ] 写失败测试：模拟识别期间改稿，断言 `transcribe` 报冲突、最终文案仍为手改内容；删除作品不被重建；仅更新点赞等指标不阻断结果保存。
-- [ ] 运行 `.desktop-tools/python/Scripts/python.exe -B -m unittest discover -s tests -p test_benchmark_asr_race.py`，确认失败点是旧结果覆盖手改文案。
-- [ ] 实现锁内快照校验，保持原上传临时文件清理、ASR_RUNNING 释放及其他作品字段。
-- [ ] 重跑新测试与 `test_benchmark_video.py`、`test_benchmark.py`，要求全部通过。
-- [ ] 记录来源文件前后哈希/差异；只提交本项新测试和可独立归属的增量。
+- [x] 写失败测试：模拟识别期间改稿，断言 `transcribe` 报冲突、最终文案仍为手改内容；删除作品不被重建；仅更新点赞等指标不阻断结果保存。
+- [x] 运行 `.desktop-tools/python/Scripts/python.exe -B -m unittest discover -s tests -p test_benchmark_asr_race.py`，确认失败点是旧结果覆盖手改文案。
+- [x] 实现锁内快照校验，保持原上传临时文件清理、ASR_RUNNING 释放及其他作品字段。
+- [x] 重跑新测试与 `test_benchmark_video.py`、`test_benchmark.py`，要求全部通过。
+- [x] 记录来源文件前后哈希/差异；只提交本项新测试和可独立归属的增量。
 
 ### Task 2: 持久批次和单条操作执行
 
@@ -64,11 +64,11 @@
 
 **Interfaces:** `BatchJobs(backend,executor=None)` 提供 `submit(data)->job`、`list()->list[job]`、`control(id,action)->job`。`get_manager(backend)->BatchJobs` 按数据根目录隔离；`execute_item(backend,kind,row,mark=None)->dict` 返回导出引用或复用标记；`UnconfirmedReceiptError(ValueError)` 保持原调用者兼容。
 
-- [ ] 写失败测试：请求 ID 幂等及内容冲突；一次一个活动批次；相同 feedId 不同账号分别执行；刷新式多次 list 不二次执行；损坏作业文件保留；空目录 list 不创建文件。
-- [ ] 运行 `.desktop-tools/python/Scripts/python.exe -B -m unittest discover -s tests -p test_benchmark_batch_jobs.py`，确认缺少作业模块/接口导致失败。
-- [ ] 复用 `task_queue.atomic_json` 写 `benchmark/batch-jobs/<id>.json`；验证身份后落盘再起线程；每条领取前、完成后保存状态。启动读取旧 running/queued/stopping 作业时转 interrupted，不自动起线程。停止等当前条返回；resume 跳过 succeeded/unconfirmed，只重试明确允许的未完成/失败项。
-- [ ] 补并通过操作测试：缓存文案不再 ASR、标记值固定、已完成导出保留、promo 指纹变化不发请求、已完成回执复用、未确认异常不调用模型第二次；软件中断时已写业务结果但未写批次结果也能安全回读。重跑 `test_benchmark_promo_receipts.py` 和 `test_benchmark_backup.py`。
-- [ ] 提交本项新模块与测试，保留既有回执文件修改的独立差异证据。
+- [x] 写失败测试：请求 ID 幂等及内容冲突；一次一个活动批次；相同 feedId 不同账号分别执行；刷新式多次 list 不二次执行；损坏作业文件保留；空目录 list 不创建文件。
+- [x] 运行 `.desktop-tools/python/Scripts/python.exe -B -m unittest discover -s tests -p test_benchmark_batch_jobs.py`，确认缺少作业模块/接口导致失败。
+- [x] 复用 `task_queue.atomic_json` 写 `benchmark/batch-jobs/<id>.json`；验证身份后落盘再起线程；每条领取前、完成后保存状态。启动读取旧 running/queued/stopping 作业时转 interrupted，不自动起线程。停止等当前条返回；resume 跳过 succeeded/unconfirmed，只重试明确允许的未完成/失败项。
+- [x] 补并通过操作测试：缓存文案不再 ASR、标记值固定、已完成导出保留、promo 指纹变化不发请求、已完成回执复用、未确认异常不调用模型第二次；软件中断时已写业务结果但未写批次结果也能安全回读。重跑 `test_benchmark_promo_receipts.py` 和 `test_benchmark_backup.py`。
+- [x] 提交本项新模块与测试，保留既有回执文件修改的独立差异证据。
 
 ### Task 3: 鉴权 HTTP 接口与初始化
 
@@ -76,11 +76,11 @@
 
 **Interfaces:** `install(backend)->None` 幂等包装现有 Handler，仅匹配上述三个新接口；使用原 `_desktop_authorized()`。新接口 JSON body 上限 128 KiB；无效 JSON/参数 400、冲突 409、过大 413。导出引用只使用现有导出接口返回值，不提供任意路径读写。
 
-- [ ] 写失败测试：未授权 403、错误 Origin 403、合法会话可提交/回读/停止/继续；非法 ID、缺失作品、超大 body 拒绝；旧备份和普通作品接口仍可访问。
-- [ ] 运行 `.desktop-tools/python/Scripts/python.exe -B -m unittest discover -s tests -p test_benchmark_batch_http.py`，确认新增路由尚不存在。
-- [ ] 接入 Task 2 的 manager；公共返回值屏蔽线程对象、内部根目录及凭据；捕获已知参数/冲突错误，不将损坏记录重置为成功空批次。
-- [ ] 重跑新 HTTP、`test_runtime_updates1245.py`、`test_connected_modules_http.py`，全部通过且外部请求为零。
-- [ ] 提交新适配器与测试；记录现有初始化模块的最小差异。
+- [x] 写失败测试：未授权 403、错误 Origin 403、合法会话可提交/回读/停止/继续；非法 ID、缺失作品、超大 body 拒绝；旧备份和普通作品接口仍可访问。
+- [x] 运行 `.desktop-tools/python/Scripts/python.exe -B -m unittest discover -s tests -p test_benchmark_batch_http.py`，确认新增路由尚不存在。
+- [x] 接入 Task 2 的 manager；公共返回值屏蔽线程对象、内部根目录及凭据；捕获已知参数/冲突错误，不将损坏记录重置为成功空批次。
+- [x] 重跑新 HTTP、`test_runtime_updates1245.py`、`test_connected_modules_http.py`，全部通过且外部请求为零。
+- [x] 提交新适配器与测试；记录现有初始化模块的最小差异。
 
 ### Task 4: 原批量按钮、进度和显式恢复
 
@@ -88,11 +88,11 @@
 
 **Interfaces:** 保留 `create(hooks)` 返回的 `render/pick/run/stop/running/prune`；新增 `sync(jobs)` 接收后端快照、`resume(id)`；由 `benchmark.js` 现有 load/轮询读取作业列表并调用 sync。run 只提交一次，不再在页面执行逐条业务循环。
 
-- [ ] 写失败测试：关页式销毁 controller 后新 controller 回读同一批次；同提交 ID 丢响应后不新建；进度按操作类型展示；过滤为空时活动/中断批次仍可见；UI 读取失败不把任务改为停止或重交。
-- [ ] 运行 `node --test tests/benchmark_batch_jobs.test.js`，确认原页面循环不能满足回读断言。
-- [ ] 沿用原批量按钮和选择规则；显示真实 n/N、成功/失败/待确认数量、停止和“继续未完成项”。移除只针对旧页面执行循环的 beforeunload 提示；成功后的导出位置由用户点击打开/下载，不在后台主动弹窗。
-- [ ] 跑两组批量 Node 测试及 `benchmark_backup.test.js`、`benchmark_radar.test.js`；实际隔离浏览器验证提交后导航离开、返回进度、中断恢复和下载入口，保存截图。
-- [ ] 提交本项新测试和可独立归属的页面增量，不扩大选择范围或恢复成功项。
+- [x] 写失败测试：关页式销毁 controller 后新 controller 回读同一批次；同提交 ID 丢响应后不新建；进度按操作类型展示；过滤为空时活动/中断批次仍可见；UI 读取失败不把任务改为停止或重交。
+- [x] 运行 `node --test tests/benchmark_batch_jobs.test.js`，确认原页面循环不能满足回读断言。
+- [x] 沿用原批量按钮和选择规则；显示真实 n/N、成功/失败/待确认数量、停止和“继续未完成项”。移除只针对旧页面执行循环的 beforeunload 提示；成功后的导出位置由用户点击打开/下载，不在后台主动弹窗。
+- [x] 跑两组批量 Node 测试及 `benchmark_backup.test.js`、`benchmark_radar.test.js`；实际隔离浏览器验证提交后导航离开、返回进度、中断恢复和下载入口，保存截图。
+- [x] 提交本项新测试和可独立归属的页面增量，不扩大选择范围或恢复成功项。
 
 ### Task 5: 安装版验收与逐项交付说明
 
@@ -100,14 +100,16 @@
 
 **Interfaces:** 部署脚本提供 `prepare/test/apply/verify` 模式；候选模块在安装 CPython 中与独立数据运行。复用 `backend_runtime_manifest.verify/digest`；写入审计目录 `.desktop-tools/benchmark-batch-recovery-20261017/`。
 
-- [ ] 实现准备和验收步骤：备份将更新的资源/模块与清单，确认安装版无无关差异；隔离数据模拟批次全部关键状态，不接真实微信/模型。
-- [ ] 用候选运行时跑 Tasks 1–4 测试及带货回执、备份、雷达、视频队列和前六项的定向回归；保存准确测试数和零外部调用证据。
-- [ ] 确认视频任务与对标批次都空闲后正常关闭 074，更新最小资源与清单并重新启动；有活动作业时保留，不强杀、不覆盖。
-- [ ] 完整校验安装清单；用独立数据启动实际安装入口验证鉴权和后台继续；核对设置、模型档案、视频队列及既有任务产物哈希。目录选择器/剪映/真实供应商未实际验证的部分明确保留。
-- [ ] 更新完成范围、实现方式、使用入口、证据和剩余缺口；向用户说明这一项怎么实现，不将整个 07–12 标为完成。只提交本项文件与文档，不推送。
+- [x] 实现准备和验收步骤：备份将更新的资源/模块与清单，确认安装版无无关差异；隔离数据模拟批次全部关键状态，不接真实微信/模型。
+- [x] 用候选运行时跑 Tasks 1–4 测试及带货回执、备份、雷达、视频队列和前六项的定向回归；保存准确测试数和零外部调用证据。
+- [x] 确认视频任务与对标批次都空闲后正常关闭 074，更新最小资源与清单并重新启动；有活动作业时保留，不强杀、不覆盖。
+- [x] 完整校验安装清单；用独立数据启动实际安装入口验证鉴权和后台继续；核对设置、模型档案、视频队列及既有任务产物哈希。目录选择器/剪映/真实供应商未实际验证的部分明确保留。
+- [x] 更新完成范围、实现方式、使用入口、证据和剩余缺口；向用户说明这一项怎么实现，不将整个 07–12 标为完成。只提交本项文件与文档，不推送。
 
 ## Execution Handoff
 
 建议在当前聊天顺序实施：五项共用作业格式和恢复规则，顺序完成便于持续核对同一状态链。若用户选择代理分工，再按对应技能安排实现和审查；当前不派生代理。
 
 **Plan review status:** 用户已确认按计划在当前聊天逐项实施（2026-10-17）；不再重复请求阶段确认。
+
+用户追加封面/普通队列修复：已复现并补齐，详见实施记录。正式安装与原生 ready 已验证；中断当前条等待用户续跑。

@@ -1,5 +1,6 @@
 """Guarded 07 deployment. No provider calls or production jobs in acceptance."""
 import difflib
+import ast
 import importlib.util
 import json
 import marshal
@@ -52,7 +53,8 @@ def idle():
 def prepare():
     assert not (audit/'prepared.json').exists(),'Already prepared; do not overwrite audit baseline'
     baseline=verify(host);before=audit/'source-before';header=importlib.util.MAGIC_NUMBER+struct.pack('<III',0,0,0)
-    allowed={'benchmark':{'transcribe','ai_action'},'benchmark_ai_receipts':{'reserve','UnconfirmedReceiptError'},'story1245_runtime':{'install'}}
+    allowed={'benchmark':{'transcribe','ai_action'},'benchmark_ai_receipts':{'reserve','UnconfirmedReceiptError'},'story1245_runtime':{'install'},
+             'task_queue':{'TaskQueue'},'task_cover':{'initial'}}
     for module,expected in allowed.items():
         relative='_internal/'+module+'.pyc';original=marshal.loads((host/relative).read_bytes()[16:])
         prior=compile((before/(module+'.py')).read_text('utf8'),'<baseline>','exec')
@@ -61,6 +63,12 @@ def prepare():
         old={c.co_name:c for c in prior.co_consts if isinstance(c,types.CodeType)}
         new={c.co_name:c for c in code.co_consts if isinstance(c,types.CodeType)}
         changed={name for name in old.keys()|new.keys() if name not in old or name not in new or signature(old[name])!=signature(new[name])}
+        if module=='task_queue' and 'dispatch' in changed:
+            # Python 3.14 embeds a nested class's __firstlineno__ in constants.
+            # A preceding method edit shifts it without changing dispatch logic.
+            def node(path):return next(x for x in ast.parse(path.read_text('utf8')).body if isinstance(x,ast.FunctionDef) and x.name=='dispatch')
+            assert ast.dump(node(before/(module+'.py')))==ast.dump(node(repo/(module+'.py'))),'Unexpected dispatch behavior change'
+            changed.remove('dispatch')
         assert changed==expected,'Unexpected source changes: '+module+str(changed)
         target=payload/relative;target.parent.mkdir(parents=True,exist_ok=True);target.write_bytes(header+marshal.dumps(code))
     for module in ['benchmark_batch_actions','benchmark_batch_jobs','benchmark_batch_http']:
@@ -69,6 +77,15 @@ def prepare():
     for name in ['assets/benchmark.js','assets/benchmark_batch.js']:
         assert digest(host/'_internal'/name)==digest(before/name),'Unrelated installed UI drift'
         target=payload/'_internal'/name;target.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(repo/name,target)
+    # This existing asset has unrelated source/installed drift. Apply only our
+    # captured-baseline hunks, with unique context, to installed bytes.
+    name='assets/workflow_view.js';old=(before/name).read_text('utf8').splitlines(True);new=(repo/name).read_text('utf8').splitlines(True)
+    installed=(host/'_internal'/name).read_text('utf8')
+    for group in difflib.SequenceMatcher(a=old,b=new).get_grouped_opcodes(2):
+        a=''.join(old[group[0][1]:group[-1][2]]);b=''.join(new[group[0][3]:group[-1][4]])
+        assert installed.count(a)==1,'Workflow summary context changed'
+        installed=installed.replace(a,b,1)
+    (payload/'_internal'/name).write_text(installed,'utf8')
     old_hashes={}
     for path in payload.rglob('*'):
         if not path.is_file() or path==payload/'backend-runtime.json':continue
@@ -92,7 +109,7 @@ def prepare():
     static=audit/'static';static.mkdir(parents=True,exist_ok=True)
     for path in (host/'_internal').glob('*.html'):shutil.copyfile(path,static/path.name)
     shutil.copytree(host/'_internal/assets',static/'assets',dirs_exist_ok=True)
-    for name in ['assets/benchmark.js','assets/benchmark_batch.js']:shutil.copyfile(repo/name,static/name)
+    for name in ['assets/benchmark.js','assets/benchmark_batch.js','assets/workflow_view.js']:shutil.copyfile(payload/'_internal'/name,static/name)
     write(audit/'prepared.json',{'baseline':baseline,'protected':protected(),'oldHashes':old_hashes,'sourceDeltas':deltas,'providerRequests':0})
     print(json.dumps({'prepared':True,'newModules':3,'files':len(old_hashes)}))
 
@@ -105,7 +122,8 @@ def test():
     import server,story1245_runtime
     story1245_runtime.install(server);server.ROOT=host/'_internal';server.PROMPTS_DIR=server.ROOT/'prompts'
     os.environ['PATH']=str(host/'_internal')+os.pathsep+os.environ.get('PATH','')
-    names=['test_benchmark_asr_race','test_benchmark_batch_jobs','test_benchmark_batch_http','test_benchmark_promo_receipts',
+    names=['test_queue_cover_completion','test_task_pause','test_cover_workflow_resume','test_cover_provider_resume',
+        'test_benchmark_asr_race','test_benchmark_batch_jobs','test_benchmark_batch_http','test_benchmark_promo_receipts',
         'test_benchmark_backup','test_benchmark_auto_backup','test_benchmark_video','test_benchmark','test_task_queue',
         'test_runtime_updates1245','test_connected_modules_http','test_subtitle_alignment1245','test_volc_v3_1245',
         'test_workbench_protocol1245','test_workbench_stream','test_llm_credentials1245','test_tts','test_task_cover',
@@ -131,7 +149,6 @@ def restage():
 
 def apply():
     assert json.loads((audit/'tested.json').read_text('utf8'))['success'],'Acceptance failed'
-    assert idle(),'Work is active; leave it running'
     saved=json.loads((audit/'prepared.json').read_text('utf8'))
     assert digest(host/'backend-runtime.json')==digest(audit/'manifest-before.json'),'Runtime changed'
     for relative,sha in saved['oldHashes'].items():
@@ -141,6 +158,11 @@ def apply():
     command="@(Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'app074-desktop.exe' }).Count"
     count=subprocess.check_output(['powershell','-NoProfile','-Command',command],creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0),text=True)
     assert count.strip()=='0','Close 074 normally before installation'
+    command="@(Get-CimInstance Win32_Process -Filter \"Name='python.exe'\" | Where-Object { $_.CommandLine -like '*desktop_backend.pyc*' -and $_.CommandLine -like '*com.app074.desktop*' }).Count"
+    count=subprocess.check_output(['powershell','-NoProfile','-Command',command],creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0),text=True)
+    assert count.strip()=='0','Production backend is still running; preserve active operations'
+    # A closed app may leave stale running/queued records. Preserve those bytes;
+    # queue startup will mark the interrupted current task and wait for the user.
     before=protected()
     for path in payload.rglob('*'):
         if path.is_file() and path.name!='backend-runtime.json':
