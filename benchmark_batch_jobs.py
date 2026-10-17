@@ -114,7 +114,11 @@ class BatchJobs:
 
     def _launch(self,job):
         self.thread=threading.Thread(target=self._run,args=(job,),name='benchmark-batch',daemon=True)
-        self.thread.start()
+        try:self.thread.start()
+        except RuntimeError:
+            self.thread=None
+            job.update(status='interrupted',error='后台线程未能启动，请稍后继续未完成项')
+            self._save(job)
 
     def control(self,job_id,action):
         identifier(job_id)
@@ -123,14 +127,25 @@ class BatchJobs:
             job=self.jobs.get(job_id)
             if job is None:raise ValueError('批次不存在')
             if action=='stop':
-                if job['status'] in ACTIVE:job['status']='stopping';self._save(job)
+                if job['status'] in ACTIVE:
+                    previous_status=job['status'];job['status']='stopping'
+                    try:self._save(job)
+                    except Exception:
+                        job['status']=previous_status
+                        raise
             else:
                 if job['status'] in ACTIVE:return self._public(job)
                 if self._active():raise BatchConflict('已有批次正在执行')
                 retry=[x for x in job['rows'] if x['status'] in ('failed','pending')]
                 if not retry:return self._public(job)
+                previous=copy.deepcopy(job)
                 for row in retry:row.update(status='pending',error='')
-                job.update(status='queued',error='');self._save(job);self._launch(job)
+                job.update(status='queued',error='')
+                try:self._save(job)
+                except Exception:
+                    job.clear();job.update(previous)
+                    raise
+                self._launch(job)
             return self._public(job)
 
     def _run(self,job):
@@ -157,6 +172,8 @@ class BatchJobs:
             # Disk-write failure must stop the worker, never advance to another
             # charged item. Saved running rows are reconciled on explicit resume.
             with self.lock:
+                for row in job['rows']:
+                    if row['status']=='running':row['status']='pending'
                 job.update(status='interrupted',error='批次进度保存失败，请保留记录并检查磁盘后重启软件')
 
 

@@ -27,4 +27,12 @@ test('polling preserves an expanded result panel',()=>{
  f.batch.sync([job]);f.show([]);const details=f.root.children.find(x=>x.tagName==='details');details.open=true;details.ontoggle();
  f.batch.sync([job]);f.show([]);assert.equal(f.root.children.find(x=>x.tagName==='details').open,true);
 });
+test('reliable polling unlocks a hung submission and ignores its stale late response',async()=>{
+ const f=fixture();let release;f.holdReply(new Promise(r=>release=r));f.select();const submit=f.batch.run('download');
+ f.batch.sync(f.shared.jobs);f.show([]);assert.equal(f.root.children.find(x=>x.textContent==='停止').disabled,false);
+ await f.batch.stop();assert.equal(f.calls.at(-1).data.action,'stop');
+ f.shared.jobs[0].status='completed';f.shared.jobs[0].rows[0].status='succeeded';f.batch.sync(f.shared.jobs);f.show(f.feeds);
+ assert.equal(f.batch.pick(f.feeds[0]).children[0].disabled,false);
+ release();await submit;assert.equal(f.batch.running,false);
+});
 

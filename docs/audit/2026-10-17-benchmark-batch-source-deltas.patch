@@ -1,0 +1,315 @@
+--- before/assets/benchmark.js
++++ assets/benchmark.js
+@@ -8,11 +8,10 @@
+  if(!['momentum','fwd1h','fav1h','fwd6h','fwd24h','fwdLast','forwardTotal','favTotal','newest'].includes(radarSort))radarSort='momentum';
+  let monitor={radar:{enabled:false,intervalMin:60},new:{enabled:false,intervalMin:60},items:[],unread:0,watchedCount:0,trackedCount:0},newFilter='all',monitorChanging=false;
+  try{document.body.dataset.theme=localStorage.getItem('app074-theme-v2')||'dark';}catch(_){}
+- async function api(path,data){const r=await fetch(path,data===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}),value=await r.json();if(!r.ok)throw Error(value.error||'请求失败');return value;}
++ async function api(path,data){const r=await fetch(path,data===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}),value=await r.json();if(!r.ok){const error=Error(value.error||'请求失败');error.status=r.status;throw error;}return value;}
+  function notice(text){$('notice').textContent=text;}
+  function button(text,fn,cls='btn btn-ghost btn-sm'){const node=el('button',cls,text);node.onclick=fn;return node;}
+  const batch=window.app074BenchmarkBatch?.create({root:$('feed-batch'),el,button,api,refresh:load,notice,render,reveal:window.app074Desktop?.revealPath?(path=>window.app074Desktop.revealPath(path)):null,download:async(result,item)=>{const link=el('a');link.href=result.download_url;link.download=(item.title||'文案')+'.md';document.body.append(link);link.click();link.remove();}});
+- window.addEventListener?.('beforeunload',event=>{if(batch?.running){event.preventDefault();event.returnValue='';}});
+  const radarBatch=window.app074Radar?.createBatch({root:$('radar-batch'),api,refresh:load,render,notice,confirm:text=>confirm(text)});
+  async function toggleTracking(item){if(item.tracked&&radarBatch)return radarBatch.remove([item],true);try{await api('/api/benchmark/edit',{...identity(item),changes:{tracked:!item.tracked}});await load();}catch(error){notice(error.message);}}
+  const accountIcons={star:'<path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>',edit:'<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>',folder:'<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',trash:'<path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/>'};
+@@ -27,7 +26,7 @@
+  const identity=feed=>({accountId:feed.accountId,feedId:feed.feedId});
+  function account(id){return state.accounts.find(x=>x.accountId===id);}
+  window.app074BenchmarkBackup?.bind(load);
+- async function load(){const session=++loadSession,value=await api('/api/benchmark'),result=await api('/api/benchmark/monitor');if(session!==loadSession)return;state=value;if(result.radar&&result.new)monitor=result;render();}
++ async function load(){const session=++loadSession,[main,radar,jobs]=await Promise.allSettled([api('/api/benchmark'),api('/api/benchmark/monitor'),api('/api/benchmark/batch-jobs')]);if(session!==loadSession)return;if(main.status==='rejected')throw main.reason;state=main.value;if(radar.status==='fulfilled'&&radar.value.radar&&radar.value.new)monitor=radar.value;if(jobs.status==='fulfilled')batch?.sync(jobs.value.jobs);else notice('读取批次进度失败，后台执行不受影响：'+jobs.reason.message);render();}
+  async function refresh(id,more=false){if(loading||!id)return;loading=true;$('refresh').disabled=true;$('load-more').disabled=true;notice('正在读取账号作品…');try{state=await api('/api/benchmark/refresh',{accountId:id,more});notice('作品已更新');render();return true;}catch(error){notice(error.message);return false;}finally{loading=false;$('refresh').disabled=!selected;$('load-more').disabled=false;}}
+  function select(id){navigationGeneration++;selected=id;tab='works';dateRange=null;render();}
+  async function locateRadarWork(item){
+
+--- before/assets/benchmark_batch.js
++++ assets/benchmark_batch.js
+@@ -1,64 +1,84 @@
+ (function(root,factory){const value=factory();if(typeof module==='object'&&module.exports)module.exports=value;else root.app074BenchmarkBatch=value;})(typeof window==='object'?window:globalThis,()=>{
+  const key=item=>JSON.stringify([item.accountId,item.feedId]),hasText=item=>!!(item.transcriptReviewed||item.transcript);
++ const active=job=>['queued','running','stopping'].includes(job.status),names={extract:'提取',download:'下载',mark:'标记',promo:'判定带货'};
++ const storageKey='app074.benchmark.pending.v1';
+  function create(hooks){
+-  const picked=new Set(),promoReceipts=new Map();let visible=[],tab='works',running=false,stopped=false,done=0,total=0;
+-  const promoText=item=>JSON.stringify([item.transcript||'',item.transcriptReviewed||'']);
+-  const needsPromo=item=>hasText(item)&&!item.promo&&promoReceipts.get(key(item))!==promoText(item);
++  const picked=new Set(),expanded=new Set();let visible=[],tab='works',jobs=[],submitting=false,pending=null,storage,serial=0;
++  try{storage=hooks.storage||globalThis.sessionStorage;const raw=storage?.getItem(storageKey);if(raw){const value=JSON.parse(raw);if(/^[a-f0-9]{32}$/.test(value.id)&&names[value.kind]&&Array.isArray(value.items))pending=value;}}catch(_){hooks.notice('待确认批次无法从本页缓存读取，请先查看后台进度');}
+   const refresh=()=>hooks.render(),selected=()=>visible.filter(item=>picked.has(key(item))),eligible=item=>hasText(item)||String(item.mediaType)!=='2';
++  const running=()=>submitting||jobs.some(active),needsPromo=item=>hasText(item)&&!item.promo;
++  function persist(){try{pending?storage?.setItem(storageKey,JSON.stringify(pending)):storage?.removeItem(storageKey);}catch(_){hooks.notice('本页无法保存提交回执；刷新前请确认后台已显示该批次');}}
++  function sync(value){jobs=Array.isArray(value)?value:jobs;if(pending&&jobs.some(x=>x.id===pending.id)){pending=null;submitting=false;serial++;persist();}}
+   function check(items,label){
+-   const node=hooks.el('label','feed-pick'),input=hooks.el('input');input.type='checkbox';input.checked=items.length>0&&items.every(item=>picked.has(key(item)));input.disabled=running;
+-   input.onchange=event=>{if(running)return;for(const item of items)event.target.checked?picked.add(key(item)):picked.delete(key(item));refresh();};node.append(input,hooks.el('span','',label));return node;
++   const node=hooks.el('label','feed-pick'),input=hooks.el('input');input.type='checkbox';input.checked=items.length>0&&items.every(item=>picked.has(key(item)));input.disabled=running()||!!pending;
++   input.onchange=event=>{if(input.disabled)return;for(const item of items)event.target.checked?picked.add(key(item)):picked.delete(key(item));refresh();};node.append(input,hooks.el('span','',label));return node;
++  }
++  function jobRows(job){
++   const rows=job.rows||[],count=status=>rows.filter(x=>x.status===status).length,done=count('succeeded')+count('failed')+count('unconfirmed');
++   const label={queued:'等待',running:'处理中',stopping:'当前项完成后停止',interrupted:'已中断',stopped:'已停止',completed:'已结束'}[job.status]||job.status;
++   hooks.root.append(hooks.el('span','feed-batch-prog',names[job.kind]+' · '+label+' '+done+'/'+rows.length+' · 成功 '+count('succeeded')+' · 失败 '+count('failed')+' · 待确认 '+count('unconfirmed')));
++   if(active(job)){const b=hooks.button(job.status==='stopping'?'正在停止':'停止',()=>stop(job.id));b.disabled=submitting||job.status==='stopping';hooks.root.append(b);}
++   else if(rows.some(x=>['pending','failed'].includes(x.status))){const b=hooks.button('继续未完成项',()=>resume(job.id));b.disabled=running()||!!pending;hooks.root.append(b);}
++   if(job.error)hooks.root.append(hooks.el('span','feed-batch-count',job.error));
++   const details=hooks.el('details','feed-batch-results');details.open=expanded.has(job.id);details.ontoggle=()=>{if(details.isConnected===false)return;details.open?expanded.add(job.id):expanded.delete(job.id);};details.append(hooks.el('summary','','查看逐项结果（'+rows.length+'）'));
++   rows.forEach((row,index)=>{
++    if(row.error)details.append(hooks.el('p','feed-batch-count','第 '+(index+1)+' 项：'+row.error));
++    if(row.status==='succeeded'&&row.result?.download_url){
++     const result=row.result;
++     if(result.path&&hooks.reveal)details.append(hooks.button('文案 '+(index+1)+' · 显示文件位置',async()=>{try{await hooks.reveal(result.path);}catch(error){hooks.notice('打开位置失败：'+error.message);}}));
++     details.append(hooks.button('下载文案 '+(index+1),async()=>{try{await hooks.download(result,row);}catch(error){hooks.notice('下载失败：'+error.message);}}));
++    }
++   });
++   if(details.children.length>1)hooks.root.append(details);
+   }
+   function render(feeds,activeTab){
+-   visible=feeds;tab=activeTab;hooks.root.hidden=tab!=='works'||!visible.length;hooks.root.replaceChildren();if(hooks.root.hidden)return;
++   visible=feeds;tab=activeTab;
++   const history=jobs.filter(x=>active(x)||['interrupted','stopped'].includes(x.status)||x.rows?.some(r=>['failed','unconfirmed'].includes(r.status))||x===jobs[0]);
++   hooks.root.hidden=tab!=='works'||(!visible.length&&!history.length&&!pending);hooks.root.replaceChildren();if(hooks.root.hidden)return;
++   for(const job of history)jobRows(job);
++   if(pending){hooks.root.append(hooks.el('span','feed-batch-count','提交结果待确认，请读取进度或重试同一批次'));const b=hooks.button('重试提交同一批次',()=>submitPending());b.disabled=submitting;hooks.root.append(b);}
++   if(!visible.length)return;
+    const missing=visible.filter(item=>!hasText(item)&&eligible(item)),cached=visible.filter(hasText),items=selected();
+    if(missing.length)hooks.root.append(check(missing,'全选未提取（'+missing.length+'）'));
+    if(cached.length)hooks.root.append(check(cached,'全选已提取（'+cached.length+'）'));
+    if(items.length)hooks.root.append(hooks.el('span','feed-batch-count','已选 '+items.length+' 项'));
+-   hooks.root.append(hooks.el('div','spacer'));
+-   if(running){hooks.root.append(hooks.el('span','feed-batch-prog','提取中 '+Math.min(done+1,total)+'/'+total),hooks.button('停止',stop));return;}
++   if(running()||pending)return;
+    const promo=visible.filter(needsPromo);
+-   if(promo.length){const b=hooks.button('🛒 判定带货（'+promo.length+'）',()=>run('promo'));b.title='使用你配置的 LLM，判断已提取文案中的带货商品';hooks.root.append(b);}
++   if(promo.length){const b=hooks.button('🛒 判定带货（'+promo.length+'）',()=>run('promo'));b.title='使用当前配置的 LLM，已完成和未确认回执不会重复请求';hooks.root.append(b);}
+    if(!items.length){hooks.root.append(hooks.el('span','feed-batch-count','勾选后可批量操作'));return;}
+    hooks.root.append(hooks.button('取消选择',()=>{picked.clear();refresh();}));
+    const extract=hooks.button('顺序提取选中（'+items.filter(item=>!hasText(item)&&eligible(item)).length+'）· 免费',()=>run('extract'),'btn btn-primary btn-sm');extract.disabled=!items.some(item=>!hasText(item)&&eligible(item));
+-   hooks.root.append(extract,hooks.button('下载文案选中（'+items.length+'）',()=>run('download'),'btn btn-secondary btn-sm'),hooks.button((items.every(item=>item.createdTask)?'取消标记选中':'标记创作选中')+'（'+items.length+'）',()=>run('mark'),'btn btn-secondary btn-sm'));
++   hooks.root.append(extract,hooks.button('下载文案选中（'+items.length+'）',()=>run('download')),hooks.button((items.every(item=>item.createdTask)?'取消标记选中':'标记创作选中')+'（'+items.length+'）',()=>run('mark')));
+   }
+   function pick(item){
+-   const label=hooks.el('label','feed-pick'),input=hooks.el('input');input.type='checkbox';input.checked=picked.has(key(item));input.disabled=running||!eligible(item);
+-   label.title=hasText(item)?'已提取文案 · 勾选后可批量下载文案':eligible(item)?'勾选后可批量提取 / 批量下载文案':'图文作品不支持提取文案';label.onclick=event=>event.stopPropagation();
++   const label=hooks.el('label','feed-pick'),input=hooks.el('input');input.type='checkbox';input.checked=picked.has(key(item));input.disabled=running()||!!pending||!eligible(item);
++   label.title=hasText(item)?'已提取文案 · 可批量下载':eligible(item)?'可批量提取 / 下载文案':'图文作品不支持提取文案';label.onclick=event=>event.stopPropagation();
+    input.onchange=event=>{if(input.disabled)return;event.target.checked?picked.add(key(item)):picked.delete(key(item));refresh();};label.append(input);return label;
+   }
+-  function stop(){stopped=true;}
++  async function readback(){try{await hooks.refresh();}catch(error){hooks.notice('读取进度失败，后台状态保留：'+error.message);}}
++  async function submitPending(){
++   if(submitting||!pending)return;const ticket=++serial,request=pending;submitting=true;refresh();
++   try{const result=await hooks.api('/api/benchmark/batch-start',request);if(ticket!==serial)return;jobs=[result.job,...jobs.filter(x=>x.id!==result.job.id)];pending=null;persist();hooks.notice('批次已提交，离开页面后仍在后台执行');}
++   catch(error){if(ticket!==serial)return;if([400,413].includes(error.status)){pending=null;persist();hooks.notice('批次未提交：'+error.message);}else hooks.notice('提交未确认：'+error.message+'；请读取进度或重试同一批次');}
++   finally{if(ticket===serial){submitting=false;await readback();refresh();}}
++  }
+   async function run(kind){
+-   if(running||tab!=='works'||!['extract','download','mark','promo'].includes(kind))return;
+-   const items=kind==='promo'?visible.filter(needsPromo):selected().filter(eligible),mark=!items.every(item=>item.createdTask);
+-   const work=kind==='extract'?items.filter(item=>!hasText(item)):items;if(!work.length)return;
+-   running=true;stopped=false;done=0;total=work.length;let success=0,failed=0,lastPath='',refreshError='';refresh();
+-   try{
+-    for(const item of work){
+-     if(stopped)break;refresh();const identity={accountId:item.accountId,feedId:item.feedId};
+-     try{
+-      if(kind==='mark')await hooks.api('/api/benchmark/edit',{...identity,changes:{createdTask:mark}});
+-      else if(kind==='promo'){
+-       const text=promoText(item);promoReceipts.set(key(item),text);
+-       const result=await hooks.api('/api/benchmark/ai',{...identity,action:'promo'});
+-       if(promoText(item)===text&&result.promo)item.promo=result.promo;
+-      }
+-      else{
+-       if(!hasText(item)){await hooks.api('/api/benchmark/asr',{...identity,source:'original'});picked.delete(key(item));}
+-       if(kind==='download'){const result=await hooks.api('/api/benchmark/export-transcript',identity);lastPath=result.path;if(!hooks.reveal)await hooks.download(result,item);}
+-      }
+-      success++;
+-     }catch(error){failed++;hooks.notice(error.message);}
+-     done++;try{await hooks.refresh();}catch(error){stopped=true;refreshError=error.message;break;}
+-    }
+-   }finally{
+-    running=false;refresh();hooks.notice((stopped?'已停止 · ':'批量'+(kind==='download'?'下载':kind==='mark'?'标记':kind==='promo'?'判定':'提取')+'完成 · ')+'成功 '+success+(failed?' · 失败 '+failed:'')+(refreshError?' · 读取状态失败：'+refreshError:'')+(kind==='promo'&&failed?' · 未确认的判定不会自动重发，请核对已保存结果':''));
+-   }
+-   if(lastPath&&hooks.reveal)try{await hooks.reveal(lastPath);}catch(error){hooks.notice('文案已导出，打开位置失败：'+error.message);}
++   if(running()||tab!=='works'||!names[kind])return;if(pending)return submitPending();
++   const items=kind==='promo'?visible.filter(needsPromo):selected().filter(eligible),work=kind==='extract'?items.filter(item=>!hasText(item)):items;
++   if(!work.length)return;if(work.length>100){hooks.notice('每批最多100条，请缩小选择范围');return;}
++   const id=hooks.id?hooks.id():globalThis.crypto.randomUUID().replaceAll('-','');
++   pending={id,kind,items:work.map(({accountId,feedId})=>({accountId,feedId}))};if(kind==='mark')pending.mark=!items.every(item=>item.createdTask);
++   persist();return submitPending();
+   }
+-  return {render,pick,run,stop,get running(){return running;},prune(items){const keys=new Set(items.map(key));for(const id of picked)if(!keys.has(id))picked.delete(id);}};
++  async function control(id,action){
++   if(submitting)return;const ticket=++serial;submitting=true;refresh();
++   try{const result=await hooks.api('/api/benchmark/batch-control',{id,action});if(ticket!==serial)return;jobs=[result.job,...jobs.filter(x=>x.id!==id)];}
++   catch(error){if(ticket===serial)hooks.notice('操作未确认，后台状态保留：'+error.message);}
++   finally{if(ticket===serial){submitting=false;await readback();refresh();}}
++  }
++  function stop(id){const job=id?jobs.find(x=>x.id===id):jobs.find(active);if(job)return control(job.id,'stop');}
++  function resume(id){return control(id,'resume');}
++  return {render,pick,run,stop,sync,resume,get running(){return running();},prune(items){const keys=new Set(items.map(key));for(const id of picked)if(!keys.has(id))picked.delete(id);}};
+  }
+  return {create};
+ });
+
+--- before/benchmark.py
++++ benchmark.py
+@@ -466,7 +466,10 @@
+ 
+ def transcribe(backend,data):
+     key=(data.get('accountId'),data.get('feedId'))
+-    if not any((x['accountId'],x['feedId'])==key for x in state(backend)['feeds']):raise ValueError('作品不存在')
++    with LOCK:
++        selected=next((x for x in _read(backend)['feeds'] if (x['accountId'],x['feedId'])==key),None)
++        if selected is None:raise ValueError('作品不存在')
++        snapshot=(selected.get('transcript'),selected.get('transcriptReviewed'))
+     extensions={'.mp4','.mov','.mkv','.webm','.mp3','.wav','.m4a','.aac','.flac'}
+     upload=data.get('upload');temporary=None
+     if upload is not None:
+@@ -493,7 +496,12 @@
+         segments=backend._local_asr_transcribe(path)
+         transcript='\n'.join(x['text'] for x in segments if x.get('text')).strip()
+         if not transcript:raise ValueError('未识别到语音，保留原有文案')
+-        return edit(backend,{'accountId':key[0],'feedId':key[1],'changes':{'transcript':transcript}})
++        with LOCK:
++            current=next((x for x in _read(backend)['feeds'] if (x['accountId'],x['feedId'])==key),None)
++            if current is None:raise ValueError('作品已删除，识别结果未写回')
++            if (current.get('transcript'),current.get('transcriptReviewed'))!=snapshot:
++                raise ValueError('识别期间文案已修改，保留手改文案，识别结果未覆盖')
++            return edit(backend,{'accountId':key[0],'feedId':key[1],'changes':{'transcript':transcript}})
+     finally:
+         with LOCK:ASR_RUNNING.discard(key)
+         if temporary:temporary.unlink(missing_ok=True)
+@@ -505,6 +513,10 @@
+     if action not in ('correct','analysis','promo'):raise ValueError('AI操作无效')
+     selected=next((x for x in state(backend)['feeds'] if (x['accountId'],x['feedId'])==key),None)
+     if selected is None:raise ValueError('作品不存在')
++    if action=='promo' and data.get('source_fingerprint'):
++        from benchmark_ai_receipts import fingerprint
++        if fingerprint(selected)!=data['source_fingerprint']:
++            raise ValueError('文案或标题已变化，旧批次不会发起新判定')
+     source=(selected.get('transcriptReviewed') or selected.get('transcript') or '').strip()
+     if action=='correct':source=(selected.get('transcript') or '').strip()
+     if not source:raise ValueError('该作品还没有提取文案')
+
+--- before/benchmark_ai_receipts.py
++++ benchmark_ai_receipts.py
+@@ -11,6 +11,10 @@
+ import time
+ import uuid
+ from contextlib import contextmanager
++
++
++class UnconfirmedReceiptError(ValueError):
++    """A previous provider request cannot safely be sent again."""
+ 
+ 
+ def fingerprint(item):
+@@ -40,7 +44,7 @@
+         row=connection.execute('SELECT state,output FROM receipts WHERE key=?',(key,)).fetchone()
+         if row:
+             if row[0]=='complete' and isinstance(row[1],str):return {'key':key,'output':row[1]}
+-            raise ValueError('此带货判定上次结果未确认，已阻止重复请求；请先核对供应商记录，不会自动重发')
++            raise UnconfirmedReceiptError('此带货判定上次结果未确认，已阻止重复请求；请先核对供应商记录，不会自动重发')
+         if validate:validate()
+         connection.execute('INSERT INTO receipts VALUES (?, ?, ?, ?, NULL)',(key,token,'pending',int(time.time())))
+     return {'key':key,'token':token}
+
+--- before/story1245_runtime.py
++++ story1245_runtime.py
+@@ -166,6 +166,8 @@
+     backend._volc_tts_resource = resource
+     backend._volc_tts_synthesize = volc_synthesize
+     backend.Handler.do_GET, backend.Handler.do_POST = do_get, do_post
++    import benchmark_batch_http
++    benchmark_batch_http.install(backend)
+     backend._story1245_installed = True
+ 
+ 
+
+--- before/tests/benchmark_batch.test.js
++++ tests/benchmark_batch.test.js
+@@ -1,44 +1,24 @@
+ const test=require('node:test'),assert=require('node:assert/strict');
+-const batchModule=require('../assets/benchmark_batch.js');
+-function fixture(){
+- const calls=[],messages=[],root={replaceChildren(...nodes){this.children=nodes;},append(...nodes){this.children.push(...nodes);}},reveal=[];
+- const el=(tag,cls,text)=>({tagName:tag,className:cls,textContent:text,children:[],append(...x){this.children.push(...x);}});
+- let failId='',hold;const batch=batchModule.create({root,el,button:(text,fn,cls)=>({...el('button',cls,text),onclick:fn}),api:async(path,data)=>{calls.push({path,data});if(hold)await hold;if(data.feedId===failId)throw Error('private failure');return {path:'/private/export.md'};},refresh:async()=>{},notice:x=>messages.push(x),reveal:x=>reveal.push(x),download:async()=>{},render(){batch.render(feeds,'works');}});
+- const feeds=[{accountId:'one',feedId:'same',transcript:'cached',transcriptReviewed:'reviewed'},{accountId:'two',feedId:'same',transcript:''},{accountId:'two',feedId:'picture',mediaType:'2'}];
+- batch.render(feeds,'works');return {batch,feeds,calls,messages,root,reveal,setFail:id=>failId=id,setHold:x=>hold=x};
+-}
+-test('batch export reuses cached text and only locally transcribes missing text with stable account identities',async()=>{
+- const f=fixture();for(const feed of f.feeds.slice(0,2)){const pick=f.batch.pick(feed);pick.children[0].onchange({target:{checked:true}});}
+- await f.batch.run('download');assert.deepEqual(f.calls.map(x=>[x.path,x.data.accountId]),[['/api/benchmark/export-transcript','one'],['/api/benchmark/asr','two'],['/api/benchmark/export-transcript','two']]);
+- assert.equal(f.calls[1].data.source,'original');assert.equal(f.reveal.length,1);
++const {fixture}=require('./benchmark_batch_fixture.cjs');
++test('selected identities are submitted once without doing ASR or export on the page',async()=>{
++ const f=fixture();f.select();f.select(f.feeds[1]);await f.batch.run('download');await f.batch.run('download');
++ assert.equal(f.calls.length,1);assert.equal(f.calls[0].path,'/api/benchmark/batch-start');
++ assert.deepEqual(f.calls[0].data.items,[{accountId:'v2_one',feedId:'same'},{accountId:'v2_two',feedId:'same'}]);assert.equal(f.downloads.length,0);
+ });
+-test('stop waits for the active item and duplicate batch submissions never dispatch extra work',async()=>{
+- const f=fixture();for(const feed of f.feeds.slice(0,2))f.batch.pick(feed).children[0].onchange({target:{checked:true}});
+- let finish;f.setHold(new Promise(r=>finish=r));const running=f.batch.run('download');await f.batch.run('download');f.batch.stop();finish();await running;
+- assert.equal(f.calls.length,1);assert.match(f.messages.at(-1),/已停止.*成功 1/);
++test('extract submits missing text only and picture-only entries stay disabled',async()=>{
++ const f=fixture();f.select();f.select(f.feeds[1]);assert.equal(f.batch.pick(f.feeds[2]).children[0].disabled,true);await f.batch.run('extract');
++ assert.deepEqual(f.calls[0].data.items,[{accountId:'v2_two',feedId:'same'}]);
+ });
+-test('a failed extraction remains selectable for explicit retry, while pictures are disabled and cached text is untouched',async()=>{
+- const f=fixture();f.feeds[1].feedId='fail';f.setFail('fail');f.batch.render(f.feeds,'works');const pick=f.batch.pick(f.feeds[1]);pick.children[0].onchange({target:{checked:true}});
+- await f.batch.run('extract');assert.equal(f.batch.pick(f.feeds[1]).children[0].checked,true);assert.equal(f.batch.pick(f.feeds[2]).children[0].disabled,true);assert.equal(f.calls.length,1);assert.match(f.messages.at(-1),/失败 1/);
++test('mark target is fixed from the visible selected set',async()=>{
++ const f=fixture();f.feeds[0].createdTask=true;f.select();f.select(f.feeds[1]);f.show([f.feeds[0]]);await f.batch.run('mark');
++ assert.equal(f.calls[0].data.mark,false);assert.equal(f.calls[0].data.items.length,1);
+ });
+-test('marking operates on visible selected rows and toggles only when all selected rows are already created',async()=>{
+- const f=fixture();for(const feed of f.feeds.slice(0,2))f.batch.pick(feed).children[0].onchange({target:{checked:true}});
+- f.batch.render([f.feeds[0]],'works');await f.batch.run('mark');assert.equal(f.calls.length,1);assert.equal(f.calls[0].data.changes.createdTask,true);
+- f.batch.pick(f.feeds[1]).children[0].onchange({target:{checked:false}});f.feeds[0].createdTask=true;await f.batch.run('mark');assert.equal(f.calls[1].data.changes.createdTask,false);
++test('selection groups and non-works visibility remain compatible',()=>{
++ const f=fixture();assert.match(f.root.children[0].children[1].textContent,/全选未提取（1）/);assert.match(f.root.children[1].children[1].textContent,/全选已提取（1）/);
++ f.root.children[0].children[0].onchange({target:{checked:true}});assert.ok(f.root.children.some(x=>/顺序提取选中（1）/.test(x.textContent)));
++ f.show(f.feeds,'new');assert.equal(f.root.hidden,true);
+ });
+-test('original extracted/unextracted selection groups and action labels are rendered, and non-works tabs hide the toolbar',()=>{
+- const f=fixture();assert.match(f.root.children[0].children[1].textContent,/全选未提取（1）/);assert.match(f.root.children[1].children[1].textContent,/全选已提取（1）/);
+- f.root.children[0].children[0].onchange({target:{checked:true}});assert.ok(f.root.children.some(x=>/顺序提取选中（1）/.test(x.textContent)));f.batch.render(f.feeds,'new');assert.equal(f.root.hidden,true);
++test('promo submits original eligible scope and does not retry from polling',async()=>{
++ const f=fixture();await f.batch.run('promo');f.batch.sync(f.shared.jobs);f.batch.sync(f.shared.jobs);await f.batch.run('promo');
++ assert.equal(f.calls.length,1);assert.equal(f.calls[0].data.items.length,1);assert.equal(f.calls[0].data.kind,'promo');
+ });
+-test('successful paid classification is retained when list refresh fails and cannot be submitted again',async()=>{
+- const calls=[],messages=[],root={replaceChildren(){},append(){}},feed={accountId:'one',feedId:'paid',transcript:'unchanged'};
+- const el=(tag,cls,text)=>({textContent:text,children:[],append(...x){this.children.push(...x);}});let fail=true;
+- const batch=batchModule.create({root,el,button:(text,fn)=>({...el('button','',text),onclick:fn}),api:async(path,data)=>{calls.push({path,data});return {promo:{product:'private'}};},refresh:async()=>{if(fail)throw Error('private offline');},notice:x=>messages.push(x),render(){batch.render([feed],'works');}});
+- batch.render([feed],'works');await batch.run('promo');await batch.run('promo');assert.equal(calls.length,1);assert.match(messages.at(-1),/读取状态失败/);
+- fail=false;feed.transcript='changed';delete feed.promo;batch.render([feed],'works');await batch.run('promo');assert.equal(calls.length,2);
+-});
+-test('a lost paid response followed by a failed readback cannot be resubmitted by another batch click',async()=>{
+- const calls=[],root={replaceChildren(){},append(){}},feed={accountId:'one',feedId:'unknown',transcript:'unchanged'};
+- const el=()=>({append(){}}),batch=batchModule.create({root,el,button:()=>({}),api:async()=>{calls.push(1);throw Error('private lost reply');},refresh:async()=>{throw Error('private readback failed');},notice(){},render(){batch.render([feed],'works');}});
+- batch.render([feed],'works');await batch.run('promo');await batch.run('promo');assert.equal(calls.length,1);assert.equal(batch.running,false);
+-});
+
+--- before/tests/test_benchmark_page.cjs
++++ tests/test_benchmark_page.cjs
+@@ -18,7 +18,7 @@
+  const state={port:2025,accounts:[{accountId:'v2_a',nickname:'隔离号'}],feeds:[{accountId:'v2_a',feedId:'f1',title:'作品一',forward:10,transcript:'原文一',snapshots:[]},{accountId:'v2_a',feedId:'f2',title:'作品二',forward:5,transcript:'原文二',snapshots:[]}]};
+  const calls=[],storage=new Map();let asrResult={transcript:'识别文本',accountId:'v2_a',feedId:'f1'},editResult,transferResult,addResult,searchResult;
+  const monitor={radar:{enabled:false,intervalMin:60},new:{enabled:false,intervalMin:60},watchedCount:1,trackedCount:1,unread:1,items:[{accountId:'v2_a',feedId:'f1',title:'新作品',nickname:'隔离号',publishTime:Math.floor(Date.now()/1000),firstSeenAt:Math.floor(Date.now()/1000)}]};
+- const context={window:{},app074Desktop:{choosePath:async()=> 'D:/isolated-media.mp4'},document:{getElementById:id=>elements[id],createElement:tag=>new Element(tag),createElementNS:(_,tag)=>new Element(tag),body:{dataset:{}}},URLSearchParams,location:{search:'?book=b1&bookTheme=test',href:''},localStorage:{getItem:()=>null},sessionStorage:{getItem:key=>storage.get(key),setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key)},confirm:()=>true,Date,console,fetch:async(url,options)=>{calls.push({url,data:options?.body&&JSON.parse(options.body)});let result=state;if(url.startsWith('/api/selection/transfer'))result={book:{name:'隔离书'}};else if(url.startsWith('/api/benchmark/transfer'))result={reference:'正确文案'};else if(url.endsWith('/asr'))result=await asrResult;return {ok:true,json:async()=>result};}};
++ const context={window:{},crypto:require('node:crypto').webcrypto,app074Desktop:{choosePath:async()=> 'D:/isolated-media.mp4'},document:{getElementById:id=>elements[id],createElement:tag=>new Element(tag),createElementNS:(_,tag)=>new Element(tag),body:{dataset:{}}},URLSearchParams,location:{search:'?book=b1&bookTheme=test',href:''},localStorage:{getItem:()=>null},sessionStorage:{getItem:key=>storage.get(key),setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key)},confirm:()=>true,Date,console,fetch:async(url,options)=>{calls.push({url,data:options?.body&&JSON.parse(options.body)});let result=state;if(url.endsWith('/monitor'))result=monitor;else if(url.endsWith('/batch-jobs'))result={jobs:[]};else if(url.endsWith('/batch-start')){const data=JSON.parse(options.body);result={job:{...data,status:'queued',rows:data.items.map(x=>({...x,status:'pending'}))}};}else if(url.startsWith('/api/selection/transfer'))result={book:{name:'隔离书'}};else if(url.startsWith('/api/benchmark/transfer'))result={reference:'正确文案'};else if(url.endsWith('/asr'))result=await asrResult;return {ok:true,json:async()=>result};}};
+  context.window.app074Desktop=context.app074Desktop;
+  if(withRadar)for(const file of ['story_radar_engine','benchmark_radar'])vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../assets/'+file+'.js'),'utf8'),context);
+  if(withBatch)vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../assets/benchmark_batch.js'),'utf8'),context);
+@@ -32,7 +32,7 @@
+ test('the shipped works list wires original batch selection to identity-specific creation flags',async()=>{
+  const f=page(true);await f.settle();const row=f.elements.feeds.children[1].children[0];assert.equal(row.children[0].className,'feed-pick');row.children[0].children[0].onchange({target:{checked:true}});
+  const action=f.elements['feed-batch'].children.find(x=>/标记创作选中/.test(x.textContent));assert.ok(action);await action.onclick();
+- const saved=f.calls.find(x=>x.url.endsWith('/edit'));assert.equal(saved.data.feedId,'f2');assert.equal(saved.data.changes.createdTask,true);f.elements['tab-radar'].onclick();assert.equal(f.elements['feed-batch'].hidden,true);
++ const saved=f.calls.find(x=>x.url.endsWith('/batch-start'));assert.equal(saved.data.items[0].feedId,'f2');assert.equal(saved.data.mark,true);f.elements['tab-radar'].onclick();assert.equal(f.elements['feed-batch'].hidden,true);
+ });
+ 
+ test('radar direct share tracking retains the original inline entrance and only submits once',async()=>{
+

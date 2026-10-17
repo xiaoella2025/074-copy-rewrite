@@ -65,6 +65,31 @@ class BatchTests(unittest.TestCase):
         for change in [{'id':'../bad'},{'kind':'other'},{'items':[]},{'items':self.items*2},{'items':[{'accountId':'v2_one','feedId':'missing'}]},{'kind':'mark','mark':'yes'}]:
             with self.subTest(change=change),self.assertRaises(ValueError):m.submit({**self.request,**change})
         self.assertEqual(m.list(),[])
+    def test_resume_save_failure_keeps_job_retryable_without_phantom_worker(self):
+        m=BatchJobs(self.backend,Mock(side_effect=ValueError('fixture validation')))
+        m.submit(self.request);self.wait(m)
+        with patch.object(m,'_save',side_effect=OSError('disk full')):
+            with self.assertRaises(OSError):m.control('a'*32,'resume')
+        self.assertEqual(m.list()[0]['status'],'completed')
+        m.executor=Mock(return_value={});m.control('a'*32,'resume')
+        self.assertEqual(self.wait(m)['succeeded'],2);self.assertEqual(m.executor.call_count,2)
+    def test_claim_save_failure_does_not_skip_an_unexecuted_row(self):
+        m=BatchJobs(self.backend,Mock(return_value={}));save=m._save;failed=False
+        def fail_claim(job):
+            nonlocal failed
+            if not failed and any(x['status']=='running' for x in job['rows']):
+                failed=True;raise OSError('disk full')
+            save(job)
+        with patch.object(m,'_save',side_effect=fail_claim):
+            m.submit(self.request);self.assertEqual(self.wait(m)['status'],'interrupted')
+        m.control('a'*32,'resume');job=self.wait(m)
+        self.assertEqual(job['done'],2);self.assertEqual(job['succeeded'],2);self.assertEqual(m.executor.call_count,2)
+    def test_thread_start_failure_keeps_a_saved_batch_recoverable(self):
+        m=BatchJobs(self.backend,Mock(return_value={}))
+        with patch('benchmark_batch_jobs.threading.Thread.start',side_effect=RuntimeError('resources')):
+            job=m.submit(self.request)
+        self.assertEqual(job['status'],'interrupted')
+        m.control('a'*32,'resume');self.assertEqual(self.wait(m)['succeeded'],2)
     def test_cached_text_no_asr_fixed_mark_and_existing_export(self):
         with patch.object(benchmark,'transcribe') as asr:
             self.assertTrue(execute_item(self.backend,'extract',self.items[0])['reused'])
