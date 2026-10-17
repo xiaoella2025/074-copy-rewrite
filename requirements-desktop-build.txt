@@ -1,0 +1,8 @@
+PyInstaller==6.22.3
+numpy==2.5.3
+sherpa-onnx==1.13.8
+requests==2.34.2
+Pillow==11.3.0
+onnxruntime==1.26.0
+qrcode==8.2
+jieba==0.42.1
