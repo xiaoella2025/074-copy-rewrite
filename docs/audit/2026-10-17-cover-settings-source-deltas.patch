@@ -1,0 +1,371 @@
+--- before/task_cover.py
++++ task_cover.py
+@@ -11,6 +11,7 @@
+ import uuid
+ from PIL import Image
+ from image_motion import read, write
++from template_store import TemplateStore
+ 
+ RATIOS=('3:4','9:16','1:1','4:3','16:9')
+ 
+@@ -54,14 +55,23 @@
+ def paths(folder,slot):
+     return folder/('cover-meta.json' if slot==1 else 'cover2-meta.json'),folder/f'cover-poster-{slot}.png'
+ 
++def cover_template(backend,identifier,snapshot=None):
++    store=TemplateStore(backend.DATA_DIR,backend.ROOT)
++    if snapshot is not None:
++        canonical=identifier if identifier.startswith('custom-') else backend.story_cover_template(identifier)['id']
++        return store.resolve('covers',canonical,snapshot)
++    if isinstance(identifier,str) and identifier.startswith('custom-'):return store.resolve('covers',identifier)
++    selected=backend.story_cover_template(identifier)
++    return store.resolve('covers',selected['id']) if not identifier.startswith('custom:') else selected
++
+ def view(backend,tid,slot=1):
+     slot_for({'slot':slot});folder=folder_for(backend,tid)
+     state=read(folder/'creative.json',{});meta=read(folder/'02-meta.json',{})
+     client=read(folder/'client_config.json',{});cfg=state.get('config',{});base=client.get('cover',{})
+     request=read(folder/'request.json',{});editor=read(folder/'cover-editor.json',{}).get(str(slot),{})
+     template=editor.get('template') or cfg.get('coverTemplate2' if slot==2 else 'coverTemplate') or base.get('template') or request.get('cover_template') or 'cinematic-poster'
+-    selected=backend.story_cover_template(template)
+-    directions=meta.get('cover_image_prompts') or meta.get('coverImagePrompts') or []
++    selected=cover_template(backend,template,editor.get('template_snapshot'))
++    directions=editor.get('directions',meta.get('cover_image_prompts') or meta.get('coverImagePrompts') or [])
+     if not isinstance(directions,list):directions=[]
+     directions=[x for x in directions if isinstance(x,str) and x.strip()]
+     direction=editor.get('direction',cfg.get('coverDirection',base.get('direction',0)))
+@@ -73,6 +83,7 @@
+     subs=meta['subtitle'] if 'subtitle' in meta else cfg.get('coverSubtitle') or []
+     if isinstance(subs,str):subs=subs.splitlines()
+     subs=[x for x in subs if isinstance(x,str)] if isinstance(subs,list) else []
++    title=editor.get('title',title);subs=editor.get('subtitle',subs)
+     mode=editor.get('mode') or cfg.get('cover_mode') or base.get('mode') or request.get('cover_mode') or 'off'
+     with_title=editor.get('withTitle',mode not in ('plain','blank'))
+     ratio=editor.get('ratio') or cfg.get('coverRatio') or base.get('ratio') or request.get('cover_ratio') or '3:4'
+@@ -83,10 +94,17 @@
+     error_info=cover_error(job['error']) if job.get('error') else cover_error('') if job.get('status') in ('failed','unknown') else None
+     if job.get('error'):job={**job,'error':error_info['title']+'：'+error_info['body']}
+     prompt=backend.compose_story_cover_prompt(directions[direction],title,subs,with_title,style,selected) if directions else job.get('prompt','')
+-    result={'slot':slot,'title':title,'subtitle':subs,'template':selected['id'],'templates':backend.story_workflow_reference()['coverTemplates'],
++    if not directions and editor.get('template') and job.get('template')!=selected['id']:prompt=''
++    templates=TemplateStore(backend.DATA_DIR,backend.ROOT).list('covers')
++    templates=[selected if item['id']==selected['id'] else item for item in templates]
++    if not any(item['id']==selected['id'] for item in templates):templates.append(selected)
++    profiles=[{k:p.get(k,'') for k in ('id','name','model')} for p in backend.load_profiles() if isinstance(p,dict)]
++    task_profile=cfg.get('profile_id') or client.get('generate',{}).get('profile_id')
++    result={'slot':slot,'title':title,'subtitle':subs,'template':selected['id'],'template_snapshot':selected,'templates':templates,
+             'directions':directions,'direction':direction,'ratio':ratio,'withTitle':with_title,'mode':mode,'cover':cover,
+             'prompt':prompt,'style':style,'provider':editor['provider'] if 'provider' in editor else cfg['coverProvider'] if 'coverProvider' in cfg else base.get('provider') or cfg.get('imageProvider') or client.get('image',{}).get('provider') or '',
+-            'job':job,'errorInfo':error_info,'profile_id':cfg.get('profile_id') or client.get('generate',{}).get('profile_id')}
++            'job':job,'errorInfo':error_info,'profile_id':editor.get('profile_id') or task_profile,
++            'profile_override':editor.get('profile_id',''),'task_profile_id':task_profile,'profiles':profiles}
+     cached=read(folder/f'cover-prompt-{slot}.json',{})
+     if not directions and cached.get('key')==prompt_key(result):result['prompt']=cached.get('prompt','')
+     return result
+@@ -102,12 +120,16 @@
+     editors['1']={**editors.get('1',{}),'provider':provider}
+     write(folder/'cover-editor.json',editors)
+ 
+-def validate_options(backend,data):
+-    allowed={'slot','title','subtitle','template','direction','ratio','withTitle','provider','mode'}
++def validate_options(backend,data,snapshot=None):
++    allowed={'slot','title','subtitle','template','direction','ratio','withTitle','provider','mode','profile_id'}
+     if set(data)-allowed:raise ValueError('未知封面设置')
+     if 'title' in data and (not isinstance(data['title'],str) or len(data['title'])>200):raise ValueError('封面标题最多200字')
+     if 'subtitle' in data and (not isinstance(data['subtitle'],list) or len(data['subtitle'])>2 or any(not isinstance(x,str) or len(x)>300 for x in data['subtitle'])):raise ValueError('副标题最多两句，每句300字')
+-    if 'template' in data and data['template'] not in {x['id'] for x in backend.story_workflow_reference()['coverTemplates']}:raise ValueError('封面模板不存在')
++    if 'template' in data:
++        if not isinstance(data['template'],str):raise ValueError('封面模板不存在')
++        known={x['id'] for x in TemplateStore(backend.DATA_DIR,backend.ROOT).list('covers')}
++        if data['template'] not in known and not (snapshot and snapshot.get('id')==data['template']):raise ValueError('封面模板不存在')
++    if 'profile_id' in data and (not isinstance(data['profile_id'],str) or data['profile_id'] and not any(p.get('id')==data['profile_id'] for p in backend.load_profiles())):raise ValueError('所选文字模型已不存在，请重新选择')
+     if 'ratio' in data and data['ratio'] not in RATIOS:raise ValueError('封面比例无效')
+     if 'direction' in data and (type(data['direction'])!=int or data['direction']<0):raise ValueError('构图方向无效')
+     if 'withTitle' in data and type(data['withTitle'])!=bool:raise ValueError('标题文字选项无效')
+@@ -208,6 +230,21 @@
+         if editors.get(str(slot),{}).get('mode')=='local':continue
+         files += [f'cover-poster-{slot}.png',paths(folder,slot)[0].name,f'cover-job-{slot}.json']
+     return files
++
++def build_selected_prompt(backend,folder,info,checkpoint=None):
++    """Only missing work uses the cover's explicit text choices, after cache checks."""
++    state=read(folder/'creative.json',{})
++    content=(folder/'02-rewrite.txt').read_text('utf8') if (folder/'02-rewrite.txt').exists() else state.get('lyrics') or state.get('config',{}).get('copy','')
++    if not content.strip():raise ValueError('未找到改写文案，无法生成封面构图')
++    selected=info['template_snapshot'];presets=selected.get('directions') or [{'hint':''}]
++    direction=presets[min(info['direction'],len(presets)-1)]
++    system=('你是短视频封面视觉策划。根据文案生成一条竖屏封面海报的画面描述，50-100字，'
++            '只描述画面内容（主体、构图、光线、氛围），不写画风词、不写任何文字内容。'+selected['compositionRule'])
++    if checkpoint:checkpoint()
++    llm=backend.resolve_active_llm_settings(info['profile_id'])
++    visual=backend.call_llm(llm,system,'原文全文：\n'+content+'\n封面主标题：'+info['title']+'\n方向：'+direction['hint']).strip()
++    if not visual:raise ValueError('未生成封面构图，请重试')
++    return backend.compose_story_cover_prompt(visual,info['title'],info['subtitle'],info['withTitle'],info['style'],selected)
+ 
+ def initial(backend,tid,slot=1,prompt_factory=None,data_url=None,options=None,explicit_prompt=None,local_only=False,checkpoint=None):
+     """Caller already owns the workflow lease; never reacquire it here."""
+@@ -232,13 +269,19 @@
+     if data_url:return _action(backend,folder,tid,slot,'upload',{'slot':slot,'data_url':data_url})['cover']
+     if local_only or info['mode'] in ('local','upload') or cover.get('provider')=='upload':raise ValueError('本地封面缺失，请重新上传；不会改用收费绘图')
+     if cover:raise ValueError('旧封面缓存丢失且没有可查询的供应商编号，请查供应商记录或上传本地图；不会自动再次购买')
++    editor=read(folder/'cover-editor.json',{}).get(str(slot),{})
++    own_text_choices=not editor.get('workflow_choices') and any(key in editor for key in ('profile_id','template','title','subtitle','withTitle','direction'))
+     preset_hint=''
+     if options:
+         options=dict(options)
++        # A later card edit owns its slot; a queued request is an older snapshot.
++        for key in ('provider','template','direction','ratio','withTitle','profile_id','title','subtitle'):
++            if key in editor and not editor.get('workflow_choices'):options.pop(key,None)
+         # Creation uses a template preset index; metadata may return fewer
+         # visual alternatives. Keep that preset hint, use an existing visual,
+         # and leave the direct editor's strict generated-index validation intact.
+-        selected=backend.story_cover_template(options.get('template',info['template']))
++        identifier=options.get('template',info['template'])
++        selected=cover_template(backend,identifier,info['template_snapshot'] if identifier==info['template'] else None)
+         requested=options.get('direction',0)
+         presets=selected.get('directions') or []
+         if info['directions'] and type(requested)==int and len(info['directions'])<=requested<len(presets):
+@@ -246,47 +289,61 @@
+             options['direction']=0
+         # The queued request is a snapshot; a later explicit engine edit owns the choice.
+         if 'provider' in read(folder/'cover-editor.json',{}).get(str(slot),{}):options.pop('provider',None)
+-        validate_options(backend,options);_action(backend,folder,tid,slot,'save',{'slot':slot,**options});info=view(backend,tid,slot)
+-    prompt=explicit_prompt or info['prompt'] or (prompt_factory() if prompt_factory else '')
++        validate_options(backend,options);_action(backend,folder,tid,slot,'save',{'slot':slot,**options},workflow=True);info=view(backend,tid,slot)
++    prompt=explicit_prompt or info['prompt'] or (build_selected_prompt(backend,folder,info,checkpoint) if own_text_choices else prompt_factory() if prompt_factory else '')
+     if preset_hint and not explicit_prompt:prompt+='\n构图要求：'+preset_hint
+     if isinstance(prompt,str) and prompt.strip():write(folder/f'cover-prompt-{slot}.json',{'key':prompt_key(info),'prompt':prompt})
+     if checkpoint:checkpoint()
+     return _action(backend,folder,tid,slot,'generate',{'slot':slot,'operation_id':f'workflow-cover-{slot}','prompt':prompt},checkpoint=checkpoint)['cover']
+ 
+-def _action(backend,folder,tid,slot,name,data,checkpoint=None):
++def _action(backend,folder,tid,slot,name,data,checkpoint=None,workflow=False):
+     info=view(backend,tid,slot);job_path=folder/f'cover-job-{slot}.json';job=read(job_path,{})
+     pending=job.get('status') in ('submitting','unknown','pending','download_pending')
+     if name in ('upload','generate') and pending:raise ValueError('封面在途或提交状态不明，请先查图或核对供应商记录；不会重复购买')
++    if name=='save-template':
++        if pending:raise ValueError('封面正在生成，请先查询原任务')
++        if set(data)-{'slot','template'}:raise ValueError('未知模板设置')
++        # Save a reusable copy, then pin it to this slot. Library edits never
++        # silently change an existing task's prompt or the other cover.
++        saved=TemplateStore(backend.DATA_DIR,backend.ROOT).save('covers',data.get('template'))
++        editors=read(folder/'cover-editor.json',{})
++        editors[str(slot)]={**editors.get(str(slot),{}),'template':saved['id'],'template_snapshot':saved,'direction':0,'workflow_choices':False}
++        write(folder/'cover-editor.json',editors)
++        return view(backend,tid,slot)
+     if name=='save':
+-        validate_options(backend,data)
+-        selected=backend.story_cover_template(data.get('template',info['template']))
++        snapshot=info['template_snapshot'] if data.get('template',info['template'])==info['template'] else None
++        validate_options(backend,data,snapshot)
++        selected=cover_template(backend,data.get('template',info['template']),snapshot)
+         direction_count=len(info['directions']) if info['directions'] else len(selected.get('directions') or [])
+         if 'direction' in data and data['direction']>=direction_count:raise ValueError('构图方向不存在')
+-        editors=read(folder/'cover-editor.json',{});editors[str(slot)]={**editors.get(str(slot),{}),**{k:v for k,v in data.items() if k not in ('slot','title','subtitle')}}
+-        if 'title' in data:editors['titleEdited']=True
+-        if 'subtitle' in data:editors['subtitleEdited']=True
++        editors=read(folder/'cover-editor.json',{});previous=editors.get(str(slot),{})
++        editors[str(slot)]={**previous,**{k:v for k,v in data.items() if k!='slot'},'template':selected['id'],'template_snapshot':selected,
++                           'workflow_choices':bool(workflow and (previous.get('workflow_choices') or not previous))}
++        if 'template' in data and data['template']!=info['template'] and 'direction' not in data:editors[str(slot)]['direction']=0
++        if 'title' in data and slot==1:editors['titleEdited']=True
++        if 'subtitle' in data and slot==1:editors['subtitleEdited']=True
+         write(folder/'cover-editor.json',editors)
+         if 'provider' in data and slot==1 and (folder/'client_config.json').is_file():
+             client=read(folder/'client_config.json',{})
+             client['cover']={**(client.get('cover') or {}),'provider':data['provider']}
+             write(folder/'client_config.json',client)
+-        if 'title' in data or 'subtitle' in data:
++        if slot==1 and ('title' in data or 'subtitle' in data):
+             meta=read(folder/'02-meta.json',{});meta.update({k:v for k,v in data.items() if k in ('title','subtitle')});write(folder/'02-meta.json',meta)
+         return view(backend,tid,slot)
+     if name=='directions':
+         if pending:raise ValueError('封面正在生成，请先查询原任务')
+-        template=data.get('template',info['template']);validate_options(backend,{'template':template})
++        template=data.get('template',info['template']);snapshot=info['template_snapshot'] if template==info['template'] else None
++        validate_options(backend,{'template':template},snapshot)
+         state=read(folder/'creative.json',{});content=(folder/'02-rewrite.txt').read_text('utf8') if (folder/'02-rewrite.txt').exists() else state.get('lyrics') or state.get('config',{}).get('copy','')
+         if not content.strip():raise ValueError('未找到改写文案，无法生成构图方向')
+         llm=backend.resolve_active_llm_settings(info['profile_id'])
+         if not llm.get('api_key'):raise ValueError('请先配置 LLM 凭据')
+-        selected=backend.story_cover_template(template)
++        selected=cover_template(backend,template,snapshot)
+         llm={**llm,'_prompt_template':{'step1MetadataSystemPrompt':backend.load_prompt_module('step1_meta.py')+'\n封面构图要求：'+selected['compositionRule']}}
+         generated=backend.step1_meta(llm,info['title'],content,[],read(folder/'request.json',{}).get('track','character-story'))
+         directions=generated.get('cover_image_prompts',[])
+-        if not directions:raise ValueError('未生成构图方向，请重试')
+-        meta=read(folder/'02-meta.json',{});meta['cover_image_prompts']=directions;write(folder/'02-meta.json',meta)
+-        editors=read(folder/'cover-editor.json',{});editors[str(slot)]={**editors.get(str(slot),{}),'template':template,'direction':0};write(folder/'cover-editor.json',editors)
++        if not isinstance(directions,list) or not directions or any(not isinstance(x,str) or not x.strip() for x in directions):raise ValueError('未生成构图方向，请重试')
++        editors=read(folder/'cover-editor.json',{});editors[str(slot)]={**editors.get(str(slot),{}),'template':selected['id'],'template_snapshot':selected,'direction':0,'directions':directions,'workflow_choices':False};write(folder/'cover-editor.json',editors)
+         return view(backend,tid,slot)
+     if name=='upload':
+         uri=data.get('data_url','');match=re.fullmatch(r'data:image/(?:png|jpeg|webp);base64,([A-Za-z0-9+/=]+)',uri) if isinstance(uri,str) else None
+@@ -295,7 +352,18 @@
+         editors=read(folder/'cover-editor.json',{});editors[str(slot)]={**editors.get(str(slot),{}),'mode':'local'};write(folder/'cover-editor.json',editors)
+         write(job_path,{});return view(backend,tid,slot)
+     if name not in ('generate','query'):raise ValueError('封面操作不存在')
+-    cfg=backend.resolve_image_config(backend.load_settings(),job.get('provider') if name=='query' else info['provider'] or None)
++    if name=='generate':
++        op=data.get('operation_id')
++        if not isinstance(op,str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,100}',op):raise ValueError('缺少有效封面操作编号')
++        if job.get('operationId')==op and job.get('status')=='ok':
++            if paths(folder,slot)[1].is_file():return info
++            if job.get('taskId') or job.get('result'):return _action(backend,folder,tid,slot,'query',{'slot':slot},checkpoint=checkpoint)
++            raise ValueError('本次生成的缓存丢失，请先核对供应商记录')
++    # A saved image is already paid for. Download/restore it without consulting
++    # current provider settings; ID-only queries still verify original credentials.
++    cfg=({'provider':job.get('provider') or info['provider']}
++         if name=='query' and job.get('result') else
++         backend.resolve_image_config(backend.load_settings(),job.get('provider') if name=='query' else info['provider'] or None))
+     task_config=read(folder/'creative.json',{}).get('config',{})
+     if name=='query' and job.get('model'):cfg={**cfg,'model':job['model']}
+     elif name=='generate' and 'coverProvider' not in task_config and task_config.get('imageModel') and task_config.get('imageProvider')==cfg.get('provider'):
+@@ -320,16 +388,10 @@
+             result=next((x for x in response.get('results',[]) if isinstance(x,dict) and x.get('url')),None)
+             if not result:raise ValueError('上游成功但没有封面图片地址')
+     else:
+-        op=data.get('operation_id')
+-        if not isinstance(op,str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,100}',op):raise ValueError('缺少有效封面操作编号')
+-        if job.get('operationId')==op and job.get('status')=='ok':
+-            if paths(folder,slot)[1].is_file():return info
+-            if job.get('taskId') or job.get('result'):return _action(backend,folder,tid,slot,'query',{'slot':slot})
+-            raise ValueError('本次生成的缓存丢失，请先核对供应商记录')
+         prompt=data.get('prompt',info['prompt'])
+         if not isinstance(prompt,str) or not prompt.strip() or len(prompt)>20000:raise ValueError('封面提示词应为1至20000字')
+         if checkpoint:checkpoint()
+-        job={'operationId':op,'status':'submitting','provider':cfg['provider'],'model':cfg.get('model'),'credential':credential(cfg),'prompt':prompt,'ratio':info['ratio']};write(job_path,job)
++        job={'operationId':op,'status':'submitting','provider':cfg['provider'],'model':cfg.get('model'),'credential':credential(cfg),'prompt':prompt,'ratio':info['ratio'],'template':info['template']};write(job_path,job)
+         def remember(task_id,actual_cfg=None):
+             used=actual_cfg or cfg
+             job.update(taskId=task_id,status='pending',provider=used['provider'],model=used.get('model'),credential=credential(used));write(job_path,job)
+--- before/template_store.py
++++ template_store.py
+@@ -11,7 +11,7 @@
+ _lock = threading.RLock()
+ 
+ def validate(kind, item):
+-    if kind not in ('drafts', 'prompts') or not isinstance(item, dict):
++    if kind not in ('drafts', 'prompts', 'covers') or not isinstance(item, dict):
+         raise ValueError('模板类型或内容无效')
+     item = copy.deepcopy(item)
+     if not isinstance(item.get('name'), str) or not item['name'].strip():
+@@ -33,6 +33,17 @@
+                 raise ValueError('图片区域须在0至1之间')
+         count = cfg.get('caption', {}).get('maxCharsPerLine', 12)
+         if not isinstance(count, int) or not 1 <= count <= 80: raise ValueError('字幕每行字数须在1至80之间')
++    elif kind == 'covers':
++        for key in ('compositionRule', 'titleLayout', 'subtitleLayout', 'plainHint'):
++            value = item.get(key, '')
++            if not isinstance(value, str) or len(value) > 10000: raise ValueError('封面构图和排版须为文字，最多10000字')
++            item[key] = value
++        if not item['compositionRule'].strip(): raise ValueError('请填写封面构图要求')
++        directions = item.get('directions')
++        if not isinstance(directions, list) or not 1 <= len(directions) <= 12: raise ValueError('封面模板须有1至12个构图预设')
++        for direction in directions:
++            if not isinstance(direction, dict) or any(not isinstance(direction.get(k), str) or not direction[k].strip() or len(direction[k]) > 10000 for k in ('label','hint')):
++                raise ValueError('构图预设须填写名称和说明')
+     else:
+         for key in ('step1RewriteSystemPrompt', 'step1MetadataSystemPrompt', 'step3SystemPrompt'):
+             if not isinstance(item.get(key, ''), str): raise ValueError('系统提示词须为文字')
+@@ -49,11 +60,12 @@
+         return json.loads(self.path.read_text('utf-8'))
+ 
+     def list(self, kind):
+-        if kind not in ('drafts', 'prompts'): raise ValueError('未知模板类型')
++        if kind not in ('drafts', 'prompts', 'covers'): raise ValueError('未知模板类型')
+         with _lock:
+             custom = self._read().get(kind, [])
+-            filename = 'draft_templates.json' if kind == 'drafts' else 'prompt_templates.json'
++            filename = 'story_workflow_reference.json' if kind == 'covers' else 'draft_templates.json' if kind == 'drafts' else 'prompt_templates.json'
+             builtins = json.loads((self.root/'assets'/filename).read_text('utf-8'))
++            if kind == 'covers': builtins = builtins['coverTemplates']
+             overrides = {x['id']: x for x in custom}
+             builtin_ids = {x['id'] for x in builtins}
+             return [dict(copy.deepcopy(overrides.get(x['id'], x)), builtin=True) for x in builtins] + [copy.deepcopy(x) for x in custom if x['id'] not in builtin_ids]
+--- before/assets/task_cover.js
++++ assets/task_cover.js
+@@ -27,6 +27,19 @@
+   function upload(){const input=node('input');input.type='file';input.accept='image/png,image/jpeg,image/webp';input.onchange=()=>{const file=input.files[0];if(!file)return;if(file.size>10_000_000){report('封面图片超过10MB',true);return;}const reader=new FileReader();reader.onload=()=>act('upload',{data_url:reader.result},true);reader.onerror=()=>report('读取封面失败',true);reader.readAsDataURL(file);};input.click();}
+   function zoom(source){const overlay=node('div','cover-result-zoom'),img=node('img');img.src=source;img.alt='封面海报大图';overlay.tabIndex=-1;const close=()=>overlay.remove();overlay.onclick=close;overlay.onkeydown=e=>{if(e.key==='Escape')close();};overlay.append(img);document.body.append(overlay);overlay.focus();}
+   function titleEditor(body){const area=node('div','cover-result-editor'),title=node('input'),subs=node('textarea');title.value=info.title;title.setAttribute('aria-label','封面主标题');subs.value=info.subtitle.join('\n');subs.setAttribute('aria-label','副标题，最多两句');area.append(node('label','','封面主标题'),title,node('label','','副标题（最多两句）'),subs,button('保存',()=>act('save',{title:title.value,subtitle:subs.value.split(/\r?\n/).filter(x=>x.trim())},true)),button('取消',()=>area.remove()));body.prepend(area);title.focus();}
++  function templateEditor(body){
++   const selected=info.template_snapshot||info.templates.find(t=>t.id===info.template),area=node('div','cover-result-editor cover-template-editor'),fields={};
++   for(const[key,label]of [['name','模板名称'],['compositionRule','构图要求'],['titleLayout','主标题排版（{{TITLE}} 表示标题）'],['subtitleLayout','副标题排版（{{SUBTITLE}} 表示副标题）'],['plainHint','不带文字时的画面要求'],['presets','构图预设（每行：名称｜说明）']]){
++    const input=node(key==='name'?'input':'textarea');input.setAttribute('aria-label',label);
++    input.value=key==='presets'?(selected?.directions||[]).map(d=>d.label+'｜'+d.hint).join('\n'):selected?.[key]||'';
++    if(key==='name')input.value+=' · 自定义';fields[key]=input;area.append(node('label','',label),input);
++   }
++   area.append(node('p','cover-result-hint','保存为可复用的新模板，当前封面保留独立快照；不调用模型、不出图。'),button('保存为新模板',()=>{
++    const template={};for(const key of ['name','compositionRule','titleLayout','subtitleLayout','plainHint'])template[key]=fields[key].value;
++    template.directions=fields.presets.value.split(/\r?\n/).filter(x=>x.trim()).map(line=>{const at=line.indexOf('｜');return {label:at<0?line:line.slice(0,at),hint:at<0?'':line.slice(at+1)};});
++    return act('save-template',{template});
++   }),button('取消',()=>area.remove()));body.prepend(area);fields.name.focus();
++  }
+   async function copy(text){try{await navigator.clipboard.writeText(text);report('已复制');}catch(e){report('复制失败：'+e.message,true);}}
+   function draw(){
+    if(!active||!info)return;drawnSignature=JSON.stringify(info);const previous=notice?.text||'',message=()=>node('p','cover-result-message'+(notice?.error?' error':''),previous);
+@@ -44,6 +57,11 @@
+     card.append(head,body,message());host.append(card);return;
+    }
+    const provider=node('select');provider.setAttribute('aria-label','封面绘图提供商');for(const[v,t]of providers){const o=node('option','',t);o.value=v;provider.append(o);}provider.value=info.provider;provider.disabled=busy||pending;provider.onchange=()=>act('save',{provider:provider.value});head.append(provider);
++   const model=node('select');model.setAttribute('aria-label','封面文字模型');model.title='只用于生成封面构图方向；选择后不调用模型';
++   const profiles=info.profiles||[],taskProfile=profiles.find(p=>p.id===info.task_profile_id),follow=node('option','','文字：跟随任务'+(taskProfile?' · '+taskProfile.name:''));follow.value='';model.append(follow);
++   for(const p of profiles){const option=node('option','',p.name+' · '+p.model);option.value=p.id;model.append(option);}
++   if(info.profile_override&&!profiles.some(p=>p.id===info.profile_override)){const missing=node('option','','所选文字模型已删除');missing.value=info.profile_override;model.append(missing);}
++   model.value=info.profile_override||'';model.disabled=busy||pending;model.onchange=()=>act('save',{profile_id:model.value});head.append(model);
+    if(info.mode==='off'&&!source&&!expanded){head.append(button('生成封面海报',()=>{expanded=true;draw();}));card.append(head,node('p','cover-result-message',previous||'未生成 · 建任务时选了不生成'));host.append(card);return;}
+    head.append(button(source?(edited?'重新生成封面（参数已改）':'重新生成封面'):'生成封面',()=>act('generate',{operation_id:operationId}),pending||!info.prompt));
+    if(source){const download=node('a','btn btn-ghost','下载');download.href=source;download.download='封面'+(slot===2?'2':'')+'.png';head.append(download);}
+@@ -51,8 +69,9 @@
+    if(info.job.taskId)head.append(button('复制 TaskID',()=>copy(info.job.taskId)));if(info.job.taskId||info.job.result)head.append(button('查图',()=>act('query',{},true)));
+    card.append(head);if(showPrompt){const editor=node('div','cover-result-editor'),text=node('textarea');text.value=info.prompt;text.rows=6;text.setAttribute('aria-label','完整的封面海报提示词');editor.append(node('p','','编辑本次出图用的完整提示词（已含画面风格与标题文字指令）。本次一次性，不改动构图方向 / 风格 / 模板设置。'),text,button('取消',()=>{showPrompt=false;draw();}),button('出图（用修改的提示词）',()=>act('generate',{operation_id:operationId,prompt:text.value}),pending,true));card.append(editor);}
+    const thumb=node('div','cover-result-thumb');if(source){const img=node('img');img.src=source;img.alt='封面海报';img.title='点击放大预览';img.onclick=()=>zoom(source);thumb.append(img);}else thumb.append(node('div','cover-result-empty',pending?'封面生成中…':'未生成\n点上方「生成封面」'));
+-   const controls=node('div','cover-result-options');controls.append(node('div','cover-result-label','封面模板'));const templates=node('div','cover-result-chips');for(const t of info.templates)templates.append(button(t.name,()=>act('directions',{template:t.id}),pending,info.template===t.id));controls.append(templates,node('div','cover-result-label','构图方向'));
+-   if(info.directions.length){controls.append(chips('',info.directions.map((d,i)=>[i,info.templates.find(t=>t.id===info.template)?.directions?.[i]?.label||'方向 '+(i+1)]),'direction'));}else controls.append(button('生成构图方向',()=>act('directions'),pending));
++   const controls=node('div','cover-result-options');controls.append(node('div','cover-result-label','封面模板'));const templates=node('div','cover-result-chips');for(const t of info.templates)templates.append(button(t.name,()=>act('save',{template:t.id}),pending,info.template===t.id));templates.append(button('自定义模板',()=>templateEditor(controls),pending));controls.append(templates,node('div','cover-result-label','构图方向'));
++   if(info.directions.length)controls.append(chips('',info.directions.map((d,i)=>[i,info.templates.find(t=>t.id===info.template)?.directions?.[i]?.label||'方向 '+(i+1)]),'direction'));
++   controls.append(button('生成构图方向',()=>act('directions'),pending));
+    controls.append(chips('标题文字',[[true,'带主/副标题'],[false,'留白']],'withTitle'),chips('比例',ratios,'ratio'),node('p','cover-result-direction',info.directions[info.direction]||''));
+    body.append(thumb,controls);card.append(body,message());host.append(card);
+   }
+--- before/assets/task_cover.css
++++ assets/task_cover.css
+@@ -1,3 +1,4 @@
+ /* CoverPosterCard 1.24.5 persistent failure notice above the existing compact controls. */
++.cover-result-editor.cover-template-editor textarea{min-height:56px;resize:vertical}.cover-template-editor{width:100%;box-sizing:border-box}.cover-result-head select[aria-label="封面文字模型"]{max-width:190px}
+ .cover-result-error{padding:12px 16px;border-bottom:1px solid var(--danger);background:color-mix(in srgb,var(--danger) 8%,var(--bg-elevated));color:var(--danger);font-size:12px;line-height:1.6;overflow-wrap:anywhere}.cover-result-error>b{display:block;font-size:13px}.cover-result-error>p{margin:5px 0 0}
+ .cover-result-card{margin-top:12px;border:1px solid var(--border);border-radius:8px;background:var(--bg-elevated);overflow:hidden}.cover-result-head{display:flex;align-items:center;flex-wrap:wrap;gap:4px;padding:12px 16px;border-bottom:1px solid var(--border)}.cover-result-head>b{font-size:14px}.cover-result-hint{font-size:11px;color:var(--text-muted);flex:1;min-width:150px}.cover-result-head .btn{font-size:11px;padding:2px 8px;min-height:24px}.cover-result-head select{font-size:11px;max-width:140px;color:var(--text);background:var(--bg-sunken);border:1px solid var(--border);border-radius:5px}.cover-result-body{display:flex;gap:14px;align-items:flex-start;padding:16px}.cover-result-thumb{width:124px;flex-shrink:0}.cover-result-thumb img{width:100%;height:auto;border-radius:8px;border:1px solid var(--border);display:block;cursor:zoom-in}.cover-result-empty{width:100%;aspect-ratio:3/4;box-sizing:border-box;display:grid;place-items:center;white-space:pre-line;border:1px dashed var(--border);border-radius:8px;font-size:11px;color:var(--text-muted);text-align:center;padding:8px}.cover-result-options{flex:1;min-width:0}.cover-result-label{font-size:12px;color:var(--text-secondary);margin-bottom:6px}.cover-result-chips{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:6px}.cover-result-chips .btn{border:1px solid var(--border);border-radius:18px;font-size:12px;padding:5px 11px;background:transparent;color:var(--text-muted)}.cover-result-chips .btn-primary{background:var(--text);color:var(--bg)}.cover-result-chips>span{font-size:12px;color:var(--text-secondary)}.cover-result-direction{font-size:11.5px;line-height:1.6;color:var(--text-muted);margin-top:8px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}.cover-result-message{padding:0 16px;font-size:12px;color:var(--brand);white-space:pre-wrap}.cover-result-message.error{color:var(--danger)}.cover-result-editor{padding:12px 16px;border-bottom:1px solid var(--border);font-size:12px}.cover-result-editor label{display:block;margin:6px 0}.cover-result-editor textarea,.cover-result-editor input{display:block;width:100%;box-sizing:border-box;color:var(--text);background:var(--bg-sunken);border:1px solid var(--border);border-radius:6px;padding:9px;min-height:30px}.cover-result-editor textarea{min-height:120px}.cover-result-editor button{margin:8px 8px 0 0}.cover-result-zoom{position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;cursor:zoom-out}.cover-result-zoom img{max-width:92vw;max-height:92vh;border-radius:10px;box-shadow:0 8px 40px #0009}@media(max-width:700px){.cover-result-body{flex-wrap:wrap}.cover-result-options{min-width:240px}}
+--- before/tests/task_cover.test.js
++++ tests/task_cover.test.js
+@@ -1,6 +1,6 @@
+ const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+ function setup(info,post){
+- class El{constructor(tag){this.tag=tag;this.children=[];this.isConnected=true;this.className='';this.textContent='';this.value='';this.classList={toggle(){},add(){}};}append(...x){this.children.push(...x);}replaceChildren(...x){this.children=x;}setAttribute(){}focus(){}querySelector(selector){return this.all().find(e=>e.className?.split(' ').includes(selector.slice(1)))||null;}all(){return this.children.flatMap(c=>[c,...(c.all?.()||[])]);}remove(){this.isConnected=false;}}
++ class El{constructor(tag){this.tag=tag;this.children=[];this.isConnected=true;this.className='';this.textContent='';this.value='';this.classList={toggle(){},add(){}};}append(...x){this.children.push(...x);}prepend(...x){this.children.unshift(...x);}replaceChildren(...x){this.children=x;}setAttribute(){}focus(){}querySelector(selector){return this.all().find(e=>e.className?.split(' ').includes(selector.slice(1)))||null;}all(){return this.children.flatMap(c=>[c,...(c.all?.()||[])]);}remove(){this.isConnected=false;}}
+  const host=new El('host'),calls=[];const context={window:{crypto:{randomUUID:()=> 'fixed-operation'}},document:{createElement:t=>new El(t),body:new El('body')},navigator:{clipboard:{writeText:async()=>{}}},Date,fetch:async(path,options={})=>{calls.push({path,body:options.body?JSON.parse(options.body):null});return options.method==='POST'?post(JSON.parse(options.body),path):{ok:true,json:async()=>info};}};
+  vm.runInNewContext(fs.readFileSync('assets/task_cover.js','utf8'),context);let control=context.window.app074TaskCover.render(host,{taskId:'fixture'});
+  return {host,calls,refresh:()=>control.refresh(),remount:()=>{control.dispose();control=context.window.app074TaskCover.render(host,{taskId:'fixture'});},button:label=>host.all().find(e=>e.tag==='button'&&e.textContent===label)};
+@@ -38,3 +38,22 @@
+  assert.ok(s.button('重新生成封面'));assert.ok(!s.host.all().some(x=>x.textContent==='正在读取封面…'));
+  assert.equal(s.calls.filter(x=>x.body).length,0);
+ });
++
++test('text model selection only saves the cover override and template selection never calls LLM',async()=>{
++ const state=info({profiles:[{id:'cover-profile',name:'封面文字',model:'model'}],profile_override:'',task_profile_id:'task-profile'});
++ const s=setup(state,async body=>{Object.assign(state,{profile_override:body.profile_id??state.profile_override});return {ok:true,json:async()=>state};});await tick();
++ const model=s.host.all().find(e=>e.tag==='select'&&e.children.some(x=>x.value==='cover-profile'));
++ assert.ok(model);model.value='cover-profile';await model.onchange();
++ assert.equal(s.calls.at(-1).path,'/api/task-cover/fixture/save');assert.equal(s.calls.at(-1).body.profile_id,'cover-profile');
++ await s.button('模板').onclick();assert.equal(s.calls.at(-1).path,'/api/task-cover/fixture/save');
++ assert.ok(s.button('生成构图方向'));assert.equal(s.calls.filter(x=>x.path.endsWith('/directions')).length,0);
++});
++
++test('custom template editor saves into shared library through current cover action',async()=>{
++ const state=info();state.templates[0]={...state.templates[0],compositionRule:'构图',titleLayout:'{{TITLE}}',subtitleLayout:'{{SUBTITLE}}',plainHint:'留白',directions:[{label:'正面',hint:'正面构图'}]};
++ const s=setup(state,async()=>({ok:true,json:async()=>state}));await tick();s.button('自定义模板').onclick();
++ const name=s.host.all().find(e=>e.tag==='input');assert.ok(name);name.value='我的封面';
++ await s.button('保存为新模板').onclick();const call=s.calls.at(-1);assert.equal(call.path,'/api/task-cover/fixture/save-template');
++ assert.equal(call.body.template.name,'我的封面');assert.equal(call.body.template.directions[0].hint,'正面构图');
++ assert.equal(s.calls.filter(x=>x.path.endsWith('/generate')||x.path.endsWith('/directions')).length,0);
++});
