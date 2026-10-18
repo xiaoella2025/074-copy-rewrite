@@ -1,0 +1,196 @@
+--- before/story1245_runtime.py
++++ story1245_runtime.py
+@@ -168,6 +168,8 @@
+     backend.Handler.do_GET, backend.Handler.do_POST = do_get, do_post
+     import benchmark_batch_http
+     benchmark_batch_http.install(backend)
++    import scene_image_recovery
++    scene_image_recovery.install(backend)
+     backend._story1245_installed = True
+ 
+ 
+--- before/assets/workflow_view.js
++++ assets/workflow_view.js
+@@ -11,6 +11,12 @@
+   const STAGE_KEYS = {generate: ["0", "1", "2"], tts: ["5"], prompts: ["3"],
+     images: ["4"], videos: ["4"], draft: ["6"], cover: ["6"]};
+   const TAB_NAMES = {preview: "▤ 产物预览", audio: "♫ 配音试听", gallery: "▧ 分镜画廊", captions: "☷ 字幕断行"};
++
++  function imageCompletion(detail) {
++    const steps=detail?.steps||{},expected=[...new Set((steps.shots?.length?steps.shots:steps.prompts||[]).map(s=>Number(s.idx)).filter(i=>Number.isInteger(i)&&i>0))];
++    const present=new Set((steps.images||[]).filter(image=>image.size===undefined||Number(image.size)>0).map(image=>image.name?.match(/^(\d+)\.(?:png|jpe?g|webp)$/i)).filter(Boolean).map(match=>Number(match[1])));
++    return {expected,completed:expected.filter(i=>present.has(i)).length,total:expected.length,missing:expected.filter(i=>!present.has(i))};
++  }
+ 
+   function currentStepKey(info) {
+     const stageKeys=STAGE_KEYS[info?.queue?.stage];
+@@ -214,7 +220,8 @@
+     append(right, output, draftPanel);
+     append(container, left, right);
+ 
+-    let detail = null, taskId = "", activeTab = "preview", notice = "任务正在运行，已完成的产物会显示在这里。", controlPending = false;
++    let detail = null, taskId = "", activeTab = "preview", notice = "任务正在运行，已完成的产物会显示在这里。", controlPending = false,imageRetryPending=false;
++    const imageRetryOperations=new Map();
+     const overrides = new Map(), started = new Map();
+     let audioSignature = '', audioTask = '';
+     let previewBefore=null,previewAfter=null,coverHost=null,coverController=null,coverTask='',coverSignature='',previewSignature='';
+@@ -296,7 +303,7 @@
+ 
+     function taskBusy() {
+       const info = detail?.info || {}, status = info.queue?.status;
+-      return controlPending || ['queued','running','pausing','cancelling'].includes(status) ||
++      return controlPending || imageRetryPending || ['queued','running','pausing','cancelling'].includes(status) ||
+         (!status && (info.running || info.progress?.status === 'running' || [...overrides.values()].some(item => item.status === 'running')));
+     }
+ 
+@@ -395,6 +402,7 @@
+     function renderTimeline() {
+       const info = detail?.info || {};
+       const completed = new Set((info.completed_steps || []).map(String));
++      const imageState=imageCompletion(detail),imageStageFailure=info.queue?.stage==='images'&&info.queue?.status==='failed';
+       timeline.replaceChildren();
+       NODES.forEach((item, index) => {
+         const over = overrides.get(item.key);
+@@ -402,17 +410,20 @@
+         const progressStep = currentStepKey(info);
+         const pauseState = progressStep===item.key&&['pausing','paused'].includes(info.queue?.status || info.progress?.status);
+         const paused = pauseState&&!completed.has(item.key);
+-        const status = pauseState ? (completed.has(item.key) ? 'done' : 'paused') : over?.status || (progressStep===item.key&&['running','failed'].includes(info.progress.status)?info.progress.status:completed.has(item.key) ? "done" :
++        const repairedImages=item.key==='4'&&imageStageFailure&&imageState.total>0&&!imageState.missing.length;
++        const status = repairedImages?'done':pauseState ? (completed.has(item.key) ? 'done' : 'paused') : over?.status || (progressStep===item.key&&['running','failed'].includes(info.progress.status)?info.progress.status:completed.has(item.key) ? "done" :
+           item.key === "0" && completed.has("1") ? "skipped" : "pending");
+         const row = node("div", "wv-node " + status);
+         row.dataset.step = item.key;
+         const mark = status === "done" ? "✓" : status === "failed" ? "!" : status === "skipped" ? "–" : String(index + 1);
+         const text = node("div");
+         const ttsProgress = detail?.steps?.tts_progress;
+-        const liveNote = item.key === '5' && status === 'running' && ttsProgress
+-          ? `配音已完成 ${ttsProgress.completed} / ${ttsProgress.total} 段${ttsProgress.failed ? ` · 失败 ${ttsProgress.failed} 段` : ''}` : '';
++        const imageNote=item.key==='4'&&imageState.total&&(imageStageFailure||status==='running')
++          ? `图片已完成 ${imageState.completed}/${imageState.total} 张${imageState.missing.length?'；第 '+imageState.missing.join('、')+' 镜未完成，已有图片保留，请在画廊仅补缺图':'；已补齐，点「从断点续跑」继续打包'}`:'';
++        const liveNote = imageNote||(item.key === '5' && status === 'running' && ttsProgress
++          ? `配音已完成 ${ttsProgress.completed} / ${ttsProgress.total} 段${ttsProgress.failed ? ` · 失败 ${ttsProgress.failed} 段` : ''}` : '');
+         append(text, node("div", "wv-node-title", item.label),
+-          node("div", "wv-node-note", paused ? (info.queue?.status === 'pausing' ? '暂停中 · 等待在途请求保存' : '已暂停 · 修改后点「从断点续跑」') : (status === 'failed' && stepFailure(info, item.key)) || liveNote || over?.note || (status === "skipped" ? "已跳过" : status === "done" ? `已完成${persisted?.elapsed_sec!=null?' · '+persisted.elapsed_sec+'s':''}` : status==='running'?'运行中…':status==='failed'?'此步骤失败':item.description)));
++          node("div", "wv-node-note", paused ? (info.queue?.status === 'pausing' ? '暂停中 · 等待在途请求保存' : '已暂停 · 修改后点「从断点续跑」') : imageNote||(status === 'failed' && stepFailure(info, item.key)) || liveNote || over?.note || (status === "skipped" ? "已跳过" : status === "done" ? `已完成${persisted?.elapsed_sec!=null?' · '+persisted.elapsed_sec+'s':''}` : status==='running'?'运行中…':status==='failed'?'此步骤失败':item.description)));
+         const retry = node("button", "wv-node-retry", "↻ 从这里重跑");
+         retry.type = "button";
+         const busy = taskBusy(), id = taskId || info.task_id;
+@@ -696,22 +707,37 @@
+     }
+ 
+     function renderGallery() {
+-      const panel = panels.gallery, images = detail?.steps?.images || [];
++      const panel = panels.gallery, images = (detail?.steps?.images || []).filter(image=>image.size===undefined||Number(image.size)>0);
+       panel.replaceChildren();
+-      if (!images.length) return empty(panel, "分镜图片尚未完成。");
+-      const box = card(panel, `分镜画廊 · ${images.length} 张`), grid = node("div", "wv-gallery");
+-      images.forEach((item,index) => {
++      const completion=imageCompletion(detail);
++      if (!images.length&&!completion.total) return empty(panel, "分镜图片尚未完成。");
++      const box = card(panel, completion.total?`分镜画廊 · ${completion.completed}/${completion.total} 张${completion.missing.length?' · 待补 '+completion.missing.length+' 张':''}`:`分镜画廊 · ${images.length} 张`), grid = node("div", "wv-gallery");
++      const entries=completion.total?completion.expected.map(idx=>({idx,item:images.find(image=>Number(image.name?.split('.')[0])===idx)})):images.map(item=>({item,idx:Number(item.name?.split('.')[0])}));
++      entries.forEach(({item,idx}) => {
++        if(!item){
++          const tile=node('div','wv-gallery-tile');tile.dataset.sceneImageIndex=String(idx);tile.dataset.sceneImagePresent='false';
++          tile.append(node('div','wv-node-note',`第 ${idx} 镜图片未完成`),node('small','',detail.steps.shots?.find(shot=>Number(shot.idx)===idx)?.text||''));
++          const retry=node('button','wv-shot-redraw',`仅补第 ${idx} 镜`);retry.type='button';retry.disabled=taskBusy();retry.title='只重新生成这一张缺图，会消耗绘图额度；已完成的图片不重画';
++          retry.onclick=async()=>{
++            if(taskBusy()||!confirm(`只补第 ${idx} 镜，会消耗一次出图额度。其他图片保持原样，是否继续？`))return;
++            const key=taskId+':'+idx;if(!imageRetryOperations.has(key))imageRetryOperations.set(key,root.crypto?.randomUUID?.()||'scene-'+Date.now()+'-'+Math.random().toString(36).slice(2));
++            imageRetryPending=true;retry.disabled=true;retry.textContent='正在补图…';renderSummary();renderTimeline();
++            try{await postTask('retry-image',{index:idx,operation_id:imageRetryOperations.get(key)});await refreshDetail();selectTab('gallery');if(handlers.onTaskUpdated)await handlers.onTaskUpdated();}
++            catch(error){if(error.retryable)imageRetryOperations.delete(key);notice=error.message;alert(error.message);}finally{imageRetryPending=false;render();}
++          };tile.append(retry);
++          if(root.app074SceneImages){const upload=node('button','wv-shot-redraw','上传这张图片');upload.type='button';upload.disabled=taskBusy();upload.onclick=()=>root.app074SceneImages.replace({taskId,index:idx,onChanged:async()=>{await refreshDetail();selectTab('gallery');if(handlers.onTaskUpdated)await handlers.onTaskUpdated();}}).catch(error=>alert(error.message));tile.append(upload);}
++          grid.append(tile);return;
++        }
+         const link = node("a"), img = node("img");
+         link.href = item.url;
+         link.target = "_blank";
+         link.rel = "noopener";
+-        link.onclick=e=>{e.preventDefault();e.stopPropagation();openViewer(images,index);};
++        link.onclick=e=>{e.preventDefault();e.stopPropagation();openViewer(images,images.indexOf(item));};
+         img.src = item.url;
+         img.alt = item.name || "分镜图片";
+         img.loading = "lazy";
+         append(link, img, node("small", "", item.name || ""));
+         const tile=node('div','wv-gallery-tile');tile.append(link);
+-        const idx=Number(item.name?.split('.')[0]);
+         if(Number.isInteger(idx)&&idx>0&&root.app074SceneImages){const options={taskId,index:idx,caption:detail.steps.shots?.find(shot=>Number(shot.idx)===idx)?.text||"",onChanged:async()=>{await refreshDetail();selectTab('gallery');if(handlers.onTaskUpdated)await handlers.onTaskUpdated();}};
+           const actions=node('div','wv-gallery-actions');for(const [label,name]of [['裁剪','open'],['参考图编辑','reference'],['图片历史','history'],['替换图片','replace']]){const button=node('button','wv-shot-redraw',label);button.type='button';button.onclick=async()=>{try{await root.app074SceneImages[name](options);}catch(error){alert(error.message);}};actions.append(button);}tile.append(actions);}
+         const savedVideo=(detail.steps.videos||[]).find(v=>Number(v.idx)===idx&&v.ok!==false&&v.available!==false);
+@@ -756,7 +782,7 @@
+ 
+     async function postTask(action, body) {
+       const res = await fetch(`/api/task/${encodeURIComponent(taskId)}/${action}`, {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+-      const value = await res.json(); if (!res.ok) throw new Error(value.error || "操作失败"); return value;
++      const value = await res.json(); if (!res.ok){const error=new Error(value.error || "操作失败");error.retryable=value.retryable===true;throw error;} return value;
+     }
+     async function refreshDetail() {
+       const res = await fetch(`/api/task/${encodeURIComponent(taskId)}`);
+@@ -851,6 +877,6 @@
+     };
+   }
+ 
+-  root.WorkflowView = {mount, NODES, saveRewrite, taskParameterGroups, publishTags, publishText, copyWithFeedback};
+-  if (typeof module !== "undefined" && module.exports) module.exports = {NODES, stepFailure, taskParameterGroups, publishTags, publishText, copyWithFeedback};
++  root.WorkflowView = {mount, NODES, saveRewrite, taskParameterGroups, publishTags, publishText, copyWithFeedback,imageCompletion};
++  if (typeof module !== "undefined" && module.exports) module.exports = {NODES, stepFailure, taskParameterGroups, publishTags, publishText, copyWithFeedback,imageCompletion};
+ })(typeof window !== "undefined" ? window : globalThis);
+--- before/assets/image_pipeline.js
++++ assets/image_pipeline.js
+@@ -74,10 +74,11 @@
+       throw error;
+     }
+   };
+-  const requireResults = (stage, results, expected) => {
++  const requireResults = (stage, results, expected, reused=0,total=expected) => {
+     const failed = Array.isArray(results) ? results.find(item => !item || !item.ok) : null;
+     if (!Array.isArray(results) || results.length !== expected || failed) {
+-      const error = new Error(`${stage}未完成：${failed?.error || '结果数量不完整'}`);
++      const imageNote=stage==='images'?`已完成 ${reused+(Array.isArray(results)?results.filter(r=>r?.ok).length:0)}/${total} 张；${failed?.idx?'第 '+failed.idx+' 镜未完成。':''}已有图片保留，可在画廊仅补缺图。`:'';
++      const error = new Error(`${stage}未完成：${imageNote}${failed?.error || '结果数量不完整'}`);
+       onStage(stage, 'failed', error);
+       throw error;
+     }
+@@ -198,11 +199,11 @@
+   gen.steps['3'] = prompts;
+   if (!promptsReady) await pauseAfter('prompts', promptRun);
+ 
+-  const savedImages = new Map((prior.images || []).map(item => {
++  const savedImages = new Map((prior.images || []).filter(item=>item.size===undefined||Number(item.size)>0).map(item => {
+     const match = item.name?.match(/^(\d+)\.(png|jpe?g|webp)$/i);
+     return match ? [Number(match[1]), {idx:Number(match[1]), ok:true, url:item.url,
+       task_local:item.url}] : [null, null];
+-  }).filter(([idx]) => idx !== null));
++  }).filter(([idx]) => idx !== null&&prompts.some(item=>Number(item.idx)===idx)));
+   const missingImages = prompts.filter(item => !savedImages.has(Number(item.idx)));
+   let newImages = [];
+   if (missingImages.length) {
+@@ -245,7 +246,7 @@
+     }
+     if (payload) {
+       const response = await call('images', endpoint, payload);
+-      requireResults('images', response?.results, missingImages.length);
++      requireResults('images', response?.results, missingImages.length,savedImages.size,shots.length);
+       newImages = response.results;
+     }
+   }
+--- before/result.html
++++ result.html
+@@ -41,11 +41,12 @@
+   actions.replaceChildren();
+   if(!job)return;
+   const busy=['queued','running','cancelling','pausing'].includes(job.status);
+-  document.getElementById('status').textContent=QUEUE_LABELS[job.status]+(job.status==='queued'?' · 第 '+job.position+' 位':'');
++  const images=WorkflowView.imageCompletion(detail),imageFailure=job.status==='failed'&&job.stage==='images'&&images.total>0;
++  document.getElementById('status').textContent=imageFailure?(images.missing.length?`图片未补齐 · ${images.completed}/${images.total}`:'图片已补齐 · 待续跑'):QUEUE_LABELS[job.status]+(job.status==='queued'?' · 第 '+job.position+' 位':'');
+   document.getElementById('resume-link').hidden=true;
+   document.getElementById('detail-link').hidden=busy;
+   host.querySelectorAll('.wv-node-retry,.wv-node-edit').forEach(b=>b.disabled=busy);
+-  if(job.error&&['failed','interrupted','cancelled'].includes(job.status)) workflow?.setNotice(job.error);
++  if(job.error&&['failed','interrupted','cancelled'].includes(job.status)) workflow?.setNotice(imageFailure&&!images.missing.length?'图片已补齐，点「从断点续跑」继续打包。':job.error);
+   const add=(label,action,body={})=>{
+     const button=document.createElement('button');button.type='button';button.className='btn';button.textContent=label;
+     button.onclick=async()=>{button.disabled=true;try{await api('/api/task/'+encodeURIComponent(taskId)+'/'+action,'POST',body);startResumePoll(taskId);}catch(e){showResumeError(e.message);}finally{button.disabled=false;}};
