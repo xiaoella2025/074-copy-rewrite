@@ -16,3 +16,9 @@
 - 保留成功任务、手工修改、音乐和图片；测试使用临时目录及 fake/local provider。安装版更新前验证候选文件和业务文件哈希，不能用整份旧模块覆盖安装版的独立修复。
 
 定位证据及已验证命令见 [Story 升级说明定位流程](docs/audit/story-release-notes-workflow.md)。
+
+## 复用 Story 行为时先核实字段归属
+
+- 不能只凭界面名称推断字段作用。Story 1.25.0 的任务 `title` 用于任务/草稿命名，封面主副题独立保存在 `cover_custom_text`；手填封面字由提示词约束和返回后覆盖共同保证，空白才由 AI 生成。不得把所有任务标题一律当成封面大字。
+- 账户和市场功能须拆成客户端逻辑与服务端返回条件分别核查。邮箱记忆有客户端实现；设备唯一账户恢复依赖 `fpExclusive`，本人作品恢复依赖所有权校验后的 payload。不能把三项笼统归为全部服务端，也不能用本地标记冒充服务器确认。
+- Mac 安装包可用 `scripts/extract-story-macho-assets.cjs` 离线读取资源，Windows 继续复用现有 PE 提取工具。解包不代表运行程序，禁止因此启动 Story。最新核查见 `docs/audit/2026-10-19-story-history-followup.md`。

@@ -24,7 +24,7 @@ class CoverTitleRetention1250Tests(unittest.TestCase):
         (self.folder / '02-rewrite.txt').write_text('隔离测试文案', 'utf8')
         selected = {'id': 'fixture-template', 'compositionRule': '隔离构图要求'}
         self.info = {'job': {}, 'template': selected['id'], 'template_snapshot': selected,
-                     'directions': ['原画面方向'], 'profile_id': 'fixture-profile', 'title': self.meta['title']}
+                     'directions': ['原画面方向'], 'profile_id': 'fixture-profile', 'title': self.meta['title'], 'subtitle': self.meta['subtitle']}
         self.backend = SimpleNamespace(DATA_DIR=self.root, ROOT=self.root, task_operation=lambda _: nullcontext(),
                                        resolve_active_llm_settings=Mock(return_value={'api_key': 'fixture-only'}),
                                        load_prompt_module=Mock(return_value='隔离提示词'),

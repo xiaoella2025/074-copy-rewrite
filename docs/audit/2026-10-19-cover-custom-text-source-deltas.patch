@@ -1,0 +1,48 @@
+--- before/server.py
++++ server.py
+@@ -2931,0 +2932,10 @@
++    # Story 1.25 Ly: task name and cover_custom_text are separate inputs.
++    custom = llm_settings.get('_cover_custom_text') or {}
++    if not custom and response_dir is not None:
++        config_file = Path(response_dir) / 'client_config.json'
++        if config_file.is_file():
++            custom = json.loads(config_file.read_text('utf8')).get('cover') or {}
++    cover_title = str(custom.get('title') or '').strip()
++    cover_subtitle = custom.get('subtitle') or []
++    if isinstance(cover_subtitle, str): cover_subtitle = cover_subtitle.splitlines()
++    cover_subtitle = [s.strip() for s in cover_subtitle if isinstance(s, str) and s.strip()][:2]
+@@ -2933 +2943 @@
+-        return {"title": title.strip()[:22], "short_title": "", "summary": "", "tags": [], "comments": [], "cover_image_prompts": []}
++        return {"title": cover_title or title.strip()[:22], "subtitle": cover_subtitle, "short_title": "", "summary": "", "tags": [], "comments": [], "cover_image_prompts": []}
+@@ -2939,0 +2950,4 @@
++    if cover_title:
++        sys_p += '\n封面主标题已由用户指定：'+cover_title+'。title 必须逐字采用，不得改写、缩短或替换；其余字段围绕这个标题生成。short_title 是独立的发布短标题。'
++    if cover_subtitle:
++        sys_p += '\n封面副标题已由用户指定：'+json.dumps(cover_subtitle,ensure_ascii=False)+'。subtitle 必须逐字采用，顺序不变。'
+@@ -2977 +2991,4 @@
+-        return parse_metadata_response(text, title.strip())
++        result = parse_metadata_response(text, title.strip())
++        if cover_title: result['title'] = cover_title
++        if cover_subtitle: result['subtitle'] = cover_subtitle
++        return result
+--- before/task_cover.py
++++ task_cover.py
+@@ -82,2 +82,3 @@
+-    title=meta['title'] if 'title' in meta else cfg.get('coverTitle') or state.get('title') or request.get('title') or ''
+-    subs=meta['subtitle'] if 'subtitle' in meta else cfg.get('coverSubtitle') or []
++    title=(cfg.get('coverTitle') or base.get('title')
++           or (meta['title'] if 'title' in meta else state.get('title') or request.get('title') or ''))
++    subs=cfg.get('coverSubtitle') or base.get('subtitle') or (meta['subtitle'] if 'subtitle' in meta else [])
+@@ -86 +87,2 @@
+-    title=editor.get('title',title);subs=editor.get('subtitle',subs)
++    if 'title' in editor and not editor.get('workflow_choices'):title=editor['title']
++    if 'subtitle' in editor and not editor.get('workflow_choices'):subs=editor['subtitle']
+@@ -310 +312 @@
+-        editors[str(slot)]={**editors.get(str(slot),{}),'template':saved['id'],'template_snapshot':saved,'direction':0,'workflow_choices':False}
++        editors[str(slot)]={**editors.get(str(slot),{}),'title':info['title'],'subtitle':info['subtitle'],'template':saved['id'],'template_snapshot':saved,'direction':0,'workflow_choices':False}
+@@ -320 +322 @@
+-        editors[str(slot)]={**previous,**{k:v for k,v in data.items() if k!='slot'},'template':selected['id'],'template_snapshot':selected,
++        editors[str(slot)]={**previous,'title':info['title'],'subtitle':info['subtitle'],**{k:v for k,v in data.items() if k!='slot'},'template':selected['id'],'template_snapshot':selected,
+@@ -346 +348 @@
+-        editors=read(folder/'cover-editor.json',{});editors[str(slot)]={**editors.get(str(slot),{}),'template':selected['id'],'template_snapshot':selected,'direction':0,'directions':directions,'workflow_choices':False};write(folder/'cover-editor.json',editors)
++        editors=read(folder/'cover-editor.json',{});editors[str(slot)]={**editors.get(str(slot),{}),'title':info['title'],'subtitle':info['subtitle'],'template':selected['id'],'template_snapshot':selected,'direction':0,'directions':directions,'workflow_choices':False};write(folder/'cover-editor.json',editors)
