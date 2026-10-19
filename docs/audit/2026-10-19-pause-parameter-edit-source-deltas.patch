@@ -1,0 +1,78 @@
+--- before/assets/workflow_view.js
++++ assets/workflow_view.js
+@@ -467,2 +467,3 @@
+-        edit.disabled = busy || !id || !handlers.onEditStep;
+-        edit.title = busy ? '任务正在执行，请先暂停修改或等待完成' : `编辑「${item.label}」的参数，保存后从本步重跑`;
++        const pausing=info.queue?.status==='pausing'&&!controlPending&&!imageRetryPending;
++        edit.disabled = (busy&&!pausing) || !id || !handlers.onEditStep;
++        edit.title = pausing?'可以先修改参数，当前请求保存并暂停后再保存重跑':busy ? '任务正在执行，请先暂停修改或等待完成' : `编辑「${item.label}」的参数，保存后从本步重跑`;
+--- before/assets/workflow_actions.js
++++ assets/workflow_actions.js
+@@ -139,2 +139,3 @@
+-  const resumePausedDraft = stepKey === '6' && detail.info?.queue?.status === 'paused' &&
+-    !detail.info?.completed_steps?.includes(6) && !detail.steps?.draft?.draft_dir;
++  const isPausedDraft=value=>stepKey==='6'&&value.info?.queue?.status==='paused'&&
++    !value.info?.completed_steps?.includes(6)&&!value.steps?.draft?.draft_dir;
++  let resumePausedDraft=isPausedDraft(detail);
+@@ -187,2 +188,30 @@
+-  let musicEditor=null;
+-  const close = () => {musicEditor?.destroy();overlay.remove();};
++  let musicEditor=null,closed=false,saving=false,pausePoll=null,pauseRequest=null,waitingForPause=false;
++  const saveControl=overlay.querySelector('#step-editor-save');
++  const updateSaveControl=()=>{
++    if(closed)return;
++    saveControl.disabled=saving||waitingForPause;
++    saveControl.textContent=waitingForPause?'暂停完成后可保存':resumePausedDraft?'保存并从断点续跑':'保存并从这一步重跑';
++    saveControl.title=waitingForPause?'参数可以先修改；当前请求保存并暂停后，才会应用修改和重跑':'';
++  };
++  const syncPauseState=info=>{
++    waitingForPause=['queued','running','pausing','cancelling'].includes(info?.queue?.status)||(!info?.queue&&!!info?.running);
++    if(waitingForPause&&pausePoll===null)pausePoll=setInterval(()=>checkPauseState(),800);
++    if(!waitingForPause&&pausePoll!==null){clearInterval(pausePoll);pausePoll=null;}
++    updateSaveControl();
++  };
++  const checkPauseState=()=>{
++    if(closed)return Promise.resolve();
++    if(pauseRequest)return pauseRequest;
++    pauseRequest=(async()=>{
++      try{
++        const response=await fetch('/api/task/'+encodeURIComponent(taskId),{cache:'no-store'});
++        if(response.ok===false)throw Error('无法确认任务暂停状态');
++        const current=await response.json();
++        if(!closed){resumePausedDraft=isPausedDraft(current);syncPauseState(current.info);}
++      }catch(error){
++        if(!closed){syncPauseState({queue:{status:'pausing'}});saveControl.title='无法确认任务已暂停，正在重新检查；输入的参数保留';}
++      }finally{pauseRequest=null;}
++    })();
++    return pauseRequest;
++  };
++  const close = () => {closed=true;if(pausePoll!==null)clearInterval(pausePoll);pausePoll=null;musicEditor?.destroy();overlay.remove();};
+@@ -191 +220 @@
+-  if(resumePausedDraft)overlay.querySelector('#step-editor-save').textContent='保存并从断点续跑';
++  syncPauseState(detail.info);
+@@ -380 +409 @@
+-    saveButton.disabled=true;
++    saving=true;updateSaveControl();
+@@ -381,0 +411,2 @@
++      await checkPauseState();
++      if(closed||waitingForPause)return;
+@@ -418 +449 @@
+-    }finally{saveButton.disabled=false;}
++    }finally{saving=false;updateSaveControl();}
+--- before/result.html
++++ result.html
+@@ -48 +47,0 @@
+-  host.querySelectorAll('.wv-node-retry,.wv-node-edit').forEach(b=>b.disabled=busy);
+--- before/tests/task_completed_actions.test.js
++++ tests/task_completed_actions.test.js
+@@ -36 +36 @@
+- for(const status of ['running','queued','pausing','cancelling']){
++ for(const status of ['running','queued','cancelling']){
+@@ -43,0 +44,7 @@
++test('pausing permits parameter drafts while reruns remain blocked',()=>{
++ const f=fixture('pausing');
++ for(const button of f.host.querySelectorAll('.wv-node-retry')){assert.equal(button.disabled,true);button.onclick({stopPropagation(){}});}
++ assert.equal(f.calls.filter(x=>x.retry).length,0);
++ for(const button of f.host.querySelectorAll('.wv-node-edit'))assert.equal(button.disabled,false);
++});
++
