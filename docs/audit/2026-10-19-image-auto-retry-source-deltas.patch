@@ -1,0 +1,79 @@
+--- before/server.py
++++ server.py
+@@ -445,0 +446,2 @@
++    import image_auto_retry
++    detail['steps']['image_retries'] = image_auto_retry.progress(task_dir)
+@@ -5544 +5546 @@
+-                retry = bool(data.get("retry", False))
++                retry = bool(data.get("retry", True))
+@@ -5598,2 +5600,4 @@
+-                            r = batch_image_result(img_cfg, desc, idx, ratio, resolution, task_dir,
+-                                reference_data_url if p.get('use_reference', True) else None)
++                            import image_auto_retry
++                            r = image_auto_retry.generate(sys.modules[__name__], img_cfg, desc, idx, ratio, resolution, task_dir,
++                                reference_data_url if p.get('use_reference', True) else None,
++                                retry=retry, checkpoint=getattr(self,'_queue_checkpoint',lambda:None))
+@@ -5617 +5621 @@
+-                                **{key: r[key] for key in ('provider', 'fallback_from', 'fallback_reason') if key in r}}
++                                **{key: r[key] for key in ('provider', 'fallback_from', 'fallback_reason', 'auto_retries') if key in r}}
+@@ -5619,0 +5624,5 @@
++                            # Only a cached paid result may repeat the download.
++                            # Generation retries are bounded and journaled above.
++                            import image_auto_retry
++                            if not image_auto_retry.can_retry_download(task_dir, idx):
++                                break
+--- before/scene_image_recovery.py
++++ scene_image_recovery.py
+@@ -44 +44,2 @@
+-        task_queue.atomic_json(receipt,{})
++        marker={'manualOperation':operation}
++        task_queue.atomic_json(receipt,marker)
+@@ -58 +59 @@
+-            if not current:task_queue.atomic_json(receipt,job);current=job
++            if not current or current==marker:task_queue.atomic_json(receipt,job);current=job
+--- before/index.html
++++ index.html
+@@ -731 +731 @@
+-    <div class="toggle-row" id="toggle-retry">
++    <div class="toggle-row on" id="toggle-retry">
+@@ -733,2 +733,2 @@
+-      <span class="label">失败自动补位</span>
+-      <span class="help" style="margin:0">个别图失败时任务停不停你处理（默认）；开启自动按帧重拍</span>
++      <span class="label">单图失败自动重试</span>
++      <span class="help" style="margin:0">默认再试1次，仅补失败图片（可能消耗单张额度）；超时先查原任务，账号/余额/审核问题停止</span>
+@@ -2391 +2391 @@
+-        retry: $("toggle-retry").classList.contains("on"),
++        autoRetry: $("toggle-retry").classList.contains("on"),
+--- before/assets/image_pipeline.js
++++ assets/image_pipeline.js
+@@ -244 +244 @@
+-        provider: externalProvider, retry: !!image.retry, task_id: taskId,
++        provider: externalProvider, retry: image.autoRetry !== false, task_id: taskId,
+--- before/assets/workflow_actions.js
++++ assets/workflow_actions.js
+@@ -71 +71 @@
+-    {label:"失败自动补位", selector:"#toggle-retry", path:["image","retry"], type:"switch"},
++    {label:"单图失败自动重试", selector:"#toggle-retry", path:["image","autoRetry"], type:"switch",help:"普通失败只重试1次，可能消耗单张额度；超时先查原任务，成功图片不重画。"},
+@@ -265,0 +266 @@
++      if(v==null&&f.path.join('.')==='image.autoRetry')v=true;
+--- before/assets/task_reuse.js
++++ assets/task_reuse.js
+@@ -11 +11 @@
+-    const image=pick(i,['source','provider','style','ratio','resolution','concurrency','retry','templateId','materials']);
++    const image=pick(i,['source','provider','style','ratio','resolution','concurrency','autoRetry','templateId','materials']);
+@@ -70 +70 @@
+-    set('img-engine',i.provider);set('cover-engine',v.provider||'');toggle('toggle-retry',i.retry);
++    set('img-engine',i.provider);set('cover-engine',v.provider||'');toggle('toggle-retry',i.autoRetry!==false);
+--- before/assets/workflow_view.js
++++ assets/workflow_view.js
+@@ -420,0 +421 @@
++        const imageRetries=detail?.steps?.image_retries||[],retrying=imageRetries.filter(r=>['claimed','submitting','pending','download_pending'].includes(r.status)).map(r=>r.index);
+@@ -422 +423 @@
+-          ? `图片已完成 ${imageState.completed}/${imageState.total} 张${imageState.missing.length?'；第 '+imageState.missing.join('、')+' 镜未完成，已有图片保留，请在画廊仅补缺图':'；已补齐，点「从断点续跑」继续打包'}`:'';
++          ? `图片已完成 ${imageState.completed}/${imageState.total} 张${status==='running'?(retrying.length?'；正在自动重试第 '+retrying.join('、')+' 镜（1/1）':'；继续生成中，已有图片保留'):imageState.missing.length?'；第 '+imageState.missing.join('、')+' 镜未完成，已有图片保留'+(imageRetries.length?'；已自动重试1次':'')+'，可在画廊仅补缺图':'；已补齐，点「从断点续跑」继续打包'}`:'';
+--- before/tests/test_batch_image_http.py
++++ tests/test_batch_image_http.py
+@@ -49 +49,2 @@
+-             patch.object(server, '_call_runninghub', side_effect=submit) as rh:
++             patch.object(server, '_call_runninghub', side_effect=submit) as rh, \
++             patch.object(task_cover, 'query_provider', return_value={'status': 'RUNNING'}):

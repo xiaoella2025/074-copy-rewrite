@@ -41,7 +41,8 @@ def retry(backend,tid,data):
         write(archive,job);write(journal,{'operationId':operation,'index':index,'status':'claimed','createdAt':time.time()})
         # A placeholder forces the shared batch path to create a durable job
         # even for synchronous providers, before its first network submission.
-        task_queue.atomic_json(receipt,{})
+        marker={'manualOperation':operation}
+        task_queue.atomic_json(receipt,marker)
         body={'task_id':tid,'prompts':[prompt],'provider':provider,'retry':False,
               'ratio':client.get('ratio') or job.get('ratio') or '9:16',
               'resolution':client.get('resolution') or job.get('resolution') or '1k','concurrency':1}
@@ -55,7 +56,7 @@ def retry(backend,tid,data):
             # Only a pre-submission failure can restore the old terminal record.
             # A new unknown/pending receipt is retained, never replaced.
             current=read(receipt,{})
-            if not current:task_queue.atomic_json(receipt,job);current=job
+            if not current or current==marker:task_queue.atomic_json(receipt,job);current=job
             raise RecoveryFailure(f'第 {index} 镜补图未完成；其他图片已保留。请核对本次任务状态，不会自动再次购买',current.get('status') in ('failed','rejected')) from None
 
 def install(backend):

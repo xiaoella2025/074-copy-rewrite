@@ -8,6 +8,12 @@ test('partial image failure exposes exact missing index and preserves a visible 
  assert.match(notes,/1\s*\/\s*2/);assert.match(notes,/6/);
  const tile=host.all().find(x=>x.dataset?.sceneImageIndex==='6');assert.ok(tile,'missing scene must remain visible');assert.match(tile.all().map(x=>x.textContent).join(' '),/第 6 镜|第6镜/);
 });
+test('running stage shows the scene currently being retried and its one-retry limit',()=>{
+ const d=detail();d.info.queue.status='running';d.info.progress.status='running';d.steps.image_retries=[{index:6,attempts:1,status:'pending'}];
+ const text=render(d).querySelectorAll('.wv-node-note').map(x=>x.textContent).join(' ');
+ assert.match(text,/正在自动重试第 6 镜（1\/1）/);
+ assert.doesNotMatch(text,/请在画廊仅补缺图/);
+});
 test('all expected images already present clear only stale image-stage failure, not unrelated failures',()=>{
  const d=detail();d.steps.images.push({name:'6.webp',url:'/six.webp'});let host=render(d);
  assert.equal(host.querySelectorAll('.failed').filter(x=>x.dataset.step==='4').length,0);
