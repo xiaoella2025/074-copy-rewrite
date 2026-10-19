@@ -1,0 +1,86 @@
+--- before/server.py
++++ server.py
+@@ -4545,0 +4546,3 @@
++                elif self.path=='/api/task-queue/order':
++                    import queue_order
++                    result=queue_order.control(queue,data)
+--- before/task_queue.py
++++ task_queue.py
+@@ -57 +57 @@
+-                if not job.get('batch_id'):job['failure_hold']=True
++                if not job.get('batch_id') and not job.get('deferred'):job['failure_hold']=True
+@@ -59 +59 @@
+-                    if job.get('batch_id')==batch['id']:batch['status']='paused'
++                    if job.get('batch_id')==batch['id'] and not job.get('deferred'):batch['status']='paused'
+@@ -132 +132 @@
+-                    if job['status'] in ('paused','interrupted'):
++                    if job['status'] in ('paused','interrupted') and not job.get('deferred'):
+@@ -217 +217 @@
+-            resume_index = self.jobs.index(old) if old and (old['status'] == 'paused' or old.get('manual_pause')) else (
++            resume_index = self.jobs.index(old) if old and not old.get('deferred') and (old['status'] == 'paused' or old.get('manual_pause')) else (
+@@ -265 +265 @@
+-        if self.shutdown.is_set() or job['status'] in ('cancelling','pausing'):
++        if self.shutdown.is_set() or job.get('status') in ('cancelling','pausing'):
+@@ -268,0 +269,3 @@
++        if job.get('deferred') and job['status']=='pausing' and stage not in job['approved_stages']:
++            with self.lock:
++                job['pause_stage']=stage;self._save()
+@@ -279,0 +283,3 @@
++            if job.get('deferred'):
++                import queue_order
++                return queue_order.control(self,{'task_id':task_id,'action':'resume'})
+@@ -299 +305 @@
+-            if any(job.get('manual_pause') and job['status'] in ('paused','interrupted') for job in self.jobs):return False
++            if any(job.get('manual_pause') and not job.get('deferred') and job['status'] in ('paused','interrupted') for job in self.jobs):return False
+@@ -389,0 +396,4 @@
++        with queue.lock:
++            queue.checkpoint(job)
++            (folder/'cancel').unlink(missing_ok=True)
++            (folder/'defer').unlink(missing_ok=True)
+@@ -393 +402,0 @@
+-        (folder/'cancel').unlink(missing_ok=True)
+--- before/creative_workflows.py
++++ creative_workflows.py
+@@ -338,0 +339,2 @@
++    if (folder/'defer').exists():
++        state.update(status='paused',detail='已暂缓本条，后续任务可继续');write(folder/'creative.json',state);raise Paused()
+@@ -343,0 +346,2 @@
++    if (folder/'defer').exists():
++        state.update(status='paused',detail='当前阶段已保存，已暂缓本条');write(folder/'creative.json',state);raise Paused()
+--- before/assets/queue_controls.js
++++ assets/queue_controls.js
+@@ -7 +7 @@
+- async function action(path,data){if(busy)return;busy=true;render();try{await api(path,'POST',data);await window.loadList();}catch(e){alert(e.message);}finally{busy=false;render();}}
++ async function action(path,data){if(busy)return;busy=true;render();window.StoryHistory?.refreshRows();try{await api(path,'POST',data);await window.loadList();}catch(e){alert(e.message);}finally{busy=false;render();window.StoryHistory?.refreshRows();}}
+@@ -10 +10 @@
+-  const candidates=items.filter(t=>!active(t));for(const id of chosen)if(!candidates.some(t=>t.task_id===id))chosen.delete(id);
++  const candidates=items.filter(t=>!active(t)&&!t.queue?.deferred);for(const id of chosen)if(!candidates.some(t=>t.task_id===id))chosen.delete(id);
+@@ -29 +29,12 @@
+- return {render(tasks,queue,handlers){items=tasks;state=queue;api=handlers.api;select=handlers.select;render();},isSelected:id=>chosen.has(id),checkbox(task){const check=node('input');check.type='checkbox';check.checked=chosen.has(task.task_id);check.disabled=busy||active(task);check.setAttribute('aria-label','选择任务 '+(task.title||task.task_id));check.onclick=e=>e.stopPropagation();check.onchange=()=>{check.checked?chosen.add(task.task_id):chosen.delete(task.task_id);render();window.StoryHistory?.refreshRows();};return check;}};
++ function rowActions(task){
++  const group=node('span','queue-order-actions'),job=task.queue||{};
++  const add=(label,mode,hint)=>{const b=button(label,e=>{e.stopPropagation();return action('/api/task-queue/order',{task_id:task.task_id,action:mode});},'history-row-action');b.title=hint;group.append(b);};
++  if(job.status==='queued'){
++   add('优先执行','first','移到等待队首；正在执行的任务保存当前阶段后暂缓');
++   add('↑','up','上移一个排队位置');add('↓','down','下移一个排队位置');
++  }
++  if(!job.deferred&&['queued','running','paused'].includes(job.status))add('暂缓本条','defer','保留进度，只暂缓这一条，让后续任务继续');
++  if(job.deferred&&job.status==='paused')add(job.pause_stage?'恢复等待确认':'恢复排队','resume','保留已有产物，恢复到等待队尾；整批暂停或定时仍有效');
++  return group;
++ }
++ return {rowActions,render(tasks,queue,handlers){items=tasks;state=queue;api=handlers.api;select=handlers.select;render();},isSelected:id=>chosen.has(id),checkbox(task){const check=node('input');check.type='checkbox';check.checked=chosen.has(task.task_id);check.disabled=busy||active(task)||!!task.queue?.deferred;check.setAttribute('aria-label','选择任务 '+(task.title||task.task_id));check.onclick=e=>e.stopPropagation();check.onchange=()=>{check.checked?chosen.add(task.task_id):chosen.delete(task.task_id);render();window.StoryHistory?.refreshRows();};return check;}};
+--- before/assets/story_history.js
++++ assets/story_history.js
+@@ -21 +21,3 @@
+-    const shown=tasks.filter(match),groups=new Map();for(const t of shown){const label=dateLabel(t.created_at);if(!groups.has(label))groups.set(label,[]);groups.get(label).push(t);}
++    const rank=t=>status(t)==='queued'?0:1;
++    const shown=tasks.filter(match).sort((a,b)=>rank(a)-rank(b)||(status(a)==='queued'&&status(b)==='queued'?(a.queue.position||0)-(b.queue.position||0):0)),groups=new Map();
++    for(const t of shown){const label=status(t)==='queued'?'排队顺序':dateLabel(t.created_at);if(!groups.has(label))groups.set(label,[]);groups.get(label).push(t);}
+@@ -34 +36,2 @@
+-        actions.append(copy,remove);row.append(indicator,content,el('span','history-row-time',task.created_at?.slice(11,16)||''),el('span','history-state',state==='queued'?'排队中 · '+task.queue.position:({running:'运行中',cancelling:'取消中',pausing:'暂停中',paused:'等待确认',cancelled:'已取消',interrupted:'已中断',failed:'失败',completed:'已完成',draft:'草稿',pending:'未完成'})[state]||'未完成'),actions);body.append(row);
++        if(queueSelection)actions.append(queueSelection.rowActions(task));
++        actions.append(copy,remove);row.append(indicator,content,el('span','history-row-time',task.created_at?.slice(11,16)||''),el('span','history-state',task.queue?.deferred?(state==='pausing'?'保存后暂缓':'已暂缓'):state==='queued'?'排队中 · '+task.queue.position:({running:'运行中',cancelling:'取消中',pausing:'暂停中',paused:'等待确认',cancelled:'已取消',interrupted:'已中断',failed:'失败',completed:'已完成',draft:'草稿',pending:'未完成'})[state]||'未完成'),actions);body.append(row);
+--- before/assets/story_history.css
++++ assets/story_history.css
+@@ -60,0 +61 @@
++.queue-order-actions{display:inline-flex;gap:2px;flex-wrap:wrap}.history-row-actions:has(.queue-order-actions:not(:empty)){opacity:1;flex-wrap:wrap;justify-content:flex-end}
