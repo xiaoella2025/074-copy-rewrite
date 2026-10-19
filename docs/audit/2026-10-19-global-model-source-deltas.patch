@@ -1,0 +1,162 @@
+--- before/assets/task_cover.js
++++ assets/task_cover.js
+@@ -60,5 +60,2 @@
+-   const model=node('select');model.setAttribute('aria-label','封面文字模型');model.title='只用于生成封面构图方向；选择后不调用模型';
+-   const profiles=info.profiles||[],taskProfile=profiles.find(p=>p.id===info.task_profile_id),follow=node('option','','文字：跟随任务'+(taskProfile?' · '+taskProfile.name:''));follow.value='';model.append(follow);
+-   for(const p of profiles){const option=node('option','',p.name+' · '+p.model);option.value=p.id;model.append(option);}
+-   if(info.profile_override&&!profiles.some(p=>p.id===info.profile_override)){const missing=node('option','','所选文字模型已删除');missing.value=info.profile_override;model.append(missing);}
+-   model.value=info.profile_override||'';model.disabled=busy||pending;model.onchange=()=>act('save',{profile_id:model.value});head.append(model);
++   const current=(info.profiles||[]).find(p=>p.id===info.profile_id),model=node('a','btn btn-ghost','文字：跟随系统'+(current?' · '+current.name:''));
++   model.href='/settings.html';model.setAttribute('aria-label','封面文字模型（跟随系统）');model.title='到系统设置切换当前模型；下一次文字请求生效';head.append(model);
+--- before/assets/task_reuse.js
++++ assets/task_reuse.js
+@@ -76,5 +76 @@
+-    const model=$('model-pick');
+-    if(g.profile_id&&model){
+-      if(![...model.options].some(x=>x.value===g.profile_id)){const option=doc.createElement('option');option.value='';option.textContent='原模型配置已删除，请重新选择';model.append(option);model.value='';warnings.push('原文案模型已删除，请重新选择');}
+-      else model.value=g.profile_id;
+-    }
++    // Model choice is global. Reusing a task never restores its historical ID.
+--- before/assets/workflow_actions.js
++++ assets/workflow_actions.js
+@@ -28 +28 @@
+-    {label:"文案模型",selector:"#model-pick",path:["generate","profile_id"],type:"select",catalog:"profiles"},
++    {label:"文案模型（跟随系统）",selector:"#model-pick",path:["generate","profile_id"],type:"select",catalog:"profiles"},
+@@ -279 +279,5 @@
+-      if(f.catalog==='profiles')choices=[['','跟随系统默认模型'],...(resources.profiles?.profiles||[]).map(x=>[x.id,x.name||x.id])];
++      if(f.catalog==='profiles'){
++        const profiles=resources.profiles?.profiles||[],current=profiles.find(p=>p.enabled)||profiles[0];
++        choices=[[current?.id||'','跟随系统 · '+(current?.name||'未配置模型')]];v=current?.id||'';cloned.disabled=true;
++        const link=document.createElement('a');link.href='/settings.html';link.textContent='到系统设置切换；后续文字请求立即跟随';helpEl.appendChild(link);
++      }
+@@ -383,0 +388 @@
++      if(f.catalog==='profiles')continue; // The saved ID is history, not a task override.
+@@ -419 +423,0 @@
+-        if(nextCfg.cover)nextCfg.cover.profileId=nextCfg.generate.profile_id||'';
+--- before/creative_workflows.py
++++ creative_workflows.py
+@@ -118 +118 @@
+-    settings=backend.resolve_active_llm_settings(config.get('profile_id'));settings={**settings,'max_tokens':max_tokens}
++    settings=backend.resolve_active_llm_settings();settings={**settings,'max_tokens':max_tokens}
+@@ -236 +236 @@
+-    if not backend.resolve_active_llm_settings(config.get('profile_id')).get('api_key'):raise ValueError('请先配置 LLM 凭据')
++    if not backend.resolve_active_llm_settings().get('api_key'):raise ValueError('请先配置 LLM 凭据')
+@@ -519 +519 @@
+-            return backend.build_cover_prompt(backend.resolve_active_llm_settings(cfg.get('profile_id')),cfg.get('coverTitle') or state['title'],state.get('lyrics') or cfg.get('copy',''),cfg.get('style','realistic'),[],cover_mode='blank' if mode=='plain' else 'title',subtitle=cfg.get('coverSubtitle',''),template=cfg.get('coverTemplate2' if slot==2 else 'coverTemplate','minimal-clean' if slot==2 else 'cinematic-poster'),cover_direction=cfg.get('coverDirection',0) if slot==1 else 0)
++            return backend.build_cover_prompt(backend.resolve_active_llm_settings(),cfg.get('coverTitle') or state['title'],state.get('lyrics') or cfg.get('copy',''),cfg.get('style','realistic'),[],cover_mode='blank' if mode=='plain' else 'title',subtitle=cfg.get('coverSubtitle',''),template=cfg.get('coverTemplate2' if slot==2 else 'coverTemplate','minimal-clean' if slot==2 else 'cinematic-poster'),cover_direction=cfg.get('coverDirection',0) if slot==1 else 0)
+@@ -1241 +1241 @@
+-        settings=backend.resolve_active_llm_settings(state['config'].get('profile_id'))
++        settings=backend.resolve_active_llm_settings()
+--- before/image_motion.py
++++ image_motion.py
+@@ -64 +64 @@
+-    settings=backend.resolve_active_llm_settings(cfg.get('profile_id'));movements={}
++    settings=backend.resolve_active_llm_settings();movements={}
+--- before/index.html
++++ index.html
+@@ -1055 +1055 @@
+-    <select class="model-select" id="model-pick">
++    <select class="model-select" id="model-pick" disabled aria-label="文案模型（跟随系统）">
+@@ -1057,0 +1058 @@
++    <a class="btn btn-ghost" href="/settings.html">切换系统模型</a>
+@@ -1815,0 +1817 @@
++    if (id === "model-pick") continue;
+@@ -1855,3 +1857 @@
+-        sel.innerHTML = profiles.map(p =>
+-          `<option value="${p.id}" ${p.enabled ? "selected" : ""}>${escapeHtml(p.name)} · ${escapeHtml(p.provider)} · ${escapeHtml(p.model)}</option>`
+-        ).join("");
++        sel.replaceChildren(new Option(`跟随系统 · ${active.name} · ${active.model}`,active.id));
+@@ -2781 +2781 @@
+-  if (req.profile_id) setText("model-pick", req.profile_id);
++  // Historical task profiles must not replace the current system model.
+--- before/server.py
++++ server.py
+@@ -880,0 +881 @@
++            "_follow_system_profile": not bool(profile_id),
+@@ -891,0 +893 @@
++        "_follow_system_profile": not bool(profile_id),
+@@ -3583,0 +3586,6 @@
++    # Resolve once for this HTTP request. A setting change affects subsequent
++    # calls, never repeats or mutates a request already in flight.
++    if settings.get('_follow_system_profile'):
++        settings = {**settings, **resolve_active_llm_settings()}
++        from llm_credentials import validate_api_key
++        settings = {**settings, 'api_key':validate_api_key(settings.get('api_key'))}
+@@ -5034 +5042 @@
+-                        return build_cover_prompt(resolve_active_llm_settings(data.get('profile_id')),str(data.get('title') or ''),str(data.get('content') or ''),str(data.get('style') or '现代电影'),data.get('hooks') or [],data.get('cover_mode') or 'ai',str(data.get('subtitle') or ''),str(data.get('cover_template') or 'movie'),int(data.get('cover_direction') or 0))
++                        return build_cover_prompt(resolve_active_llm_settings(),str(data.get('title') or ''),str(data.get('content') or ''),str(data.get('style') or '现代电影'),data.get('hooks') or [],data.get('cover_mode') or 'ai',str(data.get('subtitle') or ''),str(data.get('cover_template') or 'movie'),int(data.get('cover_direction') or 0))
+@@ -5072 +5080 @@
+-                llm = resolve_active_llm_settings(data.get("profile_id")) if not prompt_override else None
++                llm = resolve_active_llm_settings() if not prompt_override else None
+@@ -5137 +5145 @@
+-                settings = resolve_active_llm_settings(data.get("profile_id"))
++                settings = resolve_active_llm_settings()
+@@ -5298 +5306 @@
+-                settings = resolve_active_llm_settings(data.get("profile_id"))
++                settings = resolve_active_llm_settings()
+--- before/story1245_runtime.py
++++ story1245_runtime.py
+@@ -95,0 +96,2 @@
++        if settings.get('_follow_system_profile'):
++            settings = {**settings, **backend.resolve_active_llm_settings(), '_follow_system_profile':False}
+--- before/task_cover.py
++++ task_cover.py
+@@ -103 +103,2 @@
+-    profiles=[{k:p.get(k,'') for k in ('id','name','model')} for p in backend.load_profiles() if isinstance(p,dict)]
++    profiles=[{**{k:p.get(k,'') for k in ('id','name','model')},'enabled':bool(p.get('enabled'))} for p in backend.load_profiles() if isinstance(p,dict)]
++    current_profile=next((p['id'] for p in profiles if p['enabled']),profiles[0]['id'] if profiles else '')
+@@ -108,2 +109,2 @@
+-            'job':job,'errorInfo':error_info,'profile_id':editor.get('profile_id') or task_profile,
+-            'profile_override':editor.get('profile_id',''),'task_profile_id':task_profile,'profiles':profiles}
++            'job':job,'errorInfo':error_info,'profile_id':current_profile,
++            'profile_override':'','task_profile_id':task_profile,'profiles':profiles}
+@@ -237 +238 @@
+-    """Only missing work uses the cover's explicit text choices, after cache checks."""
++    """Only missing work uses the current system model and saved cover composition."""
+@@ -246 +247 @@
+-    llm=backend.resolve_active_llm_settings(info['profile_id'])
++    llm=backend.resolve_active_llm_settings()
+@@ -341 +342 @@
+-        llm=backend.resolve_active_llm_settings(info['profile_id'])
++        llm=backend.resolve_active_llm_settings()
+--- before/tests/task_cover.test.js
++++ tests/task_cover.test.js
+@@ -42,6 +42,9 @@
+-test('text model selection only saves the cover override and template selection never calls LLM',async()=>{
+- const state=info({profiles:[{id:'cover-profile',name:'封面文字',model:'model'}],profile_override:'',task_profile_id:'task-profile'});
+- const s=setup(state,async body=>{Object.assign(state,{profile_override:body.profile_id??state.profile_override});return {ok:true,json:async()=>state};});await tick();
+- const model=s.host.all().find(e=>e.tag==='select'&&e.children.some(x=>x.value==='cover-profile'));
+- assert.ok(model);model.value='cover-profile';await model.onchange();
+- assert.equal(s.calls.at(-1).path,'/api/task-cover/fixture/save');assert.equal(s.calls.at(-1).body.profile_id,'cover-profile');
++test('cover text follows system model and links to settings without a paid request',async()=>{
++ const state=info({profiles:[{id:'current',name:'系统文字',model:'model',enabled:true}],profile_id:'current',profile_override:'old',task_profile_id:'old'});
++ const s=setup(state,async()=>({ok:true,json:async()=>state}));await tick();
++ const model=s.host.all().find(e=>e.tag==='a'&&e.textContent.includes('跟随系统'));
++ assert.ok(model);assert.equal(model.href,'/settings.html');assert.match(model.textContent,/系统文字/);
++ assert.equal(s.host.all().filter(e=>e.tag==='select').length,1,'only image provider remains independent');
++ assert.equal(s.calls.filter(x=>x.body).length,0);
++ state.profiles=[{id:'next',name:'新系统模型',model:'next',enabled:true}];state.profile_id='next';await s.refresh();
++ assert.ok(s.host.all().some(e=>e.tag==='a'&&e.textContent.includes('新系统模型')));
+--- before/tests/test_cover_settings1245.py
++++ tests/test_cover_settings1245.py
+@@ -19 +19 @@
+-            {'id':'task-model','name':'任务模型','model':'model-a','apiKey':'secret'},
++            {'id':'task-model','name':'任务模型','model':'model-a','enabled':True,'apiKey':'secret'},
+@@ -31 +31 @@
+-    def test_model_choices_are_independent_inherit_task_and_never_expose_credentials(self):
++    def test_historical_cover_profile_is_ignored_and_never_exposes_credentials(self):
+@@ -34 +34 @@
+-        self.assertEqual(task_cover.view(server,'fixture',1)['profile_id'], 'cover-model')
++        self.assertEqual(task_cover.view(server,'fixture',1)['profile_id'], 'task-model')
+@@ -42 +42 @@
+-    def test_explicit_direction_generation_uses_selected_model_and_only_updates_its_slot(self):
++    def test_direction_generation_uses_system_model_and_only_updates_its_slot(self):
+@@ -47 +47 @@
+-        resolve.assert_called_once_with('cover-model'); generate.assert_called_once()
++        resolve.assert_called_once_with(); generate.assert_called_once()
+@@ -102 +102 @@
+-    def test_initial_resume_consumes_cover_model_and_keeps_custom_template_over_queued_options(self):
++    def test_initial_resume_uses_system_model_and_keeps_custom_template_over_queued_options(self):
+@@ -115 +115 @@
+-        resolve.assert_called_once_with('cover-model')
++        resolve.assert_called_once_with()

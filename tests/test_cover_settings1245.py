@@ -16,7 +16,7 @@ class CoverSettingsTests(unittest.TestCase):
         self.folder.mkdir(parents=True); self.addCleanup(patch.stopall)
         patch.object(server, 'DATA_DIR', self.root).start()
         patch.object(server, 'load_profiles', return_value=[
-            {'id':'task-model','name':'任务模型','model':'model-a','apiKey':'secret'},
+            {'id':'task-model','name':'任务模型','model':'model-a','enabled':True,'apiKey':'secret'},
             {'id':'cover-model','name':'封面模型','model':'model-b','apiKey':'secret'}]).start()
         patch.object(server, 'call_llm', side_effect=AssertionError('no paid calls')).start()
         patch.object(server, 'image_dispatcher', side_effect=AssertionError('no paid images')).start()
@@ -28,10 +28,10 @@ class CoverSettingsTests(unittest.TestCase):
     def action(self, name, slot=1, **data):
         return task_cover.action(server, 'fixture', name, {'slot':slot, **data})
 
-    def test_model_choices_are_independent_inherit_task_and_never_expose_credentials(self):
+    def test_historical_cover_profile_is_ignored_and_never_exposes_credentials(self):
         before = (self.folder/'client_config.json').read_bytes()
         self.action('save', profile_id='cover-model')
-        self.assertEqual(task_cover.view(server,'fixture',1)['profile_id'], 'cover-model')
+        self.assertEqual(task_cover.view(server,'fixture',1)['profile_id'], 'task-model')
         self.assertEqual(task_cover.view(server,'fixture',2)['profile_id'], 'task-model')
         self.assertNotIn('secret', str(task_cover.view(server,'fixture')))
         self.action('save', profile_id='')
@@ -39,12 +39,12 @@ class CoverSettingsTests(unittest.TestCase):
         self.assertEqual(before,(self.folder/'client_config.json').read_bytes())
         with self.assertRaises(ValueError): self.action('save', profile_id='deleted-model')
 
-    def test_explicit_direction_generation_uses_selected_model_and_only_updates_its_slot(self):
+    def test_direction_generation_uses_system_model_and_only_updates_its_slot(self):
         self.action('save', slot=2, profile_id='cover-model', title='第二张标题')
         with patch.object(server,'resolve_active_llm_settings', return_value={'api_key':'fixture'}) as resolve, \
              patch.object(server,'step1_meta', return_value={'cover_image_prompts':['第二张构图']}) as generate:
             self.action('directions', slot=2)
-        resolve.assert_called_once_with('cover-model'); generate.assert_called_once()
+        resolve.assert_called_once_with(); generate.assert_called_once()
         self.assertEqual(task_cover.view(server,'fixture',1)['directions'], ['原构图'])
         self.assertEqual(task_cover.view(server,'fixture',1)['title'], '原题')
         self.assertEqual(task_cover.view(server,'fixture',2)['directions'], ['第二张构图'])
@@ -99,7 +99,7 @@ class CoverSettingsTests(unittest.TestCase):
                 self.assertEqual(result['ratio'],'1:1')
                 if alias.startswith('custom:'):self.assertEqual(result['template_snapshot']['compositionRule'],'旧版构图说明')
 
-    def test_initial_resume_consumes_cover_model_and_keeps_custom_template_over_queued_options(self):
+    def test_initial_resume_uses_system_model_and_keeps_custom_template_over_queued_options(self):
         import base64,io
         from PIL import Image
         task_cover.write(self.folder/'02-meta.json',{'title':'原题'})
@@ -112,7 +112,7 @@ class CoverSettingsTests(unittest.TestCase):
              patch.object(server,'resolve_image_config',return_value={'provider':'runninghub','api_key':'fixture'}), \
              patch.object(server,'image_dispatcher',return_value={'b64':base64.b64encode(image.getvalue()).decode()}):
             task_cover.initial(server,'fixture',options={'template':'cinematic-poster','title':'旧队列标题','subtitle':['旧队列副题']},prompt_factory=lambda:self.fail('stale task model factory'))
-        resolve.assert_called_once_with('cover-model')
+        resolve.assert_called_once_with()
         self.assertIn('专属构图',llm.call_args.args[1]);self.assertIn('封面专属题',llm.call_args.args[2])
         self.assertEqual(task_cover.view(server,'fixture')['template'],saved['template'])
         self.assertEqual(task_cover.view(server,'fixture')['title'],'封面专属题')
