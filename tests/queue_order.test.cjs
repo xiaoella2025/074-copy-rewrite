@@ -25,19 +25,30 @@ test('running can be deferred, a draining task cannot be resumed, deferred row h
  const f=fixture();f.render([{task_id:'running',queue:{status:'running'}},{task_id:'draining',queue:{status:'pausing',deferred:true}},
  {task_id:'held',queue:{status:'paused',deferred:true}}]);
  const controls=descendants(f.hosts.get('list-panel'));
- assert.equal(controls.filter(n=>n.textContent==='暂缓本条').length,1);
- assert.equal(controls.filter(n=>n.textContent==='恢复排队').length,1);
- assert.equal(controls.filter(n=>n.textContent==='保存后暂缓').length,1);
- assert.equal(controls.filter(n=>n.textContent==='已暂缓').length,1);
+ assert.equal(controls.filter(n=>n.textContent==='暂停修改').length,1);
+ assert.equal(controls.filter(n=>n.textContent==='继续任务').length,1);
+ assert.equal(controls.filter(n=>n.textContent==='正在暂停').length,1);
+ assert.equal(controls.filter(n=>n.textContent==='已暂停').length,1);
 });
 test('incomplete confirmation is restored without being labelled automatic resume',()=>{
  const f=fixture();f.render([{task_id:'held',queue:{status:'paused',deferred:true,pause_stage:'generate'}}]);
- assert.ok(descendants(f.hosts.get('list-panel')).find(n=>n.textContent==='恢复等待确认'));
+ assert.ok(descendants(f.hosts.get('list-panel')).find(n=>n.textContent==='查看并确认'));
 });
 test('buttons become usable after list reload finishes during the pending operation',async()=>{
  const f=fixture(),tasks=[{task_id:'first',title:'first',queue:{status:'queued',position:1}}];
  f.render(tasks);f.context.window.loadList=async()=>f.render(tasks);
  await descendants(f.hosts.get('list-panel')).find(n=>n.textContent==='优先执行').onclick({stopPropagation(){}});
- assert.equal(descendants(f.hosts.get('list-panel')).find(n=>n.textContent==='暂缓本条').disabled,false);
+ assert.equal(descendants(f.hosts.get('list-panel')).find(n=>n.textContent==='暂停修改').disabled,false);
 });
 
+
+test('each task exposes Story start pause and continue controls without confirming review',async()=>{
+ const f=fixture();f.render([{task_id:'run',queue:{status:'running'}},{task_id:'held',queue:{status:'paused',deferred:true}},
+ {task_id:'review',queue:{status:'paused',pause_stage:'generate'}},{task_id:'fail',queue:{status:'failed'}}]);
+ const nodes=descendants(f.hosts.get('list-panel'));
+ assert.ok(nodes.some(n=>n.textContent==='暂停修改'));
+ const next=nodes.find(n=>n.textContent==='继续任务');assert.ok(next);await next.onclick({stopPropagation(){}});
+ assert.equal(f.calls[0][2].action,'start');assert.equal(f.calls[0][2].task_id,'held');
+ assert.ok(descendants(f.hosts.get('list-panel')).some(n=>n.textContent==='查看并确认'));
+ assert.ok(descendants(f.hosts.get('list-panel')).some(n=>n.textContent==='从断点续跑'));
+});

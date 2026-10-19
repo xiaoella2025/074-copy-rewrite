@@ -4,6 +4,9 @@ import time
 
 def _defer(queue, job):
     if job.get('deferred'):return
+    if job['status'] in ('failed','interrupted') and job.get('failure_hold'):
+        job.update(deferred=True,updated_at=time.time())
+        return
     if job['status'] not in ('queued','running','paused'):
         raise ValueError('仅可暂缓排队、运行或等待确认的任务')
     batch=next((b for b in queue.batches if b['id']==job.get('batch_id')),None)
@@ -22,10 +25,21 @@ def _defer(queue, job):
 def control(queue, data):
     if not isinstance(data,dict) or set(data)-{'task_id','action'}:raise ValueError('调序参数无效')
     tid,action=data.get('task_id'),data.get('action')
-    if action not in ('up','down','first','defer','resume'):raise ValueError('调序操作无效')
+    if action not in ('up','down','first','defer','resume','start'):raise ValueError('调序操作无效')
     with queue.backend.TASK_OPERATION_LOCK,queue.lock:
         job=queue._find(tid)
         if not job:raise ValueError('任务不在队列中')
+        if action=='start':
+            batch=next((b for b in queue.batches if b['id']==job.get('batch_id')),None)
+            if batch and batch['status'] in ('paused','scheduled'):
+                raise ValueError('本批次已暂停或定时，请先在批次栏继续或立即开始')
+            if job['status']=='paused' and job.get('pause_stage'):
+                raise ValueError('请先在任务详情确认当前产物，再继续任务')
+            if job['status'] in ('paused','failed','interrupted','cancelled','draft'):
+                queue.enqueue(tid,kind=job['kind'],config=queue.saved_config(job),batch_id=job.get('batch_id') if batch and batch['status']=='running' else None,
+                              from_step=None if job.get('rerun_prepared') else job.get('from_step'))
+                job=queue._find(tid)
+            action='first'
         if action=='defer':_defer(queue,job)
         elif action=='resume':
             if not job.get('deferred') or job['status']!='paused':raise ValueError('请等当前阶段保存后再恢复')
@@ -49,7 +63,8 @@ def control(queue, data):
             batch=next((b for b in queue.batches if b['id']==job.get('batch_id')),None)
             if action=='first' and (not batch or batch['status']=='running'):
                 for current in queue.jobs:
-                    if current['status']=='running':_defer(queue,current)
+                    if current is not job and (current['status']=='running' or current['status']=='paused' and current.get('manual_pause')
+                            or current.get('failure_hold') and current['status'] in ('failed','interrupted')):_defer(queue,current)
         order={j['task_id']:i for i,j in enumerate(queue.jobs)}
         for batch in queue.batches:batch['task_ids'].sort(key=lambda tid:order.get(tid,len(order)))
         queue._save();queue.wake.set()

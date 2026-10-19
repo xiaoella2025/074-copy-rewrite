@@ -1,0 +1,94 @@
+--- before/server.py
++++ server.py
+@@ -447,0 +448,2 @@
++    import image_generation_progress
++    detail['steps']['image_generating'] = image_generation_progress.active(task_dir)
+@@ -1891,0 +1894 @@
++        __import__('image_generation_progress').checkpoint()
+@@ -2034,0 +2038 @@
++        __import__('image_generation_progress').checkpoint()
+@@ -2184 +2188,3 @@
+-        response = task_cover.query_provider(sys.modules[__name__], actual_cfg, job['taskId'])
++        import image_generation_progress
++        response = image_generation_progress.resume_query(job,
++            lambda: task_cover.query_provider(sys.modules[__name__], actual_cfg, job['taskId']))
+@@ -2211,0 +2218,2 @@
++            if isinstance(error, InterruptedError) and job.get('taskId'):
++                job['poll_interrupted'] = True
+@@ -5653,0 +5662 @@
++                import image_generation_progress
+@@ -5655 +5664,3 @@
+-                    futs = [ex.submit(gen_one, i, p) for i, p in enumerate(prompts_in)]
++                    futs = [ex.submit(image_generation_progress.run, task_dir, p['idx'],
++                                     getattr(self,'_queue_checkpoint',lambda:None), gen_one, i, p)
++                            for i, p in enumerate(prompts_in)]
+--- before/task_queue.py
++++ task_queue.py
+@@ -303 +303 @@
+-            if any(job.get('failure_hold') and job['status'] in ('failed','interrupted') for job in self.jobs):return False
++            if any(job.get('failure_hold') and not job.get('deferred') and job['status'] in ('failed','interrupted') for job in self.jobs):return False
+--- before/queue_order.py
++++ queue_order.py
+@@ -6,0 +7,3 @@
++    if job['status'] in ('failed','interrupted') and job.get('failure_hold'):
++        job.update(deferred=True,updated_at=time.time())
++        return
+@@ -25 +28 @@
+-    if action not in ('up','down','first','defer','resume'):raise ValueError('调序操作无效')
++    if action not in ('up','down','first','defer','resume','start'):raise ValueError('调序操作无效')
+@@ -28,0 +32,11 @@
++        if action=='start':
++            batch=next((b for b in queue.batches if b['id']==job.get('batch_id')),None)
++            if batch and batch['status'] in ('paused','scheduled'):
++                raise ValueError('本批次已暂停或定时，请先在批次栏继续或立即开始')
++            if job['status']=='paused' and job.get('pause_stage'):
++                raise ValueError('请先在任务详情确认当前产物，再继续任务')
++            if job['status'] in ('paused','failed','interrupted','cancelled','draft'):
++                queue.enqueue(tid,kind=job['kind'],config=queue.saved_config(job),batch_id=job.get('batch_id') if batch and batch['status']=='running' else None,
++                              from_step=None if job.get('rerun_prepared') else job.get('from_step'))
++                job=queue._find(tid)
++            action='first'
+@@ -52 +66,2 @@
+-                    if current['status']=='running':_defer(queue,current)
++                    if current is not job and (current['status']=='running' or current['status']=='paused' and current.get('manual_pause')
++                            or current.get('failure_hold') and current['status'] in ('failed','interrupted')):_defer(queue,current)
+--- before/assets/queue_controls.js
++++ assets/queue_controls.js
+@@ -7 +7 @@
+- async function action(path,data){if(busy)return;busy=true;render();window.StoryHistory?.refreshRows();try{await api(path,'POST',data);await window.loadList();}catch(e){alert(e.message);}finally{busy=false;render();window.StoryHistory?.refreshRows();}}
++  async function action(path,data,after){if(busy)return;busy=true;render();window.StoryHistory?.refreshRows();try{await api(path,'POST',data);if(after)await after();await window.loadList();}catch(e){alert(e.message);}finally{busy=false;render();window.StoryHistory?.refreshRows();}}
+@@ -31 +31 @@
+-  const add=(label,mode,hint)=>{const b=button(label,e=>{e.stopPropagation();return action('/api/task-queue/order',{task_id:task.task_id,action:mode});},'history-row-action');b.title=hint;group.append(b);};
++   const add=(label,mode,hint)=>{const b=button(label,e=>{e.stopPropagation();return action('/api/task-queue/order',{task_id:task.task_id,action:mode});},'history-row-action');b.title=hint;group.append(b);};
+@@ -36,2 +36,8 @@
+-  if(!job.deferred&&['queued','running','paused'].includes(job.status))add('暂缓本条','defer','保留进度，只暂缓这一条，让后续任务继续');
+-  if(job.deferred&&job.status==='paused')add(job.pause_stage?'恢复等待确认':'恢复排队','resume','保留已有产物，恢复到等待队尾；整批暂停或定时仍有效');
++   if(!job.deferred&&['queued','running'].includes(job.status))add('暂停修改','defer','保留已完成产物，暂停本条，后续可继续；在途任务保留原编号');
++   if(job.status==='pausing'){const b=button('暂停中…',()=>{},'history-row-action');b.disabled=true;b.title='正在保存在途结果；已提交的出图任务保留原编号，不会重复提交';group.append(b);}
++   if(job.status==='paused'&&job.pause_stage){const b=button('查看并确认',e=>{e.stopPropagation();select(task.task_id);},'history-row-action');b.title='打开任务详情确认当前产物，确认后再继续';group.append(b);}
++   else if(job.status==='paused')add('继续任务','start','复用已有产物，将本条移至队首先继续；批次暂停或定时仍有效');
++   if(['failed','interrupted','cancelled'].includes(job.status))add('从断点续跑','start','只补未完成部分，将本条移至队首；已提交的图先查原任务');
++   if(!job.status||job.status==='draft'){
++    const b=button('立即开始',e=>{e.stopPropagation();return action('/api/task/'+encodeURIComponent(task.task_id)+'/enqueue',{},()=>api('/api/task-queue/order','POST',{task_id:task.task_id,action:'first'}));},'history-row-action');group.append(b);
++   }
+--- before/assets/story_history.js
++++ assets/story_history.js
+@@ -37 +37 @@
+-        actions.append(copy,remove);row.append(indicator,content,el('span','history-row-time',task.created_at?.slice(11,16)||''),el('span','history-state',task.queue?.deferred?(state==='pausing'?'保存后暂缓':'已暂缓'):state==='queued'?'排队中 · '+task.queue.position:({running:'运行中',cancelling:'取消中',pausing:'暂停中',paused:'等待确认',cancelled:'已取消',interrupted:'已中断',failed:'失败',completed:'已完成',draft:'草稿',pending:'未完成'})[state]||'未完成'),actions);body.append(row);
++        actions.append(copy,remove);row.append(indicator,content,el('span','history-row-time',task.created_at?.slice(11,16)||''),el('span','history-state',task.queue?.deferred?(state==='pausing'?'正在暂停':state==='failed'?'失败 · 已暂缓':'已暂停'):state==='queued'?'排队中 · '+task.queue.position:({running:'运行中',cancelling:'取消中',pausing:'暂停中',paused:task.queue?.pause_stage?'等待确认':'已暂停',cancelled:'已取消',interrupted:'已中断',failed:'失败',completed:'已完成',draft:'草稿',pending:'未完成'})[state]||'未完成'),actions);body.append(row);
+--- before/assets/workflow_view.js
++++ assets/workflow_view.js
+@@ -392 +392 @@
+-        const held=job.failure_hold&&['failed','interrupted'].includes(job.status);
++        const held=job.failure_hold&&!job.deferred&&['failed','interrupted'].includes(job.status);
+@@ -744 +744,5 @@
+-          tile.append(node('div','wv-node-note',`第 ${idx} 镜图片未完成`),node('small','',detail.steps.shots?.find(shot=>Number(shot.idx)===idx)?.text||''));
++          if((detail.steps.image_generating||[]).includes(idx)){
++            const placeholder=node('div','wv-image-generating');placeholder.setAttribute('role','status');
++            placeholder.append(node('span','wv-image-spinner'),node('span','',`第 ${idx} 镜生成中…`));tile.append(placeholder);
++          }else tile.append(node('div','wv-node-note',`第 ${idx} 镜图片未完成`));
++          tile.append(node('small','',detail.steps.shots?.find(shot=>Number(shot.idx)===idx)?.text||''));
+--- before/assets/workflow_view.css
++++ assets/workflow_view.css
+@@ -23,0 +24 @@
++.wv-image-generating{aspect-ratio:9/16;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;border:1px solid var(--border,#293138);border-radius:7px;background:var(--panel,#10161a);color:var(--muted,#8d9a9f);font-size:11px}.wv-image-spinner{width:20px;height:20px;border:2px solid transparent;border-top-color:var(--accent,#00c9a7);border-right-color:var(--accent,#00c9a7);border-radius:50%;animation:wv-image-spin 1s linear infinite}@keyframes wv-image-spin{to{transform:rotate(360deg)}}

@@ -26,6 +26,28 @@ class QueueOrderTests(unittest.TestCase):
         import queue_order
         return queue_order.control(self.q,{'task_id':tid,'action':action})
 
+    def test_priority_releases_earlier_manual_pause_instead_of_accepting_a_stuck_queue(self):
+        self.q.enqueue('a');self.q.enqueue('b');self.q.request_pause('a')
+        self.control('b','first')
+        self.assertTrue(self.q.run_next())
+        self.assertEqual(self.performed,['b'])
+        self.assertTrue(self.q.get('a')['deferred'])
+
+    def test_individual_start_resumes_a_deferred_task_at_the_front_without_resetting_artifacts(self):
+        self.q.enqueue('a');self.q.enqueue('b');self.control('a','defer')
+        self.control('a','start')
+        self.assertEqual(self.q.get('a')['position'],1)
+        self.q.run_next();self.assertEqual(self.performed,['a'])
+        self.backend._prepare_task_rerun.assert_not_called()
+
+    def test_explicit_priority_temporarily_sets_aside_an_earlier_failure_hold(self):
+        self.q.enqueue('a');self.q.enqueue('b')
+        self.q._find('a').update(status='failed',failure_hold=True,error='fixture error')
+        self.control('b','first');self.assertTrue(self.q.run_next())
+        self.assertEqual(self.performed,['b'])
+        self.assertEqual(self.q.get('a')['error'],'fixture error')
+        self.assertEqual(self.q.get('a')['status'],'failed')
+
     def test_move_up_down_first_persists_and_changes_execution_not_outputs(self):
         for tid in ('a','b','c'):self.q.enqueue(tid)
         ids={j['task_id']:j['id'] for j in self.q.jobs}
@@ -93,7 +115,7 @@ class QueueOrderTests(unittest.TestCase):
         batch=self.q.enqueue_batch(['b','c'],schedule_at=time.time()+3600)
         self.control('c','first');self.assertFalse(self.q.run_next())
         self.assertEqual(self.q.batch(batch['id'])['status'],'scheduled')
-        for action in ('up','down','first','defer'):
+        for action in ('up','down','first'):
             with self.assertRaises(ValueError):self.control('a',action)
         self.assertTrue(self.q.get('a')['failure_hold'])
 
