@@ -121,7 +121,8 @@ class ProfileSaveTests(unittest.TestCase):
         self.seed()
         profiles = server.load_profiles()
         profiles[0]["apiKey"] = "sk-o••••••••3456"
-        server.save_profiles(profiles)
+        # Simulate an old on-disk file; the current writer correctly rejects masks.
+        server.PROFILES_PATH.write_text(json.dumps(profiles), encoding="utf-8")
         self.assertFalse(self.request("GET", "/api/profiles")[1]["profiles"][0]["has_key"])
         self.assertEqual(server.resolve_active_llm_settings()["api_key"], "")
 

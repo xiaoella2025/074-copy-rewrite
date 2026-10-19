@@ -1,0 +1,404 @@
+--- before/story1245_runtime.py
++++ story1245_runtime.py
+@@ -172,0 +173,4 @@
++    import story1250_safety
++    story1250_safety.install(backend)
++    import story1250_assets
++    story1250_assets.install(backend)
+--- before/template_store.py
++++ template_store.py
+@@ -11,0 +12,61 @@
++
++def _finite_number(value, low=0, high=None, *, positive=False):
++    return (isinstance(value, (int, float)) and not isinstance(value, bool)
++            and math.isfinite(value) and (value > low if positive else value >= low)
++            and (high is None or value <= high))
++
++
++def _validate_draft_media(cfg):
++    """Accept Story 1.25 media fields without dropping legacy or unknown values."""
++    for layer in ('title', 'subtitle', 'caption', 'disclaimer'):
++        value = cfg.get(layer, {})
++        if not isinstance(value, dict): raise ValueError('文字图层配置无效')
++        if 'font' in value and (not isinstance(value['font'], str) or len(value['font']) > 200):
++            raise ValueError('字体须为名称文字，留空使用默认字体')
++    image, audio = cfg.get('image', {}), cfg.get('audio', {})
++    if not isinstance(image, dict) or not isinstance(audio, dict):
++        raise ValueError('图片或音频配置无效')
++    legacy = image.get('effect', '')
++    if not isinstance(legacy, str) or len(legacy) > 200:
++        raise ValueError('旧版画面特效须为名称文字')
++    # Explicit [] means none and must override a retained legacy effect.
++    if 'effects' not in image and legacy.strip() and legacy.strip() != 'none':
++        image['effects'] = [{'name': legacy.strip(), 'mode': 'full'}]
++    if 'effects' in image:
++        effects = image['effects']
++        if not isinstance(effects, list) or len(effects) > 3:
++            raise ValueError('最多添加3个画面特效')
++        for effect in effects:
++            if (not isinstance(effect, dict) or not isinstance(effect.get('name'), str)
++                    or not effect['name'].strip() or len(effect['name']) > 200
++                    or effect.get('mode') not in ('full', 'head')):
++                raise ValueError('画面特效须填写名称和有效时长模式')
++            if ('seconds' in effect and not _finite_number(effect['seconds'], positive=True)):
++                raise ValueError('特效秒数须为有限正数')
++            if effect['mode'] == 'head' and not _finite_number(effect.get('seconds', 3), positive=True):
++                raise ValueError('开头特效秒数须为有限正数')
++    if 'soundEffects' not in audio: return
++    sounds = audio['soundEffects']
++    if not isinstance(sounds, list) or len(sounds) > 5:
++        raise ValueError('最多添加5个音效')
++    for sound in sounds:
++        if not isinstance(sound, dict): raise ValueError('音效配置无效')
++        if not isinstance(sound.get('name'), str) or not sound['name'].strip() or len(sound['name']) > 300:
++            raise ValueError('音效须填写名称')
++        if not isinstance(sound.get('path', ''), str) or len(sound.get('path', '')) > 4096:
++            raise ValueError('音效文件路径无效')
++        identifier = sound.get('jianyingId', '')
++        if not isinstance(identifier, str) or (identifier and not re.fullmatch(r'[0-9]{1,40}', identifier)):
++            raise ValueError('剪映音效编号须为数字字符串')
++        if not sound.get('path') and not identifier: raise ValueError('音效缺少本地文件或剪映编号')
++        if 'duration' in sound and not _finite_number(sound['duration'], positive=True):
++            raise ValueError('音效时长须为有限正数')
++        if 'vip' in sound and not isinstance(sound['vip'], bool): raise ValueError('音效会员标记无效')
++        if not _finite_number(sound.get('volume', 1), high=10):
++            raise ValueError('音效音量须在0至10之间（对应最高20dB）')
++        placement = sound.get('placement', 'start')
++        if placement not in ('start', 'every_scene', 'end'): raise ValueError('音效放置位置无效')
++        if 'atSeconds' in sound and not _finite_number(sound['atSeconds']):
++            raise ValueError('音效开始秒数须为有限非负数')
++        if 'everyN' in sound and (not isinstance(sound['everyN'], int) or isinstance(sound['everyN'], bool) or sound['everyN'] < 1):
++            raise ValueError('音效切镜间隔须为正整数')
+@@ -35,0 +97 @@
++        _validate_draft_media(cfg)
+@@ -61,0 +124,12 @@
++    def _check_sound_paths(self, kind, item):
++        if kind != 'drafts': return item
++        folder = self.path.parent / 'template-sounds'
++        for sound in item.get('config', {}).get('audio', {}).get('soundEffects', []):
++            if not sound.get('path'): continue
++            path = Path(sound['path'])
++            if (folder.is_symlink() or getattr(folder, 'is_junction', lambda: False)()
++                    or path.is_symlink() or not path.is_absolute()
++                    or not path.resolve().is_relative_to(folder.resolve()) or not path.is_file()):
++                raise ValueError('本地音效已不存在或来源无效，请在模板编辑器重新上传')
++        return item
++
+@@ -75 +149 @@
+-            value = validate(kind, snapshot)
++            value = self._check_sound_paths(kind, validate(kind, snapshot))
+@@ -81 +155 @@
+-        return found
++        return self._check_sound_paths(kind, found)
+@@ -84 +158 @@
+-        item = validate(kind, item)
++        item = self._check_sound_paths(kind, validate(kind, item))
+--- before/image_lab.py
++++ image_lab.py
+@@ -17,0 +18,14 @@
++
++
++def delete_history(root,identity):
++    """Remove one failed lab record; generated images are always preserved."""
++    if not isinstance(identity,str) or not re.fullmatch(r'[a-f0-9]{32}',identity):
++        raise ValueError('无效的实验室记录ID')
++    folder=Path(root)/'image-lab';target=folder/(identity+'.json')
++    if folder.is_symlink() or getattr(folder,'is_junction',lambda:False)() or target.is_symlink() or not target.resolve().is_relative_to(folder.resolve()):
++        raise ValueError('实验室记录路径无效')
++    item=json.loads(target.read_text('utf8'))
++    if not isinstance(item,dict) or item.get('id')!=identity or item.get('ok') is not False:
++        raise ValueError('只能删除出图失败的实验室记录')
++    target.unlink()
++    return {'ok':True}
+@@ -79 +93,8 @@
+-            value=backend.parse_llm_json(backend.call_llm(llm,source['coverMetadata'],text))
++            publication_rule=('\n\n## 发布文案输出要求\n'
++                '在同一次请求中只输出JSON对象，保留title、subtitle、summary、tags，并补充short_title和comments字段。'
++                'short_title是适合视频号发布的简洁短标题，紧扣原文主题，与封面title分别输出。'
++                'comments必须是恰好5条中文评论组成的数组，评论要紧扣用户文案的具体内容（观点、细节、数字），'
++                '像真人看完后说的话，可有认同、追问、补充经验、小小争议；不要全是空泛套话。'
++                '不要编造文案没有提供的人物经历、事实或数字；输入只有主题时围绕该主题提出具体问题。'
++                'tags必须是与主题相关的标签数组。')
++            value=backend.parse_llm_json(backend.call_llm(llm,source['coverMetadata']+publication_rule,text))
+--- before/music_library.py
++++ music_library.py
+@@ -87,0 +88,37 @@
++
++
++def remove_track(backend, ident):
++    """Remove a library entry; never break old tasks still referencing its bytes."""
++    with LOCK:
++        value = _record(backend, ident)
++        folder = _folder(backend).resolve()
++        if not folder.is_relative_to(Path(backend.DATA_DIR).resolve()):
++            raise ValueError('音乐库目录不能指向数据目录之外')
++        source = media(backend, ident)
++        def references(item):
++            if isinstance(item, dict): return any(references(v) for v in item.values())
++            if isinstance(item, list): return any(references(v) for v in item)
++            if not isinstance(item, str): return False
++            try: return Path(item).resolve() == source.resolve()
++            except (OSError, ValueError): return False
++        retained = references(backend.load_settings().get('jianying', {}).get('bgm_path'))
++        records = [Path(backend.DATA_DIR) / 'task-queue.json']
++        for name in ('client_config.json', 'creative.json', 'request.json', '06-draft-meta.json'):
++            records += list((Path(backend.DATA_DIR) / 'tasks').glob('*/' + name))
++        for path in records:
++            if not path.is_file(): continue
++            try: retained = retained or references(json.loads(path.read_text('utf8')))
++            except (OSError, ValueError): retained = True  # Unreadable references fail closed.
++        archive = folder / '.removed'
++        archive.mkdir(exist_ok=True)
++        if archive.is_symlink() or getattr(archive, 'is_junction', lambda: False)():
++            raise ValueError('音乐删除记录不能使用链接目录')
++        record = folder / (ident + '.json')
++        target = archive / (ident + '-' + str(time.time_ns()) + '.json')
++        os.replace(record, target)
++        try:
++            if not retained: source.unlink()
++        except OSError:
++            os.replace(target, record)
++            raise ValueError('音乐文件正在使用，请停止试听后再删除') from None
++        return {'ok': True, 'id': ident, 'retainedFile': retained}
+--- before/task_queue.py
++++ task_queue.py
+@@ -211,0 +212,5 @@
++            running_batches = {b['id'] for b in self.batches if b['status'] == 'running'}
++            other_active_work = any(
++                j is not old and (j['status'] in ('running', 'pausing', 'cancelling')
++                    or j['status'] == 'queued' and j.get('batch_id') in running_batches)
++                for j in self.jobs) or any(tid != task_id for tid in self.backend.TASK_OPERATIONS)
+@@ -213 +218 @@
+-                0 if old and not batch_id and old['status'] in ('failed','interrupted') else None)
++                0 if old and not batch_id and old['status'] in ('failed','interrupted') and not other_active_work else None)
+--- before/index.html
++++ index.html
+@@ -393 +393 @@
+-<link rel="stylesheet" href="/assets/story_diff.css"><link rel="stylesheet" href="/assets/video_prompt.css"><link rel="stylesheet" href="/assets/task_cover.css"><link rel="stylesheet" href="/assets/scene_image_editor.css"></head>
++<link rel="stylesheet" href="/assets/story_diff.css"><link rel="stylesheet" href="/assets/video_prompt.css"><link rel="stylesheet" href="/assets/task_cover.css"><link rel="stylesheet" href="/assets/scene_image_editor.css"><script src="/assets/runtime_health1250.js" defer></script><script src="/assets/material_picker1250.js" defer></script></head>
+@@ -793,0 +794 @@
++    <button type="button" class="btn btn-sm" id="prod-material-pick">从素材库选择参考图</button>
+@@ -1529,0 +1531,8 @@
++$("prod-material-pick").onclick = async () => {
++  try {
++    const files = await MaterialPicker1250.pick({max:1});
++    if (!files.length) return;
++    const transfer = new DataTransfer(); transfer.items.add(files[0]);
++    prodInput.files = transfer.files; prodInput.dispatchEvent(new Event('change'));
++  } catch (error) { prodResult.textContent = error.message; }
++};
+--- before/result.html
++++ result.html
+@@ -20 +20 @@
+-<link rel="stylesheet" href="/assets/story_diff.css"><link rel="stylesheet" href="/assets/video_prompt.css"><link rel="stylesheet" href="/assets/task_cover.css"><link rel="stylesheet" href="/assets/scene_image_editor.css"></head>
++<link rel="stylesheet" href="/assets/story_diff.css"><link rel="stylesheet" href="/assets/video_prompt.css"><link rel="stylesheet" href="/assets/task_cover.css"><link rel="stylesheet" href="/assets/scene_image_editor.css"><script src="/assets/runtime_health1250.js" defer></script><script src="/assets/material_picker1250.js" defer></script></head>
+--- before/tasks.html
++++ tasks.html
+@@ -129 +129 @@
+-</head>
++<script src="/assets/runtime_health1250.js" defer></script><script src="/assets/material_picker1250.js" defer></script></head>
+--- before/settings.html
++++ settings.html
+@@ -244 +244 @@
+-<script src="/assets/story_manual.js"></script></head>
++<script src="/assets/story_manual.js"></script><script src="/assets/runtime_health1250.js" defer></script></head>
+@@ -2186,0 +2187,2 @@
++    const check = await RuntimeHealth1250.validateDraftPath($("jy-draft-path").value.trim());
++    if (!check.valid) throw Error(check.error || '剪映草稿目录无效');
+--- before/image-lab.html
++++ image-lab.html
+@@ -4 +4 @@
+-<div id="lab-reference-block" class="field" hidden><label for="lab-reference">参考图 <small id="lab-reference-count">· 0 / 3</small></label><input type="file" id="lab-reference" accept="image/png,image/jpeg,image/webp" multiple hidden><div id="lab-reference-drop" class="pg-reference-drop"><div id="lab-reference-previews" class="pg-reference-previews"></div><button id="lab-reference-add" class="pg-reference-add" type="button" aria-label="添加参考图">＋<small>添加参考图</small></button><span class="help">点击选择，或直接拖拽图片到这里<br>最多 3 张 · PNG / JPG / WEBP</span></div></div>
++<div id="lab-reference-block" class="field" hidden><label for="lab-reference">参考图 <small id="lab-reference-count">· 0 / 3</small></label><input type="file" id="lab-reference" accept="image/png,image/jpeg,image/webp" multiple hidden><div id="lab-reference-drop" class="pg-reference-drop"><div id="lab-reference-previews" class="pg-reference-previews"></div><button id="lab-reference-add" class="pg-reference-add" type="button" aria-label="添加参考图">＋<small>添加参考图</small></button><button id="lab-reference-library" type="button">从素材库选择</button><span class="help">点击选择，或直接拖拽图片到这里<br>最多 3 张 · PNG / JPG / WEBP · 每张不超过 10MB</span></div></div>
+@@ -10 +10 @@
+-<div class="row"><button class="primary" id="lab-generate" disabled>开始生成</button><small id="lab-charge">使用系统设置里的绘图凭据，按平台计费</small></div><p id="lab-notice" role="status"></p></section>
++<div class="row"><button class="primary" id="lab-generate" disabled>开始生成</button><button id="lab-next-cover" type="button" hidden>做下一个封面</button><small id="lab-charge">使用系统设置里的绘图凭据，按平台计费</small></div><p id="lab-notice" role="status"></p><section id="lab-publication" hidden aria-label="当前封面发布文案"></section></section>
+@@ -12 +12 @@
+-<dialog id="lab-custom-style"><form method="dialog"><h2>自定义画面风格</h2><label for="lab-custom-text">风格提示词</label><textarea id="lab-custom-text" rows="5" maxlength="20000" placeholder="输入要叠加的风格描述"></textarea><div class="row"><button>取消</button><button id="lab-custom-save" class="primary" type="button">保存</button></div></form></dialog><dialog id="lab-viewer"><button id="lab-viewer-close" aria-label="关闭图片预览">×</button><img id="lab-viewer-image" alt="图片预览"></dialog><script src="/assets/image_lab.js"></script></body></html>
++<dialog id="lab-custom-style"><form method="dialog"><h2>自定义画面风格</h2><label for="lab-custom-text">风格提示词</label><textarea id="lab-custom-text" rows="5" maxlength="20000" placeholder="输入要叠加的风格描述"></textarea><div class="row"><button>取消</button><button id="lab-custom-save" class="primary" type="button">保存</button></div></form></dialog><dialog id="lab-viewer"><button id="lab-viewer-close" aria-label="关闭图片预览">×</button><img id="lab-viewer-image" alt="图片预览"></dialog><script src="/assets/material_picker1250.js"></script><script src="/assets/image_lab.js"></script></body></html>
+--- before/template-editor.html
++++ template-editor.html
+@@ -2 +2 @@
+-<link rel="stylesheet" href="/assets/story_theme.css"><link rel="stylesheet" href="/assets/library.css"><link rel="stylesheet" href="/assets/template_editor.css">
++<link rel="stylesheet" href="/assets/story_theme.css"><link rel="stylesheet" href="/assets/library.css"><link rel="stylesheet" href="/assets/template_editor.css"><link rel="stylesheet" href="/assets/template_media1250.css">
+@@ -9 +9 @@
+-<input type="file" id="background-upload" hidden accept="image/png,image/jpeg,image/webp"><script src="/assets/template_editor.js"></script></body></html>
++<input type="file" id="background-upload" hidden accept="image/png,image/jpeg,image/webp"><script src="/assets/template_media1250.js"></script><script src="/assets/template_editor.js"></script></body></html>
+--- before/assets/image_lab.js
++++ assets/image_lab.js
+@@ -1 +1 @@
+-const $=id=>document.getElementById(id);let referenceData=[],referenceBusy=false,mode=new URLSearchParams(location.search).get('mode')==='cover'?'cover':'text2img',styles=[],ratios=['9:16'],resolution='1k',template='cinematic-poster',coverMode='title',items=[],ref={},folder='',busy=false,customStyle='';
++const $=id=>document.getElementById(id);let referenceData=[],referenceBusy=false,mode=new URLSearchParams(location.search).get('mode')==='cover'?'cover':'text2img',styles=[],ratios=['9:16'],resolution='1k',template='cinematic-poster',coverMode='title',items=[],ref={},folder='',busy=false,customStyle='',compositionMetadata=null;
+@@ -5,2 +5,2 @@
+-function ready(){$('lab-generate').disabled=busy||referenceBusy||!$('lab-prompt').value.trim()||!ratios.length||(mode==='img2img'&&!referenceData.length);$('lab-charge').textContent='本次生成 '+(Math.max(1,styles.length)*ratios.length*Number($('lab-count').value||1))+' 张 · 使用已配置的绘图凭据，按平台计费';}
+-function choices(){const route=new URL(location.href);if(mode==='cover')route.searchParams.set('mode','cover');else route.searchParams.delete('mode');history.replaceState(null,'',route);window.dispatchEvent(new Event('app074:routechange'));for(const b of $('lab-modes').children)b.setAttribute('aria-selected',String(b.dataset.mode===mode));$('lab-reference-block').hidden=mode==='text2img';$('lab-cover-fields').hidden=mode!=='cover';$('lab-prompt-label').textContent=mode==='smart'?'需求描述':mode==='cover'?'文案 / 主题':'画面提示词';
++function ready(){$('lab-next-cover').disabled=busy||referenceBusy;$('lab-reference-add').disabled=busy||referenceBusy;$('lab-reference-library').disabled=busy||referenceBusy||referenceData.length>=3;$('lab-generate').disabled=busy||referenceBusy||!$('lab-prompt').value.trim()||!ratios.length||(mode==='img2img'&&!referenceData.length);$('lab-charge').textContent='本次生成 '+(Math.max(1,styles.length)*ratios.length*Number($('lab-count').value||1))+' 张 · 使用已配置的绘图凭据，按平台计费';}
++function choices(){const route=new URL(location.href);if(mode==='cover')route.searchParams.set('mode','cover');else route.searchParams.delete('mode');history.replaceState(null,'',route);window.dispatchEvent(new Event('app074:routechange'));for(const b of $('lab-modes').children)b.setAttribute('aria-selected',String(b.dataset.mode===mode));$('lab-reference-block').hidden=mode==='text2img';$('lab-cover-fields').hidden=mode!=='cover';$('lab-next-cover').hidden=mode!=='cover';$('lab-publication').hidden=mode!=='cover'||!compositionMetadata;$('lab-prompt-label').textContent=mode==='smart'?'需求描述':mode==='cover'?'文案 / 主题':'画面提示词';
+@@ -13,3 +13,4 @@
+-$('lab-prompt').oninput=ready;$('lab-count').oninput=ready;
+-function renderReferences(){const host=$('lab-reference-previews');host.replaceChildren();referenceData.forEach((ref,index)=>{const thumb=document.createElement('div');thumb.className='pg-reference-thumb';const img=document.createElement('img');img.src=ref.data;img.alt=ref.name||'参考图 '+(index+1);const remove=document.createElement('button');remove.type='button';remove.textContent='×';remove.title='移除';remove.setAttribute('aria-label','移除参考图 '+(index+1));remove.onclick=e=>{e.stopPropagation();if(referenceBusy)return;referenceData.splice(index,1);renderReferences();};thumb.append(img,remove);host.append(thumb);});$('lab-reference-count').textContent='· '+referenceData.length+' / 3';$('lab-reference-add').hidden=referenceData.length>=3;$('lab-reference-add').disabled=referenceBusy;ready();}
+-async function addReferences(files){if(referenceBusy)return;referenceBusy=true;ready();let overflow=false;try{for(const file of files){if(referenceData.length>=3){overflow=true;break;}if(!['image/png','image/jpeg','image/webp'].includes(file.type)||!file.size||file.size>10000000)throw Error('请选择10MB以内PNG/JPG/WEBP图片');const data=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(Error('读取图片失败'));reader.readAsDataURL(file);});if(!referenceData.some(ref=>ref.data===data))referenceData.push({data,name:file.name});}if(overflow)$('lab-notice').textContent='最多3张参考图，已忽略多余图片';}catch(error){$('lab-notice').textContent=error.message;}finally{referenceBusy=false;renderReferences();}}
++function compositionKey(){return JSON.stringify([$('lab-prompt').value,$('lab-title').value,$('lab-subtitle').value,mode,coverMode,template]);}
++for(const id of ['lab-prompt','lab-title','lab-subtitle'])$(id).oninput=()=>{compositionMetadata=null;renderPublication();ready();};$('lab-count').oninput=ready;
++function renderReferences(){const host=$('lab-reference-previews');host.replaceChildren();referenceData.forEach((ref,index)=>{const thumb=document.createElement('div');thumb.className='pg-reference-thumb';const img=document.createElement('img');img.src=ref.data;img.alt=ref.name||'参考图 '+(index+1);const remove=document.createElement('button');remove.type='button';remove.textContent='×';remove.title='移除';remove.setAttribute('aria-label','移除参考图 '+(index+1));remove.onclick=e=>{e.stopPropagation();if(busy||referenceBusy)return;referenceData.splice(index,1);renderReferences();};thumb.append(img,remove);host.append(thumb);});$('lab-reference-count').textContent='· '+referenceData.length+' / 3';$('lab-reference-add').hidden=referenceData.length>=3;$('lab-reference-add').disabled=referenceBusy;ready();}
++async function addReferences(files){if(busy||referenceBusy)return;referenceBusy=true;ready();let overflow=false;try{for(const file of files){if(referenceData.length>=3){overflow=true;break;}if(!['image/png','image/jpeg','image/webp'].includes(file.type)||!file.size||file.size>10000000)throw Error('请选择10MB以内PNG/JPG/WEBP图片');const data=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(Error('读取图片失败'));reader.readAsDataURL(file);});if(!referenceData.some(ref=>ref.data===data))referenceData.push({data,name:file.name});}if(overflow)$('lab-notice').textContent='最多3张参考图，已忽略多余图片';}catch(error){$('lab-notice').textContent=error.message;}finally{referenceBusy=false;renderReferences();}}
+@@ -17 +18,24 @@
+-$('lab-reference-add').onclick=()=>$('lab-reference').click();
++$('lab-reference-add').onclick=()=>{if(!busy&&!referenceBusy)$('lab-reference').click();};
++$('lab-reference-library').onclick=async()=>{if(busy||referenceBusy||referenceData.length>=3)return;referenceBusy=true;ready();try{const files=await window.MaterialPicker1250.pick({max:3-referenceData.length});referenceBusy=false;await addReferences(files);}catch(error){$('lab-notice').textContent=error.message;}finally{referenceBusy=false;renderReferences();}};
++$('lab-next-cover').onclick=()=>{
++ if(mode!=='cover'||busy||referenceBusy)return;
++ if(!confirm('开始做下一个封面？\n将清空当前文案、主副标题、发布文案和参考图。风格、模板、引擎、比例、分辨率、数量及已生成图片会保留。'))return;
++ for(const id of ['lab-prompt','lab-title','lab-subtitle','lab-reference'])$(id).value='';
++ referenceData=[];compositionMetadata=null;renderPublication();renderReferences();$('lab-notice').textContent='已清空，输入新文案开始下一个封面';$('lab-prompt').focus();
++};
++function publicationPanel(metadata,history=false){
++ const panel=document.createElement('details');panel.className=history?'lab-publication lab-publication-history':'lab-publication';
++ const heading=document.createElement('summary');heading.textContent='④ 发布素材 · 短标题 / 简介 / 标签 / 评论';panel.append(heading);
++ const shortTitle=typeof metadata.short_title==='string'?metadata.short_title.trim():typeof metadata.shortTitle==='string'?metadata.shortTitle.trim():'';
++ const summary=typeof metadata.summary==='string'?metadata.summary.trim():'';
++ const tags=(Array.isArray(metadata.tags)?metadata.tags:[]).filter(x=>typeof x==='string'&&x.trim()).map(x=>x.trim().startsWith('#')?x.trim():'#'+x.trim()).join(' ');
++ function copyButton(label,value){const button=document.createElement('button');button.type='button';button.textContent=label;button.disabled=!value;button.onclick=async()=>{try{await navigator.clipboard.writeText(value);$('lab-notice').textContent='已复制'+label.replace(/^复制/,'');}catch(error){$('lab-notice').textContent='复制失败，请手动选择发布文案复制';}};return button;}
++ function field(label,value,copyLabel,className=''){const section=document.createElement('div');section.className='lab-publication-field '+className;const row=document.createElement('div');row.className='lab-publication-field-head';const title=document.createElement('strong');title.textContent=label;row.append(title,copyButton(copyLabel,value));const body=document.createElement('p');body.textContent=value||'本次未返回'+label;section.append(row,body);panel.append(section);}
++ field('短标题',shortTitle,'复制短标题','lab-publication-short-title');field('简介',summary,'复制简介');field('标签',tags,'复制标签','lab-publication-tags');
++ const comments=(Array.isArray(metadata.comments)?metadata.comments:[]).filter(x=>typeof x==='string'&&x.trim()).slice(0,5);
++ const commentsHeader=document.createElement('div');commentsHeader.className='lab-publication-field-head';const label=document.createElement('strong');label.textContent='评论建议';commentsHeader.append(label,copyButton('复制全部评论',comments.join('\n')));panel.append(commentsHeader);
++ if(comments.length){const list=document.createElement('ol');comments.forEach((comment,index)=>{const row=document.createElement('li'),text=document.createElement('span');text.textContent=comment;row.append(text,copyButton('复制评论 '+(index+1),comment));list.append(row);});panel.append(list);}else{const empty=document.createElement('p');empty.className='help';empty.textContent='此记录未返回评论建议';panel.append(empty);}
++ panel.append(copyButton('复制简介＋标签',[summary,tags].filter(Boolean).join('\n\n')));return panel;
++}
++function renderPublication(){const host=$('lab-publication');host.replaceChildren();host.hidden=mode!=='cover'||!compositionMetadata;if(compositionMetadata)host.append(publicationPanel(compositionMetadata));}
++
+@@ -19 +43 @@
+-function render(){$('lab-total').textContent='· '+items.length;$('lab-results').replaceChildren();if(!items.length){const empty=document.createElement('div');empty.className='empty';const icon=document.createElement('div');icon.className='empty-icon';icon.textContent='▧';empty.append(icon,'还没有生成过图片，先在上面输入提示词试试');$('lab-results').append(empty);}for(const item of items){const card=document.createElement('article');card.className='lab-item';if(item.ok){const img=document.createElement('img');img.alt=item.title||'生成图片';img.src=item.url;img.loading='lazy';img.onclick=()=>{$('lab-viewer-image').src=item.url;$('lab-viewer').showModal();};card.append(img);}const text=document.createElement('div');text.className='prompt';text.textContent=item.ok?item.prompt:item.error;if(!item.ok)text.classList.add('error');card.append(text);const meta=document.createElement('small');meta.textContent=item.provider+' · '+item.ratio;card.append(meta);const actions=document.createElement('footer');if(item.ok){const save=document.createElement('a');save.href=item.url;save.download=item.id+'.png';save.className='download';save.textContent='↓ 另存为';actions.append(save);}const reuse=document.createElement('button');reuse.textContent='复用提示词';reuse.onclick=()=>{$('lab-prompt').value=item.prompt;mode='text2img';styles=[];choices();$('lab-prompt').focus();};actions.append(reuse);card.append(actions);$('lab-results').append(card);}}
++function render(){$('lab-total').textContent='· '+items.length;$('lab-results').replaceChildren();if(!items.length){const empty=document.createElement('div');empty.className='empty';const icon=document.createElement('div');icon.className='empty-icon';icon.textContent='▧';empty.append(icon,'还没有生成过图片，先在上面输入提示词试试');$('lab-results').append(empty);}for(const item of items){const card=document.createElement('article');card.className='lab-item';if(item.ok){const img=document.createElement('img');img.alt=item.title||'生成图片';img.src=item.url;img.loading='lazy';img.onclick=()=>{$('lab-viewer-image').src=item.url;$('lab-viewer').showModal();};card.append(img);}const text=document.createElement('div');text.className='prompt';text.textContent=item.ok?item.prompt:item.error;if(!item.ok)text.classList.add('error');card.append(text);const meta=document.createElement('small');meta.textContent=item.provider+' · '+item.ratio;card.append(meta);if(item.metadata&&typeof item.metadata==='object')card.append(publicationPanel(item.metadata,true));const actions=document.createElement('footer');if(item.ok){const save=document.createElement('a');save.href=item.url;save.download=item.id+'.png';save.className='download';save.textContent='↓ 另存为';actions.append(save);}const reuse=document.createElement('button');reuse.textContent='复用提示词';reuse.onclick=()=>{compositionMetadata=null;renderPublication();$('lab-prompt').value=item.prompt;mode='text2img';styles=[];choices();$('lab-prompt').focus();};actions.append(reuse);if(item.ok===false){const remove=document.createElement('button');remove.type='button';remove.className='lab-delete-failed';remove.textContent='删除失败记录';remove.onclick=async()=>{if(remove.disabled)return;remove.disabled=true;try{await api('/api/image_lab/delete',{id:item.id});items=items.filter(row=>row.id!==item.id);render();$('lab-notice').textContent='已删除失败记录';}catch(error){remove.disabled=false;$('lab-notice').textContent='删除失败：'+error.message;}};actions.append(remove);}card.append(actions);$('lab-results').append(card);}}
+@@ -22 +46 @@
+-$('lab-generate').onclick=async()=>{if(!$('lab-prompt').value.trim()||!ratios.length)return;busy=true;ready();$('lab-generate').textContent='生成中…';try{const result=await api('/api/image_lab',{prompt:$('lab-prompt').value,mode,styles,ratios,resolution,style_prompt:customStyle,provider:$('lab-provider').value,count:Number($('lab-count').value),references:mode==='text2img'?[]:referenceData.map(ref=>ref.data),title:$('lab-title').value,subtitle:$('lab-subtitle').value,template,cover_mode:coverMode});items.unshift(...result.items);render();$('lab-notice').textContent=result.items.filter(x=>x.ok).length+' 张已生成，'+result.items.filter(x=>!x.ok).length+' 张失败';}catch(e){$('lab-notice').textContent='生成失败：'+e.message;}finally{busy=false;ready();$('lab-generate').textContent='开始生成';}};
++$('lab-generate').onclick=async()=>{if(busy||referenceBusy||!$('lab-prompt').value.trim()||!ratios.length)return;const submittedComposition=compositionKey();busy=true;ready();$('lab-generate').textContent='生成中…';try{const result=await api('/api/image_lab',{prompt:$('lab-prompt').value,mode,styles,ratios,resolution,style_prompt:customStyle,provider:$('lab-provider').value,count:Number($('lab-count').value),references:mode==='text2img'?[]:referenceData.map(ref=>ref.data),title:$('lab-title').value,subtitle:$('lab-subtitle').value,template,cover_mode:coverMode});items.unshift(...result.items);if(mode==='cover'&&compositionKey()===submittedComposition){compositionMetadata=result.items.find(item=>item.metadata&&typeof item.metadata==='object')?.metadata||null;renderPublication();}render();$('lab-notice').textContent=result.items.filter(x=>x.ok).length+' 张已生成，'+result.items.filter(x=>!x.ok).length+' 张失败';}catch(e){$('lab-notice').textContent='生成失败：'+e.message;}finally{busy=false;ready();$('lab-generate').textContent='开始生成';}};
+--- before/assets/image_lab.css
++++ assets/image_lab.css
+@@ -4,0 +5,4 @@
++
++.lab-publication{margin:12px 0;padding:12px;border:1px solid var(--border);border-radius:8px;background:var(--bg-sunken);font-size:12px;line-height:1.6;overflow-wrap:anywhere}.lab-publication summary{cursor:pointer;font-weight:600}.lab-publication p{white-space:pre-wrap;margin:8px 0}.lab-publication-tags{color:var(--brand)}.lab-publication ol{padding-left:22px;margin:8px 0}.lab-publication li+li{margin-top:5px}.lab-item .lab-publication{margin:10px}.lab-publication button{font-size:12px;padding:5px 10px}
++
++.lab-publication-field{margin:10px 0}.lab-publication-field-head{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}.lab-publication-field-head button,.lab-publication li button{flex:0 0 auto;font-size:11px;padding:3px 7px}.lab-publication li button{margin:3px 0 3px 6px}.lab-item{min-width:0}.lab-item .prompt{overflow-wrap:anywhere}.lab-item footer{align-items:center;overflow:visible}.lab-item footer>*{max-width:100%}.lab-delete-failed{flex:0 0 auto;white-space:normal;margin-left:auto}
+--- before/assets/template_editor.js
++++ assets/template_editor.js
+@@ -4 +4 @@
+-let item, config, reference, original, selected = null, zoom = 1, bgms = [], imageUrl = '';
++let item, config, reference, catalog, original, selected = null, zoom = 1, bgms = [], imageUrl = '';
+@@ -32 +32 @@
+-function textControls(parent,key){toggle(parent,'显示',key+'.visible');if(!config[key].visible)return;number(parent,'垂直位置',key+'.y',-config.canvas.height,config.canvas.height,1,{scale:config.canvas.height});number(parent,'字号',key+'.fontSize',4,100);color(parent,'颜色',key+'.color');if(['title','subtitle'].includes(key)){toggle(parent,'渐变（仅 HTML）',key+'.colorEnd',{gradient:true});if(config[key].colorEnd)color(parent,'渐变终点',key+'.colorEnd');}number(parent,'透明度',key+'.alpha',0,100,1,{scale:100,slider:true});choices(parent,'对齐',key+'.align',[{value:0,label:'左'},{value:1,label:'中'},{value:2,label:'右'}]);if(key==='title'){toggle(parent,'粗体',key+'.bold');toggle(parent,'下划线',key+'.underline');}if(key==='subtitle'){number(parent,'字间距',key+'.letterSpacing',0,20);number(parent,'行间距',key+'.lineSpacing',0,20);}color(parent,'描边色',key+'.border.color');number(parent,'描边宽度',key+'.border.width',0,100,1,{slider:true});number(parent,'描边透明',key+'.border.alpha',0,100,1,{scale:100,slider:true});}
++function textControls(parent,key){toggle(parent,'显示',key+'.visible');if(!config[key].visible)return;number(parent,'垂直位置',key+'.y',-config.canvas.height,config.canvas.height,1,{scale:config.canvas.height});number(parent,'字号',key+'.fontSize',4,100);DraftMedia1250.fontPicker(parent,key,mediaContext());color(parent,'颜色',key+'.color');if(['title','subtitle'].includes(key)){toggle(parent,'渐变（仅 HTML）',key+'.colorEnd',{gradient:true});if(config[key].colorEnd)color(parent,'渐变终点',key+'.colorEnd');}number(parent,'透明度',key+'.alpha',0,100,1,{scale:100,slider:true});choices(parent,'对齐',key+'.align',[{value:0,label:'左'},{value:1,label:'中'},{value:2,label:'右'}]);if(key==='title'){toggle(parent,'粗体',key+'.bold');toggle(parent,'下划线',key+'.underline');}if(key==='subtitle'){number(parent,'字间距',key+'.letterSpacing',0,20);number(parent,'行间距',key+'.lineSpacing',0,20);}color(parent,'描边色',key+'.border.color');number(parent,'描边宽度',key+'.border.width',0,100,1,{slider:true});number(parent,'描边透明',key+'.border.alpha',0,100,1,{scale:100,slider:true});}
+@@ -34 +34,2 @@
+-function renderPanels(){const panel=el('panels');const scroll=panel.scrollTop;panel.replaceChildren();for(const [key,label]of sections){const section=node('section','tpl-section');section.dataset.section=key;if(selected===key)section.dataset.active='true';const head=node('button','tpl-section-header',(opened.has(key)?'⌄　':'›　')+label);head.setAttribute('aria-expanded',String(opened.has(key)));head.onclick=()=>{opened.has(key)?opened.delete(key):opened.add(key);selected=opened.has(key)?key:null;renderPanels();paint();};section.append(head);const body=node('div','tpl-section-body');body.hidden=!opened.has(key);section.append(body);panel.append(section);
++function mediaContext(){return {catalog,get config(){return config;},update:(path,value)=>update(path,value),refresh:()=>{renderPanels();paint();},error};}
++function renderPanels(){el('reset').disabled=DraftMedia1250.isUploading();const panel=el('panels');const scroll=panel.scrollTop;panel.replaceChildren();for(const [key,label]of sections){const section=node('section','tpl-section');section.dataset.section=key;if(selected===key)section.dataset.active='true';const head=node('button','tpl-section-header',(opened.has(key)?'⌄　':'›　')+label);head.setAttribute('aria-expanded',String(opened.has(key)));head.onclick=()=>{opened.has(key)?opened.delete(key):opened.add(key);selected=opened.has(key)?key:null;renderPanels();paint();};section.append(head);const body=node('div','tpl-section-body');body.hidden=!opened.has(key);section.append(body);panel.append(section);
+@@ -37 +38 @@
+- if(key==='image'){choices(body,'图片比例','image.ratio',reference.imageRatios,false,ratio=>{set('image.ratio',ratio);fitImage(ratio);});choices(body,'适配','image.fit',['cover','contain']);number(body,'垂直位置','image.top',0,1,.01,{slider:true});number(body,'高度占比','image.height',.1,1,.01,{slider:true});choices(body,'动画效果','image.animation',reference.animations,true);choices(body,'运镜','image.motion',reference.motions,true);hint(body,'运镜用关键帧实现（推近/平移等），配了会优先于上面的动画效果；首图自动淡入、尾图自动淡出');const motion=get('image.motion');if((Array.isArray(motion)?motion:[motion]).some(x=>x&&x!=='none'))number(body,'运镜强度','image.motionStrength',.5,2,.1,{slider:true});const r=row(body,'画面特效');const select=node('select','tpl-field-input');select.setAttribute('aria-label','画面特效');select.append(new Option('（无）',''));for(const g of reference.effects){const opt=node('optgroup');opt.label=g.group;for(const x of g.items)opt.append(new Option(x,x));select.append(opt);}select.value=config.image.effect||'';select.onchange=()=>update('image.effect',select.value);r.append(select);}
++ if(key==='image'){choices(body,'图片比例','image.ratio',reference.imageRatios,false,ratio=>{set('image.ratio',ratio);fitImage(ratio);});choices(body,'适配','image.fit',['cover','contain']);number(body,'垂直位置','image.top',0,1,.01,{slider:true});number(body,'高度占比','image.height',.1,1,.01,{slider:true});choices(body,'动画效果','image.animation',reference.animations,true);choices(body,'运镜','image.motion',reference.motions,true);hint(body,'运镜用关键帧实现（推近/平移等），配了会优先于上面的动画效果；首图自动淡入、尾图自动淡出');const motion=get('image.motion');if((Array.isArray(motion)?motion:[motion]).some(x=>x&&x!=='none'))number(body,'运镜强度','image.motionStrength',.5,2,.1,{slider:true});DraftMedia1250.effectsPanel(body,mediaContext());}
+@@ -41 +42 @@
+- if(key==='audio'){const db=value=>value<=0?-10:Math.round(20*Math.log10(value)*2)/2;number(body,'配音音量','audio.narrationVolume',-10,20,.5,{slider:true,convert:db});number(body,'BGM 音量','audio.bgmVolume',-10,20,.5,{slider:true,convert:db});number(body,'BGM 淡出(ms)','audio.bgmFadeOutMs',0,10000,100);const r=row(body,'默认 BGM');const select=node('select','tpl-field-input');select.append(new Option('（不指定 · 用当前选择）',''));for(const bgm of bgms)select.append(new Option('🎵 '+bgm.name,bgm.id));if(config.audio.defaultBgmId&&!bgms.some(b=>b.id===config.audio.defaultBgmId))select.append(new Option(config.audio.defaultBgmId,config.audio.defaultBgmId));select.value=config.audio.defaultBgmId||'';select.onchange=()=>update('audio.defaultBgmId',select.value);r.append(select);}
++ if(key==='audio'){const db=value=>value<=0?-10:Math.round(20*Math.log10(value)*2)/2;number(body,'配音音量','audio.narrationVolume',-10,20,.5,{slider:true,convert:db});number(body,'BGM 音量','audio.bgmVolume',-10,20,.5,{slider:true,convert:db});number(body,'BGM 淡出(ms)','audio.bgmFadeOutMs',0,10000,100);const r=row(body,'默认 BGM');const select=node('select','tpl-field-input');select.append(new Option('（不指定 · 用当前选择）',''));for(const bgm of bgms)select.append(new Option('🎵 '+bgm.name,bgm.id));if(config.audio.defaultBgmId&&!bgms.some(b=>b.id===config.audio.defaultBgmId))select.append(new Option(config.audio.defaultBgmId,config.audio.defaultBgmId));select.value=config.audio.defaultBgmId||'';select.onchange=()=>update('audio.defaultBgmId',select.value);r.append(select);DraftMedia1250.soundsPanel(body,mediaContext());}
+@@ -46 +47 @@
+- for(const key of ['title','subtitle','caption','disclaimer']){const cfg=config[key];if(!cfg.visible)continue;const layer=node('div','tpl-canvas-layer',{title:'主标题示例',subtitle:'副标题示例文字',caption:'字幕示例文字',disclaimer:cfg.text||'免责声明'}[key]);layer.dataset.layer=key;if(selected===key)layer.dataset.selected='true';const font=Math.max(6,cfg.fontSize*(w/config.canvas.width)*3);const stroke=cfg.border.width>0&&cfg.border.alpha>0?Math.max(.5,font*cfg.border.width/500):0;Object.assign(layer.style,{top:(.5-cfg.y*.5)*h+'px',fontSize:font+'px',fontWeight:cfg.bold?'bold':'normal',color:cfg.color,opacity:cfg.alpha,whiteSpace:'pre-wrap',textAlign:['left','center','right'][cfg.align],textDecoration:cfg.underline?'underline':'none',letterSpacing:(cfg.letterSpacing||0)*w/config.canvas.width+'px',lineHeight:1.3,WebkitTextStrokeWidth:stroke+'px',WebkitTextStrokeColor:rgba(cfg.border.color,cfg.border.alpha),paintOrder:'stroke fill'});if(cfg.colorEnd){layer.style.backgroundImage=`linear-gradient(135deg,${cfg.color},${cfg.colorEnd})`;layer.style.backgroundClip='text';layer.style.color='transparent';}if(key==='caption'){layer.style.background=rgba(cfg.background.color,cfg.background.alpha);layer.style.borderRadius=font*cfg.background.roundRadius+'px';layer.style.padding=`${font*.2}px ${font*.5}px`;}layer.onpointerdown=e=>drag(e,key);canvas.append(layer);}
++ for(const key of ['title','subtitle','caption','disclaimer']){const cfg=config[key];if(!cfg.visible)continue;const layer=node('div','tpl-canvas-layer',{title:'主标题示例',subtitle:'副标题示例文字',caption:'字幕示例文字',disclaimer:cfg.text||'免责声明'}[key]);layer.dataset.layer=key;if(selected===key)layer.dataset.selected='true';const font=Math.max(6,cfg.fontSize*(w/config.canvas.width)*3);const stroke=cfg.border.width>0&&cfg.border.alpha>0?Math.max(.5,font*cfg.border.width/500):0;Object.assign(layer.style,{top:(.5-cfg.y*.5)*h+'px',fontSize:font+'px',fontFamily:cfg.font?JSON.stringify(cfg.font)+', sans-serif':'sans-serif',fontWeight:cfg.bold?'bold':'normal',color:cfg.color,opacity:cfg.alpha,whiteSpace:'pre-wrap',textAlign:['left','center','right'][cfg.align],textDecoration:cfg.underline?'underline':'none',letterSpacing:(cfg.letterSpacing||0)*w/config.canvas.width+'px',lineHeight:1.3,WebkitTextStrokeWidth:stroke+'px',WebkitTextStrokeColor:rgba(cfg.border.color,cfg.border.alpha),paintOrder:'stroke fill'});if(cfg.colorEnd){layer.style.backgroundImage=`linear-gradient(135deg,${cfg.color},${cfg.colorEnd})`;layer.style.backgroundClip='text';layer.style.color='transparent';}if(key==='caption'){layer.style.background=rgba(cfg.background.color,cfg.background.alpha);layer.style.borderRadius=font*cfg.background.roundRadius+'px';layer.style.padding=`${font*.2}px ${font*.5}px`;}layer.onpointerdown=e=>drag(e,key);canvas.append(layer);}
+@@ -52,2 +53,2 @@
+-el('save').onclick=async()=>{try{el('save').disabled=true;const saved=await api('/api/templates/drafts'+(item.id?'/'+item.id:''),{template:{...item,name:el('template-name').value,config}});item=saved.template;history.replaceState(null,'','?type=drafts&id='+encodeURIComponent(item.id));el('notice').style.color='var(--brand)';el('notice').textContent='模板已保存';}catch(e){el('save').disabled=false;error(e);}};
+-el('reset').onclick=()=>{if(!confirm('把全部参数恢复为出厂设置？恢复后需点「保存」才生效，点「取消」可反悔。'))return;config=clone(original.config);set('canvas.ratio',config.canvas.ratio);imageUrl='';renderPanels();loadBackground().catch(error);};
++el('save').onclick=async()=>{if(DraftMedia1250.isUploading()){error(Error('\u8bf7\u7b49\u5f85\u97f3\u6548\u4e0a\u4f20\u5b8c\u6210\u540e\u4fdd\u5b58'));return;}try{el('save').disabled=true;const saved=await api('/api/templates/drafts'+(item.id?'/'+item.id:''),{template:{...item,name:el('template-name').value,config}});item=saved.template;history.replaceState(null,'','?type=drafts&id='+encodeURIComponent(item.id));el('notice').style.color='var(--brand)';el('notice').textContent='模板已保存';}catch(e){el('save').disabled=false;error(e);}};
++el('reset').onclick=()=>{if(DraftMedia1250.isUploading()){error(Error('请等待音效上传完成后恢复模板'));return;}if(!confirm('把全部参数恢复为出厂设置？恢复后需点「保存」才生效，点「取消」可反悔。'))return;config=clone(original.config);set('canvas.ratio',config.canvas.ratio);imageUrl='';renderPanels();loadBackground().catch(error);};
+@@ -55 +56 @@
+-(async()=>{try{const [list,ref,defaults,settings]=await Promise.all([api('/api/templates/drafts'),api('/assets/template_editor_reference.json'),api('/assets/draft_templates.json'),api('/api/settings')]);reference=ref;item=list.templates.find(x=>x.id===params.get('id'));if(params.get('id')&&!item)throw Error('模板不存在');if(!item)item={name:'新模板',config:clone(defaults[0].config)};else item=clone(item);if(params.get('copy')==='1'){delete item.id;delete item.builtin;item.name+='（副本）';}original=defaults.find(x=>x.id===item.id);config=clone(item.config);el('reset').hidden=!original;el('template-name').value=item.name;el('save').disabled=!!item.id;bgms=(settings.jianying?.builtin_bgm_path||settings.jianying?.bgm_path)?[{id:'builtin',name:'内置 BGM'}]:[];renderPanels();await loadBackground();el('notice').textContent='';new ResizeObserver(paint).observe(el('preview'));}catch(e){error(e);}})();
++(async()=>{try{const [list,ref,defaults,settings,mediaCatalog]=await Promise.all([api('/api/templates/drafts'),api('/assets/template_editor_reference.json'),api('/assets/draft_templates.json'),api('/api/settings'),api('/assets/draft_catalog1250.json')]);reference=ref;catalog=mediaCatalog;item=list.templates.find(x=>x.id===params.get('id'));if(params.get('id')&&!item)throw Error('模板不存在');if(!item)item={name:'新模板',config:clone(defaults[0].config)};else item=clone(item);if(params.get('copy')==='1'){delete item.id;delete item.builtin;item.name+='（副本）';}original=defaults.find(x=>x.id===item.id);config=clone(item.config);el('reset').hidden=!original;el('template-name').value=item.name;el('save').disabled=!!item.id;bgms=(settings.jianying?.builtin_bgm_path||settings.jianying?.bgm_path)?[{id:'builtin',name:'内置 BGM'}]:[];renderPanels();await loadBackground();el('notice').textContent='';new ResizeObserver(paint).observe(el('preview'));}catch(e){error(e);}})();
+--- before/assets/bgm_library.js
++++ assets/bgm_library.js
+@@ -12 +12 @@
+-  let state={mode:'builtin',id:''},tracks=[],current={},version=0,destroyed=false,busy=false,editing='';
++  let state={mode:'builtin',id:''},tracks=[],current={},version=0,destroyed=false,busy=false,editing='',refreshPending=false;
+@@ -80 +80,10 @@
+-    row.append(badge,label,tag,duration,previewButton(track.url,'试听 '+track.name),edit);list.append(row);
++    const remove=document.createElement('button');remove.type='button';remove.textContent='删除';remove.setAttribute('aria-label','删除音乐 '+track.name);remove.disabled=busy;
++    remove.onclick=async()=>{
++     if(busy||!confirm('删除音乐「'+track.name+'」？音乐库和其他创作页会同步移除；旧任务和已生成草稿中的音乐保留。'))return;
++     busy=true;stop();render();
++     try{const value=await request('/api/music/delete',{id:track.id});tracks=tracks.filter(t=>t.id!==track.id);if(state.mode==='library'&&state.id===track.id)state={mode:'none',id:''};editing='';
++      const revision=String(Date.now());try{localStorage.setItem('app074:music-library-revision',revision);}catch{}window.dispatchEvent(new CustomEvent('app074:music-library-changed'));
++      say(value.retainedFile?'已从音乐库移除；旧任务引用的音频文件已保留':'已删除这首音乐，旧任务和草稿不受影响');
++     }catch(error){say('删除失败：'+error.message);}finally{busy=false;if(!destroyed)render();if(refreshPending)refreshLibrary();}
++    };
++    row.append(badge,label,tag,duration,previewButton(track.url,'试听 '+track.name),edit,remove);list.append(row);
+@@ -99 +108 @@
+-   importButton.disabled=false;input.value='';
++   importButton.disabled=false;input.value='';if(refreshPending)await refreshLibrary();
+@@ -109,0 +119,3 @@
++  async function refreshLibrary(){if(destroyed)return;if(busy){refreshPending=true;return;}refreshPending=false;try{const value=await request('/api/music');if(destroyed)return;tracks=value.tracks||[];if(state.mode==='library'&&!tracks.some(t=>t.id===state.id))state={mode:'none',id:''};render();}catch(error){say(error.message);}}
++  const onStorage=event=>{if(event.key==='app074:music-library-revision')refreshLibrary();};
++  window.addEventListener('app074:music-library-changed',refreshLibrary);window.addEventListener('storage',onStorage);
+@@ -119 +131 @@
+-   },destroy(){destroyed=true;if(playing?.audio===audio)stop();audio.removeAttribute('src');audio.load();host.replaceChildren();}}
++   },destroy(){destroyed=true;window.removeEventListener('app074:music-library-changed',refreshLibrary);window.removeEventListener('storage',onStorage);if(playing?.audio===audio)stop();audio.removeAttribute('src');audio.load();host.replaceChildren();}}
+--- before/assets/scene_image_editor.js
++++ assets/scene_image_editor.js
+@@ -83 +83 @@
+-   submit.disabled=busy||loading||pending()||!files.length||!instruction.value.trim();submit.textContent=busy?'生成中…':'生成新图';cancel.disabled=busy;instruction.disabled=input.disabled=busy||pending();query.hidden=!(pending()&&(job.taskId||job.status==='download_pending')||job.status==='ok'&&!info.current);query.disabled=busy;
++   submit.disabled=busy||loading||pending()||!files.length||!instruction.value.trim();submit.textContent=busy?'生成中…':'生成新图';cancel.disabled=busy;instruction.disabled=input.disabled=busy||pending();pickMaterial.disabled=busy||loading||pending()||files.length>=3;query.hidden=!(pending()&&(job.taskId||job.status==='download_pending')||job.status==='ok'&&!info.current);query.disabled=busy;
+@@ -97 +97,2 @@
+-  footer.append(cancel,query,submit);submit.title='生成新图（Ctrl/Cmd+Enter）';dialog.append(n('h3','','参考图编辑 · #'+String(options.index).padStart(2,'0')),n('p','hint','字幕原文：'+(options.caption||'')),n('div','ref-edit-section-label','参考图：原图自动作为基底，可追加最多 2 张额外参考图'),drop,n('div','ref-edit-section-label','修改指令'),instruction,n('small','hint','使用系统设置里的绘图凭据，按所选平台计费。'),error,footer);overlay.append(dialog);overlay.onclick=e=>{if(e.target===overlay)close();};window.addEventListener('keydown',e=>{if(e.key==='Escape'){e.preventDefault();close();}else if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();if(!pending())run(false);}},{signal:controller.signal});document.body.append(overlay);
++  const pickMaterial=button('从素材库选参考图',async()=>{if(busy||loading||pending()||files.length>=3)return;try{const chosen=await root.MaterialPicker1250.pick({max:3-files.length});if(active)await add(chosen);}catch(e){if(active)error.textContent=e.message;}},'btn btn-secondary');
++  footer.append(pickMaterial,cancel,query,submit);submit.title='生成新图（Ctrl/Cmd+Enter）';dialog.append(n('h3','','参考图编辑 · #'+String(options.index).padStart(2,'0')),n('p','hint','字幕原文：'+(options.caption||'')),n('div','ref-edit-section-label','参考图：原图自动作为基底，可追加最多 2 张额外参考图'),drop,n('div','ref-edit-section-label','修改指令'),instruction,n('small','hint','使用系统设置里的绘图凭据，按所选平台计费。'),error,footer);overlay.append(dialog);overlay.onclick=e=>{if(e.target===overlay)close();};window.addEventListener('keydown',e=>{if(e.key==='Escape'){e.preventDefault();close();}else if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();if(!pending())run(false);}},{signal:controller.signal});document.body.append(overlay);
+--- before/assets/workflow_view.js
++++ assets/workflow_view.js
+@@ -223,0 +224 @@
++    let pendingResume = null, controlSequence = 0;
+@@ -320,0 +322,10 @@
++      if (pendingResume) {
++        const switched = pendingResume.taskId !== (taskId || info.task_id);
++        const job = info.queue;
++        const accepted = job && (['queued','running','pausing','cancelling','completed'].includes(job.status) ||
++          (job.id && pendingResume.previousJobId && job.id !== pendingResume.previousJobId));
++        if (switched || accepted) {
++          pendingResume = null;controlPending = false;
++          if (switched) controlSequence++;
++        }
++      }
+@@ -344 +355,3 @@
+-          const button = node('button', 'wv-summary-control', label);button.type = 'button';button.title = title;
++          const resume = ['enqueue','confirm'].includes(action) && !disabled;
++          const button = node('button', 'wv-summary-control', resume && pendingResume ? '续跑中…' : label);button.type = 'button';button.title = title;
++          if (resume) button.className += ' wv-summary-resume';
+@@ -349,0 +363,2 @@
++            const operation = ++controlSequence;
++            if (resume) pendingResume = {taskId:id,previousJobId:job.id};
+@@ -350,0 +366 @@
++            let submitted = false;
+@@ -352,0 +369,2 @@
++              submitted = true;
++              if (operation !== controlSequence) return;
+@@ -355,2 +373,10 @@
+-              notice = '任务操作失败：' + error.message;renderPreview();
+-            } finally {controlPending = false;renderSummary();}
++              if (operation === controlSequence) {
++                if (!submitted) pendingResume = null;
++                notice = submitted && resume ? '续跑已提交，正在等待队列状态刷新：' + error.message : '任务操作失败：' + error.message;
++                renderPreview();
++              }
++            } finally {
++              if (operation === controlSequence) {
++                controlPending = !!pendingResume;renderSummary();
++              }
++            }
+@@ -361,0 +388 @@
++        if (job.status === 'queued') add(job.position ? `排队中（第${job.position}位）` : '排队中…', 'enqueue', '已进入队列，等待前面的任务完成', true);
+@@ -365,3 +391,0 @@
+-        for (const button of controls.children) {
+-          if (button.textContent === '从断点续跑') button.className += ' wv-summary-resume';
+-        }
+@@ -789 +813,2 @@
+-      const res = await fetch(`/api/task/${encodeURIComponent(taskId)}`);
++      const requestedTask = taskId;
++      const res = await fetch(`/api/task/${encodeURIComponent(requestedTask)}`);
+@@ -791 +816,3 @@
+-      detail = await res.json(); render();
++      const refreshed = await res.json();
++      if (taskId !== requestedTask) return;
++      detail = refreshed; render();

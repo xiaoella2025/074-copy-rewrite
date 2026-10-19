@@ -1,0 +1,9 @@
+.tpl1250-media{border-top:1px solid var(--border);margin-top:14px;padding-top:12px;display:grid;gap:8px}
+.tpl1250-picker{border:1px solid var(--border);border-radius:6px;margin:8px 0;background:var(--surface)}
+.tpl1250-picker summary{padding:8px;cursor:pointer;font-size:12px;color:var(--text)}
+.tpl1250-picker-body{padding:0 8px 8px}.tpl1250-search{width:100%!important;box-sizing:border-box;margin:5px 0}
+.tpl1250-tabs{display:flex;gap:4px;flex-wrap:wrap;margin:5px 0}.tpl1250-catalog{display:flex;flex-wrap:wrap;gap:5px;max-height:230px;overflow:auto;padding:6px}
+.tpl1250-catalog .tpl-card-btn{max-width:100%;overflow-wrap:anywhere;text-align:left;font-size:11px}
+.tpl1250-vip{display:inline-block;margin-left:5px;padding:1px 4px;border-radius:3px;color:#d8b4fe;background:#7c3aed30;font-size:10px}
+.tpl1250-selected{font-size:12px;margin:6px 0;overflow-wrap:anywhere}.tpl1250-card{border:1px solid var(--border);border-radius:6px;padding:8px;display:grid;gap:7px;font-size:12px}
+.tpl1250-control{display:flex;align-items:center;gap:7px;font-size:11px}.tpl1250-control>span:first-child{flex:1}.tpl1250-control .tpl-field-input{width:90px}.tpl1250-control input[type=range]{width:95px;min-width:50px}.tpl1250-media>.tpl-card-btn{justify-self:start}

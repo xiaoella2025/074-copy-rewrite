@@ -1,0 +1,15 @@
+--- before/tests/test_regression_e2e.py
++++ tests/test_regression_e2e.py
+@@ -157 +157 @@
+-        server.image_dispatcher = lambda cfg, desc, ratio="9:16", resolution="1k": {
++        server.image_dispatcher = lambda cfg, desc, ratio="9:16", resolution="1k", reference_data_url=None, **callbacks: {
+@@ -169 +169,2 @@
+-        cls.motion_patches=[patch.object(image_motion,"batch",side_effect=isolated_video_fixture)]
++        cls.motion_patches=[patch.object(image_motion,"batch",side_effect=isolated_video_fixture),
++                            patch.object(server,"transcribe_with_selected_asr",return_value=[])]
+--- before/tests/test_profiles.py
++++ tests/test_profiles.py
+@@ -124 +124,2 @@
+-        server.save_profiles(profiles)
++        # Simulate an old on-disk file; the current writer correctly rejects masks.
++        server.PROFILES_PATH.write_text(json.dumps(profiles), encoding="utf-8")

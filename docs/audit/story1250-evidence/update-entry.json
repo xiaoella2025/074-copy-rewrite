@@ -1,0 +1,55 @@
+{
+  "frontend": "D:\\1Leida-shipinhao\\074-copy-rewrite\\.desktop-tools\\story1250-audit\\frontend",
+  "networkRequests": 0,
+  "recoveredCodeExecuted": false,
+  "entries": [
+    {
+      "file": "assets\\index-BjfyS2m-.js",
+      "sha256": "f284b1102d2d12bfb6802e5b57a55855553247241839188244f0bdeb54a9dc4b",
+      "snippets": [
+        {
+          "term": "check_update",
+          "count": 2,
+          "examples": [
+            " a=!1;return(async()=>{try{const i=await Q(\"hwid_fingerprint\"),o=await rV(),l=await Wt(),u=await Q(\"check_update\",{currentVersion:oM,fp:i,proxy:o,baseUrl:l});!a&&u.hasUpdate&&n(u)}catch(i){console.warn(\"[updater] check_update failed:\",i)}})(),()=>{a=!0}},[]),d.jsxs(d.Fragment,{children:[e,t&",
+            ",{currentVersion:oM,fp:i,proxy:o,baseUrl:l});!a&&u.hasUpdate&&n(u)}catch(i){console.warn(\"[updater] check_update failed:\",i)}})(),()=>{a=!0}},[]),d.jsxs(d.Fragment,{children:[e,t&&d.jsx(aV,{info:t,onClose:()=>n(null)})]})}function Pe(e,t){return({size:a=16,...i})=>d.jsx(\"svg\",{width:a,height"
+          ]
+        },
+        {
+          "term": "notesMd",
+          "count": 1,
+          "examples": [
+            "必须安装）\":`新版本 ${e.version??\"\"}`}),d.jsx(\"div\",{className:\"update-notes\",children:d.jsx(HM,{children:e.notesMd??\"\"})}),a===\"downloading\"&&d.jsxs(\"div\",{className:\"update-progress\",children:[d.jsxs(\"div\",{className:\"update-progress-text\",children:[\"下载中 \",i,\"%（可最小化，不影响继续使用）\"]}),d.jsx(\"div\",{"
+          ]
+        },
+        {
+          "term": "hasUpdate",
+          "count": 1,
+          "examples": [
+            "=await rV(),l=await Wt(),u=await Q(\"check_update\",{currentVersion:oM,fp:i,proxy:o,baseUrl:l});!a&&u.hasUpdate&&n(u)}catch(i){console.warn(\"[updater] check_update failed:\",i)}})(),()=>{a=!0}},[]),d.jsxs(d.Fragment,{children:[e,t&&d.jsx(aV,{info:t,onClose:()=>n(null)})]})}function Pe(e,t){r"
+          ]
+        },
+        {
+          "term": "检查更新",
+          "count": 0,
+          "examples": []
+        },
+        {
+          "term": "/v1/announcements",
+          "count": 1,
+          "examples": [
+            "fj=\"storybound:announcements:last_read\";async function _K(e=\"storybound\"){try{const n=`${await Wt()}/v1/announcements?productId=${encodeURIComponent(e)}`,a=await Mn(),i=await Q(\"http_request\",{args:{method:\"GET\",url:n,headers:{},timeoutMs:1e4,proxy:a}});if(i.status<200||i.status>=300)return[];con"
+          ]
+        }
+      ]
+    }
+  ],
+  "notesSource": "notesMd supplied by native check_update; static locator does not claim body is embedded",
+  "importedModulesChecked": 44,
+  "officialManualLinks": [
+    {
+      "source": "assets\\manual-url-DMK8uq8k.js",
+      "url": "https://storybound.top/docs/"
+    }
+  ]
+}

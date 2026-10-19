@@ -1,0 +1,136 @@
+{
+  "scope": "Bounded offline audit of already-extracted downloaded installer resources; no Story execution or network access.",
+  "date": "2026-10-19",
+  "execution": {
+    "storyApplicationExecuted": false,
+    "installerExecuted": false,
+    "recoveredCodeExecuted": false,
+    "networkRequests": 0,
+    "productionConfigurationRead": false,
+    "productionFilesChanged": false
+  },
+  "sourceEntries": {
+    "baseline1245": {
+      "file": "D:\\1Leida-shipinhao\\074-copy-rewrite\\.desktop-tools\\story1245-audit\\frontend\\assets\\index-BL1mWGtO.js",
+      "sha256": "6f37593fe69c907193baf63463cd0922d7859f1e41ef3a734a378217da800732"
+    },
+    "embedded1246": {
+      "file": "D:\\1Leida-shipinhao\\074-copy-rewrite\\.desktop-tools\\story1250-audit\\frontend\\assets\\index-C39RdfcR.js",
+      "sha256": "f6a28c626e046ba45fb58ad4d1c090a2a61d24c309153b8ecd3b080d2afd31a1"
+    },
+    "active1250": {
+      "file": "D:\\1Leida-shipinhao\\074-copy-rewrite\\.desktop-tools\\story1250-audit\\frontend\\assets\\index-BjfyS2m-.js",
+      "sha256": "f284b1102d2d12bfb6802e5b57a55855553247241839188244f0bdeb54a9dc4b"
+    }
+  },
+  "intermediate1246": {
+    "versionLiteral": "const j9=\"1.24.6\",L9={version:j9},lM=L9.version",
+    "baselineModuleCount": 44,
+    "intermediateModuleCount": 44,
+    "method": "Parse JavaScript with Acorn without execution; follow relative JS literal imports from each entry; compare Chinese literal strings by chunk family.",
+    "addedHumanMessageFamilies": [
+      {
+        "family": "index.js",
+        "source": "frontend/assets/index-C39RdfcR.js",
+        "findings": [
+          "Startup draft-generator missing/corrupt/invalid-Win32 warnings",
+          "Explanation that users who previously used the same email may verify after reinstall/cache clearing without changing their account or balance"
+        ]
+      },
+      {
+        "family": "PlaygroundPage.js",
+        "source": "frontend/assets/PlaygroundPage-DdjAl5e7.js",
+        "findings": [
+          "Next-cover reset action and confirmation",
+          "Reset clears copy/title/composition/reference images while retaining template/style/ratio and previously generated gallery images"
+        ]
+      }
+    ],
+    "limitation": "Added UI literal families prove these messages/controls existed by embedded 1.24.6; they are not official release-note prose or complete semantic diffs."
+  },
+  "embeddedNotes": {
+    "actualIntermediateReleaseNotesFound": false,
+    "versionsWithoutLiteralOrEmbeddedNoteEvidence": [
+      "1.24.7",
+      "1.24.8",
+      "1.24.9"
+    ],
+    "textSearchSource": "intermediate-version-literals.json and bounded checks of extracted frontend HTML/JS/JSON/MD resources",
+    "nativeBinaryVersionLiterals": {
+      "1.24.5 storybound.exe": {
+        "1.24.6": 0,
+        "1.24.7": 0,
+        "1.24.8": 0,
+        "1.24.9": 0
+      },
+      "1.25.0 storybound.exe": {
+        "1.24.6": 0,
+        "1.24.7": 0,
+        "1.24.8": 0,
+        "1.24.9": 0
+      }
+    },
+    "limitation": "Absence from inspected resources does not establish whether releases existed, what their remote notes said, or whether every intermediate fix is covered."
+  },
+  "frontendInventory": {
+    "source": "frontend/asset-manifest.json",
+    "assetCount": 1952,
+    "extensions": {
+      ".js": 1853,
+      ".css": 71,
+      ".webp": 14,
+      ".jpg": 6,
+      ".woff2": 4,
+      ".svg": 2,
+      ".html": 1,
+      ".png": 1
+    },
+    "markdownOrReleaseHistoryAssetFound": false
+  },
+  "remoteNotesEvidence": {
+    "frontendSourceFiles": [
+      "D:\\1Leida-shipinhao\\074-copy-rewrite\\.desktop-tools\\story1250-audit\\frontend\\assets\\index-C39RdfcR.js",
+      "D:\\1Leida-shipinhao\\074-copy-rewrite\\.desktop-tools\\story1250-audit\\frontend\\assets\\index-BjfyS2m-.js"
+    ],
+    "frontendFlow": [
+      "Invoke native check_update with currentVersion, fingerprint, proxy and baseUrl",
+      "Render returned UpdateInfo.notesMd",
+      "Announcements requested from /v1/announcements?productId=storybound"
+    ],
+    "nativeSources": [
+      ".desktop-tools/story1245-audit/installer/storybound.exe",
+      ".desktop-tools/story1250-audit/installer/storybound.exe"
+    ],
+    "nativeMarkers": [
+      "/v1/update/check",
+      "src\\updater.rs",
+      "UpdateInfo",
+      "notesMd",
+      "forceUpdate",
+      "publishedAt"
+    ],
+    "existingLocatorReports": [
+      "update-entry.json",
+      "reused-1245-update-entry.json"
+    ],
+    "limitation": "Static dataflow identifies remote-supplied note content. No remote body was fetched or service authorization attempted in this audit."
+  },
+  "nativeDelta": {
+    "method": "Compare ASCII API-route/source-path sets and Chinese string tokens; exclude manifest-listed compressed frontend payload ranges before native-only token comparison.",
+    "baselineNativeOnlyBytes": 24859172,
+    "currentNativeOnlyBytes": 24869680,
+    "baselineChineseTokenCount": 113,
+    "currentChineseTokenCount": 113,
+    "meaningfulNewComponentOrAccountMessagesFound": false,
+    "addedNativeApiRoutes": [],
+    "removedNativeApiRoutes": [],
+    "addedRustSourcePathnames": [],
+    "removedRustSourcePathnames": [],
+    "limitation": "String-set equality does not prove compiled function equality, runtime behavior equality or absence of native fixes; incidental undecodable/binary-noise tokens were excluded from semantic conclusions."
+  },
+  "parentIndependentFollowup": {
+    "notIndependentlyVerifiedHere": true,
+    "reportedByParent": "Settings points through manual-url-DMK8uq8k.js to official documentation; parent found manual version history through 1.24.5/1.24.4/1.24.3, and is separately checking version HEAD metadata without running Story.",
+    "limitation": "Parent follow-up is context only and is not used to support this offline audit conclusion."
+  }
+}
