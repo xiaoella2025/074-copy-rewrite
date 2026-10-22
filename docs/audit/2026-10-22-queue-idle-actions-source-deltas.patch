@@ -1,0 +1,9 @@
+--- before/assets/queue_controls.js
++++ assets/queue_controls.js
+@@ -32,0 +33 @@
++   if(!items.some(t=>t.running||['running','cancelling','pausing'].includes(t.queue?.status)))add('开始执行','start','明确开始本条；前条仍保持暂停并保留产物，批次暂停或定时仍需在批次栏处理');
+--- before/assets/story_history.js
++++ assets/story_history.js
+@@ -35 +35 @@
+-        remove.onclick=async e=>{e.stopPropagation();if(!confirm('删除这条任务记录及其本地产物？已写入剪映的草稿会保留。'))return;try{await handlers.api('/api/task/'+encodeURIComponent(task.task_id),'DELETE');tasks=tasks.filter(t=>t.task_id!==task.task_id);refresh();}catch(error){alert(error.message);}};
++        remove.onclick=async e=>{e.stopPropagation();if(remove.disabled)return;if(!confirm(state==='queued'?'将先取消本条排队，再删除任务记录及其本地产物？已写入剪映的草稿会保留。':'删除这条任务记录及其本地产物？已写入剪映的草稿会保留。'))return;remove.disabled=true;try{if(state==='queued')await handlers.api('/api/task/'+encodeURIComponent(task.task_id)+'/cancel','POST',{});await handlers.api('/api/task/'+encodeURIComponent(task.task_id),'DELETE');tasks=tasks.filter(t=>t.task_id!==task.task_id);refresh();}catch(error){alert(error.message);}finally{remove.disabled=false;}};

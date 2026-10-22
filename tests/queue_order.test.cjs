@@ -12,6 +12,29 @@ function fixture(){
  const render=tasks=>{context.window.StoryQueueControls.render(tasks,{batches:[]},handlers);context.window.StoryHistory.render(tasks,handlers);};
  return {context,hosts,calls,render};
 }
+
+test('queued task exposes explicit start even when a previous manual pause holds the worker',async()=>{
+ const f=fixture();f.render([{task_id:'waiting',queue:{status:'queued',position:1}},{task_id:'held',queue:{status:'paused',manual_pause:true}}]);
+ const start=descendants(f.hosts.get('list-panel')).find(n=>n.textContent==='开始执行');assert.ok(start);
+ await start.onclick({stopPropagation(){}});
+ assert.deepEqual(JSON.parse(JSON.stringify(f.calls)),[['/api/task-queue/order','POST',{task_id:'waiting',action:'start'}]]);
+});
+
+test('deleting a queued task cancels its queue ownership before deleting files',async()=>{
+ const f=fixture();f.context.confirm=()=>true;
+ f.render([{task_id:'waiting',queue:{status:'queued',position:1}}]);
+ await descendants(f.hosts.get('list-panel')).find(n=>n.textContent==='删除').onclick({stopPropagation(){}});
+ assert.deepEqual(JSON.parse(JSON.stringify(f.calls)),[['/api/task/waiting/cancel','POST',{}],['/api/task/waiting','DELETE']]);
+});
+
+test('failed queue cancellation prevents deletion, preserving the task files',async()=>{
+ const f=fixture();f.context.confirm=()=>true;f.context.window.loadList=async()=>{};
+ f.render([{task_id:'waiting',queue:{status:'queued'}}]);
+ const api=f.context.window.StoryHistory;
+ api.render([{task_id:'waiting',queue:{status:'queued'}}],{api:async(path,method)=>{f.calls.push([path,method]);throw Error('cannot cancel');},select(){}});
+ await descendants(f.hosts.get('list-panel')).find(n=>n.textContent==='删除').onclick({stopPropagation(){}});
+ assert.equal(f.calls.some(c=>c[1]==='DELETE'),false);
+});
 test('row has compact queued actions, actual order, and does not open detail on reorder',async()=>{
  const f=fixture();f.render([{task_id:'later',title:'later',created_at:'2026-10-19 12:00:00',queue:{status:'queued',position:2}},
  {task_id:'first',title:'first',created_at:'2026-10-18 12:00:00',queue:{status:'queued',position:1}}]);
