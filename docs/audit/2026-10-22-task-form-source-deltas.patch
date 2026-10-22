@@ -1,0 +1,42 @@
+--- before/index.html
++++ index.html
+@@ -793,0 +794 @@
++    <div id="prod-compatibility" class="help" role="alert" style="color:var(--danger)" hidden></div>
+@@ -1774 +1775 @@
+-function saveFormDraft() {
++function saveFormDraft({silent=false}={}) {
+@@ -1789,0 +1791 @@
++    attachments:window.app074DraftAttachments?.()||{},
+@@ -1793,4 +1795,3 @@
+-    const filePending = [...editor.querySelectorAll('input[type="file"]')].some(input => input.files?.length);
+-    $("draft-message").textContent = "表单草稿已保存在本机浏览器，可在下次打开时恢复。" + (filePending ? " 已选图片或音频需要在恢复后重新选择。" : "");
+-    $("draft-banner").hidden = false;
+-  } catch (error) { $("draft-message").textContent = "保存草稿失败：" + error.message; $("draft-banner").hidden = false; }
++    if(!silent){$("draft-message").textContent = "文案和参数已保存在本机，重新打开时会自动恢复。";$("draft-banner").hidden = false;}
++    return true;
++  } catch (error) { $("draft-message").textContent = "保存草稿失败：" + error.message; $("draft-banner").hidden = false;return false; }
+@@ -1802,0 +1804 @@
++  restoreLibraryChoices(draft.libraryChoices);
+@@ -1823 +1824,0 @@
+-  restoreLibraryChoices(draft.libraryChoices);
+@@ -1829 +1830 @@
+-document.querySelectorAll(".save-form-draft").forEach(button => button.onclick = saveFormDraft);
++document.querySelectorAll(".save-form-draft").forEach(button => button.onclick = () => window.app074FormDraft ? window.app074FormDraft.flush().then(result=>{if(result?.textSaved&&result.filesSaved){$("draft-message").textContent='文案、参数和已选附件已保存。';$("draft-banner").hidden=false;}}) : saveFormDraft());
+@@ -2075,0 +2077,2 @@
++    await window.formDraftReady;
++    await window.app074FormDraft?.flush();
+@@ -2296 +2298,0 @@
+-  showRunScreen("正在检查配置并准备图文工作流…");
+@@ -2319 +2321,2 @@
+-      throw new Error("产品参考图需要选择 AI 绘图，并使用全能绘图或支持图片编辑的自定义平台");
++      const message=window.app074ReferenceIssue?.({hasReference:true,source:imageSource,provider:imageProvider})||"产品参考图需要使用全能绘图或支持图片编辑的自定义平台";
++      const error=new Error(message);error.field='prod-drop';throw error;
+@@ -2353,0 +2357 @@
++    showRunScreen("正在准备图文工作流，文案和参数已保存…");
+@@ -2436,0 +2441,4 @@
++    if(document.body.dataset.run!=="true"){
++      $("draft-message").textContent=e.message;$("draft-banner").hidden=false;
++      if(e.field)$(e.field)?.scrollIntoView({block:'center'});
++    }
+@@ -2858,0 +2867 @@
++<script src="/assets/task_form_recovery.js"></script>
