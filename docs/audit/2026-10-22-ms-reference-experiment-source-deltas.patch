@@ -1,0 +1,34 @@
+--- before/server.py
++++ server.py
+@@ -3977,0 +3978,12 @@
++        if self.path == '/ms-reference-experiment.html':
++            self._file(ROOT/'ms-reference-experiment.html','text/html; charset=utf-8');return
++        if self.path.startswith('/api/ms-reference-experiment'):
++            import modelscope_reference_experiment as experiment
++            try:
++                if self.path=='/api/ms-reference-experiment':self._json(200,experiment.state(sys.modules[__name__]))
++                elif self.path.startswith('/api/ms-reference-experiment/image/'):
++                    self._creative_media(experiment.media(sys.modules[__name__],self.path[len('/api/ms-reference-experiment/image/'):]),'image/png')
++                else:raise ValueError('独立实验接口不存在')
++            except ValueError as error:self._json(400,{'error':str(error)})
++            except (OSError,RuntimeError):self._json(502,{'error':'独立实验暂时不可用，请保留原任务编号并稍后再试'})
++            return
+@@ -4488,0 +4501,12 @@
++        if self.path.startswith('/api/ms-reference-experiment/'):
++            import modelscope_reference_experiment as experiment
++            try:
++                backend=sys.modules[__name__]
++                if self.path=='/api/ms-reference-experiment/config':result=experiment.configure(backend,data)
++                elif self.path=='/api/ms-reference-experiment/generate':result=experiment.submit(backend,data)
++                elif self.path=='/api/ms-reference-experiment/query':result=experiment.query(backend,data.get('operation_id'))
++                else:raise ValueError('独立实验操作不存在')
++                self._json(200,result)
++            except ValueError as error:self._json(400,{'error':str(error)})
++            except (OSError,RuntimeError):self._json(502,{'error':'独立实验暂时不可用；请查询原任务，不要重复生成'})
++            return
+--- before/settings.html
++++ settings.html
+@@ -525 +525,2 @@
+-        <div class="field-help">以下模型用于文生图；图像编辑自动使用 Qwen-Image-Edit 模型</div>
++        <div class="field-help">以下模型用于原有文生图。参考图编辑在独立实验页单独启用和测试。</div>
++        <a class="btn btn-ghost btn-sm" href="/ms-reference-experiment.html" style="margin-top:8px">独立测试魔搭参考图（实验） →</a>

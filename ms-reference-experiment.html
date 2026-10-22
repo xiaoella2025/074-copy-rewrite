@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>魔搭参考图独立实验 · 074</title>
+<link rel="stylesheet" href="/assets/story_theme.css"><link rel="stylesheet" href="/assets/app_nav.css"><link rel="stylesheet" href="/assets/voice_lab.css"><script src="/assets/desktop_bridge.js"></script>
+<style>.experiment-images{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px}.experiment-images img{max-width:100%;max-height:480px;object-fit:contain;border-radius:8px}.experiment-job{border:1px solid var(--border);border-radius:10px;padding:14px;margin-top:12px}.experiment-job p{white-space:pre-wrap;overflow-wrap:anywhere}input[type=checkbox]{width:auto}#experiment-status{white-space:pre-wrap}a{color:var(--brand)}</style></head>
+<body data-theme="dark"><aside id="app-nav" aria-label="主导航"></aside><script src="/assets/app_nav.js"></script>
+<main><header><h1>魔搭参考图 · 独立实验</h1><p>只在本页测试一张图片，不接入任务流水线。原有魔搭文生图和其他引擎照常使用。</p><a href="/settings.html">← 返回系统设置</a></header>
+<section class="card"><label><input type="checkbox" id="experiment-enabled"> 启用独立参考图实验</label>
+<p class="help">默认关闭。关闭后不再提交新图，已提交的测试仍可按原编号查回。</p>
+<p id="experiment-account">正在读取魔搭配置…</p><p class="help">编辑模型：Qwen/Qwen-Image-Edit-2511 · 使用已保存的魔搭Token，按平台额度计费。</p>
+<div class="field"><label for="experiment-reference">产品参考图（1张）</label><input id="experiment-reference" type="file" accept="image/png,image/jpeg,image/webp"><p class="help">PNG / JPG / WEBP，最多10MB。图片只在你点击生成后发送给魔搭。</p><img id="experiment-preview" alt="本次选择的参考图" hidden style="max-width:220px;max-height:220px"></div>
+<div class="field"><label for="experiment-prompt">编辑要求</label><textarea id="experiment-prompt" rows="5" maxlength="20000" placeholder="例如：保留产品包装、颜色和文字，把产品放在温暖的木桌上，背景干净。"></textarea></div>
+<div class="row"><button id="experiment-generate" type="button" class="primary" disabled>生成1张测试图（消耗魔搭额度）</button><button id="experiment-refresh" type="button">刷新测试记录</button></div>
+<p id="experiment-status" role="status" aria-live="polite"></p></section>
+<section><h2>独立测试记录</h2><p class="help">显示原任务编号；查询、刷新和重新打开本页不会再次提交生成。</p><div id="experiment-jobs"></div></section></main>
+<script src="/assets/modelscope_reference_experiment.js"></script></body></html>
