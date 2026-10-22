@@ -9,25 +9,32 @@
   const name={modelscope:'魔搭',runninghub:'RunningHub',jimeng:'即梦'}[provider]||'当前引擎';
   return '当前接入的内页绘图引擎「'+name+'」只接收文字提示，尚未接通产品参考图编辑。请把上方「绘图引擎」改为全能绘图或支持图片编辑的自定义平台，或移除参考图；封面引擎是独立设置。文案和参数已保留。';
  }
- function createRecovery({initialize,restore,save,shouldRestore=true,schedule=fn=>setTimeout(fn,350),cancel=clearTimeout}){
-  let initialized=false,restoring=false,touched=false,timer=null;
-  async function flush(){
+ function createRecovery({initialize,restore,save,shouldRestore=false,schedule=fn=>setTimeout(fn,350),cancel=clearTimeout}){
+  let initialized=false,restoring=false,touched=false,timer=null,revision=0,savedRevision=0;
+  async function flush({force=false}={}){
    if(restoring)return;
    if(!initialized)await ready;
    if(timer!==null){cancel(timer);timer=null;}
-   return save();
+   if(!force&&revision===savedRevision)return;
+   const savingRevision=revision,result=await save();
+   if(result?.textSaved!==false)savedRevision=savingRevision;
+   return result;
   }
   function changed(){
    if(restoring)return;
-   touched=true;if(!initialized)return;
+   touched=true;revision++;if(!initialized)return;
    if(timer!==null)cancel(timer);
    timer=schedule(()=>{timer=null;return flush();});
   }
+  async function restoreNow(){
+   if(timer!==null){cancel(timer);timer=null;}
+   restoring=true;try{await restore();savedRevision=revision;}finally{restoring=false;}
+  }
   const ready=Promise.resolve(initialize).then(async()=>{
-   if(shouldRestore&&!touched){restoring=true;try{await restore();}finally{restoring=false;}}
+   if(shouldRestore&&!touched)await restoreNow();
    initialized=true;if(touched)await flush();
   });
-  return {ready,changed,flush};
+  return {ready,changed,flush,restore:async()=>{await ready;return restoreNow();}};
  }
  if(typeof module!=='undefined'&&module.exports)module.exports={referenceIssue,createRecovery,draftRevision};
  if(!root?.document)return;
@@ -74,11 +81,11 @@
   notice.textContent=text;notice.hidden=!text;
  }
  root.updateReferenceNotice=updateReferenceNotice;
- const queries=new URLSearchParams(location.search),plain=[...queries.keys()].every(key=>key==='new');
+ const queries=new URLSearchParams(location.search);
  const initialize=Promise.all([formSettingsReady,formLibrariesReady,root.taskReuseReady,root.benchmarkTransferReady,
   typeof selectionTransferReady==='undefined'?null:selectionTransferReady]);
  let saveChain=Promise.resolve();
- const controller=createRecovery({initialize,shouldRestore:plain,
+ const controller=createRecovery({initialize,
   restore:async()=>{
    let saved=false;try{saved=!!localStorage.getItem(FORM_DRAFT_KEY);}catch(_){}
    if(!saved)return;
@@ -100,9 +107,13 @@
    return saveChain.then(()=>({textSaved,filesSaved}));
   }});
  root.app074FormDraft=controller;root.formDraftReady=controller.ready;
+ document.getElementById('btn-restore-draft').onclick=()=>controller.restore().catch(error=>{
+  document.getElementById('draft-message').textContent='恢复草稿失败：'+error.message;
+  document.getElementById('draft-banner').hidden=false;
+ });
  for(const name of ['input','change','click'])document.addEventListener(name,event=>{
   if(!event.target.closest?.('#task-editor, .footer'))return;
-  if(event.isTrusted)controller.changed();
+  if(event.isTrusted&&(name!=='click'||event.target.closest('.chip,.style-chip,.big-card,.toggle-row')))controller.changed();
   // Let existing chip/file handlers complete before reading their values.
   queueMicrotask(updateReferenceNotice);
  });

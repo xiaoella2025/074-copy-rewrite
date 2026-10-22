@@ -1,0 +1,64 @@
+--- before/index.html
++++ index.html
+@@ -424 +424 @@
+-    <div id="draft-banner" hidden><span id="draft-message">本机有一份已保存的表单草稿。</span><button class="btn" id="btn-restore-draft" type="button">恢复草稿</button></div>
++    <div id="draft-banner" hidden><span id="draft-message">本机有一份已保存的表单草稿，需要时点击「恢复草稿」；新建任务保持空白。</span><button class="btn" id="btn-restore-draft" type="button">恢复草稿</button></div>
+@@ -1795 +1795 @@
+-    if(!silent){$("draft-message").textContent = "文案和参数已保存在本机，重新打开时会自动恢复。";$("draft-banner").hidden = false;}
++    if(!silent){$("draft-message").textContent = "文案和参数已保存在本机，需要时点击「恢复草稿」。";$("draft-banner").hidden = false;}
+@@ -1830 +1830 @@
+-document.querySelectorAll(".save-form-draft").forEach(button => button.onclick = () => window.app074FormDraft ? window.app074FormDraft.flush().then(result=>{if(result?.textSaved&&result.filesSaved){$("draft-message").textContent='文案、参数和已选附件已保存。';$("draft-banner").hidden=false;}}) : saveFormDraft());
++document.querySelectorAll(".save-form-draft").forEach(button => button.onclick = () => window.app074FormDraft ? window.app074FormDraft.flush({force:true}).then(result=>{if(result?.textSaved&&result.filesSaved){$("draft-message").textContent='文案、参数和已选附件已保存。';$("draft-banner").hidden=false;}}) : saveFormDraft());
+@@ -2078 +2078 @@
+-    await window.app074FormDraft?.flush();
++    await window.app074FormDraft?.flush({force:true});
+--- before/assets/task_form_recovery.js
++++ assets/task_form_recovery.js
+@@ -12,3 +12,3 @@
+- function createRecovery({initialize,restore,save,shouldRestore=true,schedule=fn=>setTimeout(fn,350),cancel=clearTimeout}){
+-  let initialized=false,restoring=false,touched=false,timer=null;
+-  async function flush(){
++ function createRecovery({initialize,restore,save,shouldRestore=false,schedule=fn=>setTimeout(fn,350),cancel=clearTimeout}){
++  let initialized=false,restoring=false,touched=false,timer=null,revision=0,savedRevision=0;
++  async function flush({force=false}={}){
+@@ -18 +18,4 @@
+-   return save();
++   if(!force&&revision===savedRevision)return;
++   const savingRevision=revision,result=await save();
++   if(result?.textSaved!==false)savedRevision=savingRevision;
++   return result;
+@@ -22 +25 @@
+-   touched=true;if(!initialized)return;
++   touched=true;revision++;if(!initialized)return;
+@@ -25,0 +29,4 @@
++  async function restoreNow(){
++   if(timer!==null){cancel(timer);timer=null;}
++   restoring=true;try{await restore();savedRevision=revision;}finally{restoring=false;}
++  }
+@@ -27 +34 @@
+-   if(shouldRestore&&!touched){restoring=true;try{await restore();}finally{restoring=false;}}
++   if(shouldRestore&&!touched)await restoreNow();
+@@ -30 +37 @@
+-  return {ready,changed,flush};
++  return {ready,changed,flush,restore:async()=>{await ready;return restoreNow();}};
+@@ -77 +84 @@
+- const queries=new URLSearchParams(location.search),plain=[...queries.keys()].every(key=>key==='new');
++ const queries=new URLSearchParams(location.search);
+@@ -81 +88 @@
+- const controller=createRecovery({initialize,shouldRestore:plain,
++ const controller=createRecovery({initialize,
+@@ -102,0 +110,4 @@
++ document.getElementById('btn-restore-draft').onclick=()=>controller.restore().catch(error=>{
++  document.getElementById('draft-message').textContent='恢复草稿失败：'+error.message;
++  document.getElementById('draft-banner').hidden=false;
++ });
+@@ -105 +116 @@
+-  if(event.isTrusted)controller.changed();
++  if(event.isTrusted&&(name!=='click'||event.target.closest('.chip,.style-chip,.big-card,.toggle-row')))controller.changed();
+--- before/assets/story_form_layout.js
++++ assets/story_form_layout.js
+@@ -7,0 +8,4 @@
++  // Templates also supply metadata and image prompts when rewriting is skipped.
++  const templatePicker=document.getElementById('prompt-template')?.parentElement;
++  const trackSection=document.getElementById('tracks')?.closest('.section');
++  if(templatePicker&&trackSection)trackSection.append(templatePicker);
