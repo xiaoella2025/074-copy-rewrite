@@ -1,0 +1,59 @@
+--- before/assets/form_libraries.js
++++ assets/form_libraries.js
+@@ -2,0 +3,36 @@
++function selectPromptTemplate(item,applyStyle=false){
++  const custom=item&&!item.builtin,group=$('tracks');
++  formLibraries.promptSnapshot=custom?item:null;
++  $('prompt-template').value=custom?item.id:'';
++  for(const chip of group.querySelectorAll('.chip'))chip.classList.toggle('active',custom?
++    chip.dataset.promptTemplate===item.id:!chip.dataset.promptTemplate&&chip.dataset.track===(item?.baseTrack||item?.id||'character-story'));
++  const style=item?.styleId||item?.defaultStyleId;
++  if(applyStyle&&style)document.querySelector(`.style-chip[data-preview="${style}"]`)?.click();
++}
++function renderPromptTemplateChips(){
++  const group=$('tracks');
++  group.querySelectorAll('[data-prompt-template]').forEach(chip=>chip.remove());
++  const selected=formLibraries.promptSnapshot;
++  const custom=formLibraries.prompts.filter(t=>!t.builtin);
++  if(selected&&!custom.some(t=>t.id===selected.id))custom.push(selected);
++  for(const item of custom){
++    const chip=document.createElement('button');chip.type='button';chip.className='chip';
++    chip.dataset.track=item.baseTrack||'character-story';chip.dataset.promptTemplate=item.id;
++    chip.textContent='🔧 '+item.name;chip.title=item.description||'';
++    chip.onclick=()=>selectPromptTemplate(item,true);group.append(chip);
++    chip.classList.toggle('active',selected?.id===item.id);
++  }
++}
++let promptRefreshPending;
++function refreshPromptTemplateChips(){
++  if(promptRefreshPending)return promptRefreshPending;
++  promptRefreshPending=(async()=>{
++    const value=await api('/api/templates/prompts');formLibraries.prompts=value.templates;
++    const pick=$('prompt-template');
++    for(const item of value.templates)if(![...pick.options].some(o=>o.value===item.id)){
++      const option=document.createElement('option');option.value=item.id;option.textContent=item.name;pick.append(option);
++    }
++    renderPromptTemplateChips();
++  })().finally(()=>{promptRefreshPending=null;});
++  return promptRefreshPending;
++}
+@@ -15,2 +51,4 @@
+-  pick.onchange=()=>{formLibraries.promptSnapshot=formLibraries.prompts.find(x=>x.id===pick.value)||null;const t=formLibraries.promptSnapshot;if(t?.baseTrack)setChipsActive('tracks',t.baseTrack,'track');const style=t?.styleId||t?.defaultStyleId;if(style)document.querySelector(`.style-chip[data-preview="${style}"]`)?.click();};
+-  $('tracks').addEventListener('click',event=>{const chip=event.target.closest('[data-track]');if(!chip||pick.value)return;const t=formLibraries.prompts.find(x=>x.id===chip.dataset.track);const style=t?.styleId||t?.defaultStyleId;if(style)document.querySelector(`.style-chip[data-preview="${style}"]`)?.click();});
++  if(pick.parentElement){const link=pick.parentElement.querySelector('a');if(link)$('tracks').after(link);pick.parentElement.hidden=true;pick.parentElement.style.display='none';}
++  renderPromptTemplateChips();
++  pick.onchange=()=>selectPromptTemplate(formLibraries.prompts.find(x=>x.id===pick.value),true);
++  $('tracks').addEventListener('click',event=>{const chip=event.target.closest('[data-track]');if(!chip||chip.dataset.promptTemplate)return;selectPromptTemplate(formLibraries.prompts.find(x=>x.builtin&&x.id===chip.dataset.track),true);});
+@@ -32 +70 @@
+-  if(saved.promptTemplate){const t=saved.promptTemplate;const pick=$('prompt-template');if(![...pick.options].some(o=>o.value===t.id)){const option=document.createElement('option');option.value=t.id;option.textContent=t.name;pick.append(option);}pick.value=t.id;formLibraries.promptSnapshot=t;}
++  if(saved.promptTemplate){const t=saved.promptTemplate;const pick=$('prompt-template');if(![...pick.options].some(o=>o.value===t.id)){const option=document.createElement('option');option.value=t.id;option.textContent=t.name;pick.append(option);}formLibraries.promptSnapshot=t.builtin?null:t;renderPromptTemplateChips();selectPromptTemplate(t);}
+@@ -40,0 +79,5 @@
++if(typeof window!=='undefined'){
++  const refresh=()=>formLibrariesReady.then(refreshPromptTemplateChips).catch(()=>{});
++  window.addEventListener('focus',refresh);
++  window.addEventListener('pageshow',event=>{if(event.persisted)refresh();});
++}
+--- before/index.html
++++ index.html
+@@ -1826,0 +1827 @@
++  if(draft.libraryChoices?.promptTemplate&&typeof selectPromptTemplate==='function')selectPromptTemplate(draft.libraryChoices.promptTemplate);
