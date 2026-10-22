@@ -1,0 +1,16 @@
+--- before/assets/queue_controls.js
++++ assets/queue_controls.js
+@@ -14,0 +15,11 @@
++  const held=(state.jobs||items.map(t=>({...t.queue,task_id:t.task_id}))).find(j=>!j.deferred&&!j.batch_id&&
++   (j.manual_pause&&['paused','interrupted'].includes(j.status)||j.failure_hold&&['failed','interrupted'].includes(j.status)));
++  if(held){
++   const task=items.find(t=>t.task_id===held.task_id),banner=node('section','batch-banner paused');
++   banner.append(node('div','batch-banner-title','队列已暂停 · 当前：'+(task?.title||'未命名任务')),
++    node('div','batch-banner-sub','当前条暂停或出错后，后面的任务会等待；继续当前条或跳过后恢复自动执行。'));
++   banner.append(button('查看/修改',()=>select(held.task_id)),
++    button('继续当前条',()=>action('/api/task-queue/order',{task_id:held.task_id,action:'start'}),'btn btn-primary'),
++    button('跳过本条',()=>action('/api/task/'+encodeURIComponent(held.task_id)+'/cancel',{})));
++   host.append(banner);
++  }
+@@ -33 +43,0 @@
+-   if(!items.some(t=>t.running||['running','cancelling','pausing'].includes(t.queue?.status)))add('开始执行','start','明确开始本条；前条仍保持暂停并保留产物，批次暂停或定时仍需在批次栏处理');

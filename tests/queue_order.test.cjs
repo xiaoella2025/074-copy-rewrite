@@ -13,11 +13,19 @@ function fixture(){
  return {context,hosts,calls,render};
 }
 
-test('queued task exposes explicit start even when a previous manual pause holds the worker',async()=>{
+test('manual pause shows Story queue pause controls rather than making queued tasks start manually',async()=>{
  const f=fixture();f.render([{task_id:'waiting',queue:{status:'queued',position:1}},{task_id:'held',queue:{status:'paused',manual_pause:true}}]);
- const start=descendants(f.hosts.get('list-panel')).find(n=>n.textContent==='开始执行');assert.ok(start);
- await start.onclick({stopPropagation(){}});
- assert.deepEqual(JSON.parse(JSON.stringify(f.calls)),[['/api/task-queue/order','POST',{task_id:'waiting',action:'start'}]]);
+ assert.equal(descendants(f.hosts.get('list-panel')).some(n=>n.textContent==='开始执行'),false);
+ const resume=descendants(f.hosts.get('queue-controls')).find(n=>n.textContent==='继续当前条');assert.ok(resume);
+ assert.equal(f.calls.length,0,'rendering must not submit a task');
+ await resume.onclick();
+ assert.deepEqual(JSON.parse(JSON.stringify(f.calls)),[['/api/task-queue/order','POST',{task_id:'held',action:'start'}]]);
+});
+
+test('skipping the paused current task cancels its queue hold without deleting its artifacts',async()=>{
+ const f=fixture();f.render([{task_id:'waiting',queue:{status:'queued'}},{task_id:'held',queue:{status:'paused',manual_pause:true}}]);
+ const skip=descendants(f.hosts.get('queue-controls')).find(n=>n.textContent==='跳过本条');assert.ok(skip);await skip.onclick();
+ assert.deepEqual(JSON.parse(JSON.stringify(f.calls)),[['/api/task/held/cancel','POST',{}]]);
 });
 
 test('deleting a queued task cancels its queue ownership before deleting files',async()=>{
