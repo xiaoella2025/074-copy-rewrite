@@ -25,7 +25,27 @@ test('completeness matches exact expected IDs, ignoring unrelated files and dupl
 });
 test('zero-byte image stays missing and keeps its retry tile',()=>{
  const d=detail();d.steps.images.push({name:'6.png',url:'/empty.png',size:0});assert.deepEqual(view.imageCompletion(d).missing,[6]);
- assert.ok(render(d).all().some(x=>x.tag==='button'&&x.textContent==='仅补第 6 镜'));
+ assert.ok(render(d).all().some(x=>x.tag==='button'&&x.textContent==='查图 / 补第 6 镜'));
+});
+
+test('missing image first queries the existing receipt without requesting a paid retry',async()=>{
+ const d=detail(),calls=[];let confirmations=0;
+ const host=render(d,{confirm:()=>{confirmations++;return true;},alert:message=>{throw Error(message);},fetch:async(path,options)=>{
+  if(options){const body=JSON.parse(options.body);calls.push(body);return{ok:true,json:async()=>({ok:true,recovered:true})};}
+  return{ok:true,json:async()=>path.startsWith('/api/task/')?d:{templates:[]}};
+ }});
+ await host.all().find(x=>x.tag==='button'&&x.textContent==='查图 / 补第 6 镜').onclick();
+ assert.equal(calls.length,1);assert.equal(calls[0].query_only,true);assert.equal(confirmations,0);
+});
+
+test('queued missing image permits free query but never buys a new image behind its queued worker',async()=>{
+ const d=detail(),calls=[];d.info.queue.status='queued';
+ const host=render(d,{confirm:()=>{throw Error('must not ask to buy');},alert:message=>{throw Error(message);},fetch:async(path,options)=>{
+  if(options){calls.push(JSON.parse(options.body));return{ok:true,json:async()=>({ok:false,needs_retry:true})};}
+  return{ok:true,json:async()=>path.startsWith('/api/task/')?d:{templates:[]}};
+ }});
+ const button=host.all().find(x=>x.tag==='button'&&x.textContent==='查图 / 补第 6 镜');assert.equal(button.disabled,false);await button.onclick();
+ assert.equal(calls.length,1);assert.equal(calls[0].query_only,true);
 });
 test('pipeline failure records total completed including reused images and failed scene number',async()=>{
  const {runImagePipeline}=require('../assets/image_pipeline.js'),d=detail();d.steps.rewrite='fixture';d.steps.meta={title:'fixture'};
@@ -33,18 +53,18 @@ test('pipeline failure records total completed including reused images and faile
  await assert.rejects(runImagePipeline({resume:d,generate:{},tts:{},image:{},request:async(path)=>{assert.equal(path,'/api/step4_generate_images');return{results:[{idx:6,ok:false,error:'上游确认失败'}]};}}),/1\s*\/\s*2.*第\s*6\s*镜/);
 });
 test('missing tile retries only its own index with explicit cost confirmation',async()=>{
- const d=detail(),calls=[];let confirmation='';const host=render(d,{confirm:text=>{confirmation=text;return true;},alert:()=>{},fetch:async(path,options)=>{calls.push({path,body:options?.body&&JSON.parse(options.body)});if(options)d.steps.images.push({name:'6.png',url:'/six.png'});return {ok:true,json:async()=>options?{ok:true}:d};}});
- const button=host.all().find(x=>x.tag==='button'&&x.textContent==='仅补第 6 镜');assert.ok(button);await button.onclick();
- assert.match(confirmation,/一次出图额度/);const posts=calls.filter(c=>c.body);assert.equal(posts.length,1);assert.equal(posts[0].path,'/api/task/fixture/retry-image');assert.equal(posts[0].body.index,6);assert.ok(posts[0].body.operation_id);
+ const d=detail(),calls=[];let confirmation='';const host=render(d,{confirm:text=>{confirmation=text;return true;},alert:()=>{},fetch:async(path,options)=>{const body=options?.body&&JSON.parse(options.body);calls.push({path,body});if(body?.query_only)return{ok:true,json:async()=>({needs_retry:true})};if(options)d.steps.images.push({name:'6.png',url:'/six.png'});return {ok:true,json:async()=>options?{ok:true}:d};}});
+ const button=host.all().find(x=>x.tag==='button'&&x.textContent==='查图 / 补第 6 镜');assert.ok(button);await button.onclick();
+ assert.match(confirmation,/一次出图额度/);const posts=calls.filter(c=>c.body);assert.equal(posts.length,2);assert.equal(posts[0].body.query_only,true);assert.equal(posts[1].path,'/api/task/fixture/retry-image');assert.equal(posts[1].body.index,6);assert.ok(posts[1].body.operation_id);
 });
 test('confirmed terminal failure permits a new user-confirmed operation on the same page',async()=>{
  const d=detail(),bodies=[];let confirms=0;const host=render(d,{confirm:()=>{confirms++;return true;},alert:()=>{},fetch:async(path,options)=>{
-  if(!options)return{ok:true,json:async()=>d};const body=JSON.parse(options.body);bodies.push(body);
+  if(!options)return{ok:true,json:async()=>d};const body=JSON.parse(options.body);if(body.query_only)return{ok:true,json:async()=>({needs_retry:true})};bodies.push(body);
   if(bodies.length===1)return{ok:false,json:async()=>({error:'明确拒绝',retryable:true})};
   d.steps.images.push({name:'6.png',url:'/six.png'});return{ok:true,json:async()=>({ok:true})};
  }});
- await host.all().find(x=>x.tag==='button'&&x.textContent==='仅补第 6 镜').onclick();
- await host.all().find(x=>x.tag==='button'&&x.textContent==='仅补第 6 镜').onclick();
+ await host.all().find(x=>x.tag==='button'&&x.textContent==='查图 / 补第 6 镜').onclick();
+ await host.all().find(x=>x.tag==='button'&&x.textContent==='查图 / 补第 6 镜').onclick();
  assert.equal(confirms,2);assert.notEqual(bodies[0].operation_id,bodies[1].operation_id);
 });
 test('repaired image-stage queue badge says ready to continue rather than historical failure',()=>{

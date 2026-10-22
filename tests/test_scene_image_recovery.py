@@ -22,6 +22,41 @@ class RecoveryTests(unittest.TestCase):
  def retry(self,operation='fixture-operation'):
   import scene_image_recovery
   return scene_image_recovery.retry(server,'fixture',{'index':6,'operation_id':operation})
+ def query(self):
+  import scene_image_recovery
+  return scene_image_recovery.retry(server,'fixture',{'index':6,'operation_id':'query-existing','query_only':True})
+ def test_pending_success_is_downloaded_using_original_id_without_new_generation(self):
+  job={**self.job,'status':'pending','credential':__import__('task_cover').credential(server.resolve_image_config(server.load_settings(),'runninghub'))}
+  self.write('image-jobs/6.json',job)
+  with patch('task_cover.query_provider',return_value={'status':'SUCCESS','results':[{'url':'https://fixture.invalid/image'}]}) as query,patch('task_cover.image_bytes',return_value=self.png),patch.object(server,'image_dispatcher',side_effect=AssertionError('no generation')):
+   self.assertTrue(self.query()['ok']);self.assertTrue(self.query()['cached'])
+  query.assert_called_once();self.assertEqual(query.call_args.args[2],'old-fixture-id')
+  self.assertEqual((self.folder/'covers/6.png').read_bytes(),self.png)
+  self.assertEqual(json.loads((self.folder/'image-jobs/6.json').read_text('utf8'))['status'],'ok')
+ def test_query_confirmed_failure_updates_receipt_without_buying(self):
+  job={**self.job,'status':'pending','credential':__import__('task_cover').credential(server.resolve_image_config(server.load_settings(),'runninghub'))}
+  self.write('image-jobs/6.json',job)
+  with patch('task_cover.query_provider',return_value={'status':'FAILED','failReason':'worker failed'}),patch.object(server,'image_dispatcher',side_effect=AssertionError('no generation')):
+   self.assertTrue(self.query()['needs_retry'])
+  self.assertEqual(json.loads((self.folder/'image-jobs/6.json').read_text('utf8'))['status'],'failed')
+ def test_queued_query_releases_lease_and_preserves_queue_order(self):
+  self.write('client_config.json',{'generate':{},'tts':{},'image':{'provider':'runninghub'}})
+  queue=task_queue.get_queue(server);queue.enqueue('fixture')
+  before=queue.get('fixture')['id']
+  with patch.object(server,'image_dispatcher',side_effect=AssertionError('no generation')):self.assertTrue(self.query()['needs_retry'])
+  self.assertEqual(queue.get('fixture')['id'],before);self.assertEqual(queue.get('fixture')['status'],'queued')
+  self.assertNotIn('fixture',server.TASK_OPERATIONS)
+ def test_download_failure_keeps_success_url_and_next_query_downloads_without_polling_or_purchase(self):
+  self.write('image-jobs/6.json',{**self.job,'status':'download_pending','result':{'url':'https://fixture.invalid/saved'}})
+  with patch('task_cover.query_provider',side_effect=AssertionError('no polling')),patch.object(server,'image_dispatcher',side_effect=AssertionError('no generation')),patch('task_cover.image_bytes',side_effect=[OSError('download interrupted'),self.png]):
+   with self.assertRaises(OSError):self.query()
+   self.assertTrue(self.query()['ok'])
+ def test_query_replaces_an_empty_placeholder_without_overwriting_a_successful_image(self):
+  (self.folder/'covers/6.png').write_bytes(b'')
+  self.write('image-jobs/6.json',{**self.job,'status':'download_pending','result':{'url':'https://fixture.invalid/saved'}})
+  with patch('task_cover.image_bytes',return_value=self.png),patch.object(server,'image_dispatcher',side_effect=AssertionError('no generation')):
+   self.assertTrue(self.query()['ok'])
+  self.assertEqual((self.folder/'covers/6.png').read_bytes(),self.png)
  def test_only_failed_index_is_retried_and_duplicate_operation_reuses_completed_file(self):
   before=(self.folder/'covers/1.png').read_bytes()
   with patch.object(server,'image_dispatcher',return_value={'b64':base64.b64encode(self.png).decode()}) as generate:

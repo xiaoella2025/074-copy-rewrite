@@ -1,0 +1,77 @@
+--- before/scene_image_recovery.py
++++ scene_image_recovery.py
+@@ -2,0 +3 @@
++from contextlib import contextmanager
+@@ -3,0 +5 @@
++import os
+@@ -6,0 +9 @@
++import uuid
+@@ -17,0 +21,41 @@
++@contextmanager
++def query_lease(backend,tid):
++    # A queued workflow may safely retrieve an existing paid result, but its
++    # worker must not start the same task until the download has finished.
++    with backend.TASK_OPERATION_LOCK:
++        job=task_queue.get_queue(backend).get(tid)
++        if tid in backend.TASK_OPERATIONS or job and job['status'] in ('running','pausing','cancelling'):
++            raise ValueError('本任务正在处理，请等当前阶段完成后再查图')
++        backend.TASK_OPERATIONS.add(tid)
++    try:yield
++    finally:
++        with backend.TASK_OPERATION_LOCK:backend.TASK_OPERATIONS.discard(tid)
++        task_queue.get_queue(backend).wake.set()
++
++def query_existing(backend,tid,index,folder):
++    with query_lease(backend,tid):
++        import scene_images,image_auto_retry
++        _,target,_=scene_images.context(backend,tid,index,True)
++        if target.is_file() and target.stat().st_size:
++            return {'ok':True,'index':index,'cached':True}
++        receipt=folder/'image-jobs'/f'{index}.json';job=image_auto_retry.read_record(receipt)
++        if job.get('status') in ('failed','rejected') and not job.get('result'):
++            return {'ok':False,'index':index,'needs_retry':True}
++        if not job.get('result'):
++            if not job.get('taskId'):raise ValueError('没有可查询的原任务编号，请核对供应商记录；不会重复购买')
++            try:job=image_auto_retry.query_original(backend,None,receipt,job)
++            except RuntimeError as error:
++                if '仍在途或状态不明' in str(error):return {'ok':False,'index':index,'pending':True}
++                raise
++            if job.get('status')=='failed':return {'ok':False,'index':index,'needs_retry':True}
++        raw=task_cover.image_bytes(job['result'])
++        target.parent.mkdir(exist_ok=True);temporary=target.with_name(target.name+'.'+uuid.uuid4().hex+'.tmp')
++        try:
++            temporary.write_bytes(raw)
++            try:os.link(temporary,target)
++            except FileExistsError:
++                if target.stat().st_size==0:os.replace(temporary,target)
++        finally:temporary.unlink(missing_ok=True)
++        backend.complete_image_receipt(folder,index)
++        return {'ok':True,'index':index,'recovered':True}
++
+@@ -19 +63 @@
+-    if not isinstance(data,dict) or set(data)-{'index','operation_id'}:raise ValueError('补图参数无效')
++    if not isinstance(data,dict) or set(data)-{'index','operation_id','query_only'} or ('query_only' in data and type(data['query_only']) is not bool):raise ValueError('补图参数无效')
+@@ -22,0 +67 @@
++    if data.get('query_only'):return query_existing(backend,tid,index,folder)
+--- before/assets/workflow_view.js
++++ assets/workflow_view.js
+@@ -750 +750,3 @@
+-          const retry=node('button','wv-shot-redraw',`仅补第 ${idx} 镜`);retry.type='button';retry.disabled=taskBusy();retry.title='只重新生成这一张缺图，会消耗绘图额度；已完成的图片不重画';
++          const retry=node('button','wv-shot-redraw',`查图 / 补第 ${idx} 镜`);retry.type='button';
++          const queryBusy=()=>imageRetryPending||controlPending||(taskBusy()&&detail?.info?.queue?.status!=='queued');
++          retry.disabled=queryBusy();retry.title='先查询原任务取回图片；只有明确失败并经确认后才重画本镜，成功图片保留';
+@@ -752 +754 @@
+-            if(taskBusy()||!confirm(`只补第 ${idx} 镜，会消耗一次出图额度。其他图片保持原样，是否继续？`))return;
++            if(queryBusy())return;
+@@ -755 +757,10 @@
+-            try{await postTask('retry-image',{index:idx,operation_id:imageRetryOperations.get(key)});await refreshDetail();selectTab('gallery');if(handlers.onTaskUpdated)await handlers.onTaskUpdated();}
++            try{
++              const found=await postTask('retry-image',{index:idx,operation_id:imageRetryOperations.get(key),query_only:true});
++              if(found.pending){notice=`第 ${idx} 镜原任务仍在生成，请稍后再查；未重复购买。`;await refreshDetail();return;}
++              if(found.needs_retry){
++                if(detail?.info?.queue?.status==='queued'){notice=`第 ${idx} 镜已确认失败，任务已排队，将按原流程补图；如需单独重画，请先暂停本条。`;await refreshDetail();return;}
++                if(!confirm(`第 ${idx} 镜已确认失败。只重画这一张会消耗一次出图额度，其他图片保持原样，是否继续？`))return;
++                await postTask('retry-image',{index:idx,operation_id:imageRetryOperations.get(key)});
++              }
++              await refreshDetail();selectTab('gallery');if(handlers.onTaskUpdated)await handlers.onTaskUpdated();
++            }
