@@ -72,7 +72,9 @@
 +      warning.append(details);
 +    }
 +    return warning;
-@@ -594 +632,16 @@
+@@ -113,0 +152 @@
++    add(4, '补充要求', gen.extra ?? req.extra);
+@@ -594 +633,16 @@
 -            if(prompt.diagnostic?.fellBackToSkeleton)row.append(node('div','wv-prompt-warning','AI 提示词未通过校验，当前使用赛道兜底画面；可从绘图提示词步骤重跑。'));
 +            if(prompt.diagnostic?.fellBackToSkeleton){
 +              const warning=promptWarning(prompt.diagnostic),repair=node('button','','尝试修复格式');repair.type='button';

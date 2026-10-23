@@ -19,7 +19,7 @@ assets=['assets/workflow_view.js']
 new_assets=[]
 new_modules=['prompt_format_repair']
 python_tests=['test_prompt_format_repair','test_story_parity','test_template_library']
-node_tests=['prompt_diagnostic.test.cjs','workflow_failure.test.js','image_completion_repair.test.js']
+node_tests=['prompt_diagnostic.test.cjs','workflow_failure.test.js','image_completion_repair.test.js','task_params.test.js','task_reuse.test.js']
 targets={'server':[('step3_image_prompts',),('Handler','_handle_json_post')]}
 
 

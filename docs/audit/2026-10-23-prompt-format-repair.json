@@ -1,19 +1,19 @@
 {
-  "status": "candidate-verified-awaiting-normal-exit",
+  "status": "installed-and-verified",
   "gates": {
     "tested.json": {
       "testsRun": 31,
       "success": true,
-      "manifestSha256": "9a859b0e1273f99165320ed07f799b46f6d2b3816c847409244b876d10ebe4e4",
+      "manifestSha256": "9890b2df91f14340d3828a2bdfe16d2e45b36d13a6cdf7b85a9655d5d0ce9ee4",
       "providerRequests": 0
     },
     "candidate-node-results.json": {
       "success": true,
-      "manifestSha256": "9a859b0e1273f99165320ed07f799b46f6d2b3816c847409244b876d10ebe4e4"
+      "manifestSha256": "9890b2df91f14340d3828a2bdfe16d2e45b36d13a6cdf7b85a9655d5d0ce9ee4"
     },
     "candidate-entry-results.json": {
       "success": true,
-      "manifestSha256": "9a859b0e1273f99165320ed07f799b46f6d2b3816c847409244b876d10ebe4e4",
+      "manifestSha256": "9890b2df91f14340d3828a2bdfe16d2e45b36d13a6cdf7b85a9655d5d0ce9ee4",
       "actualDesktopEntry": true,
       "explicitLocalRepair": true,
       "idempotent": true,
@@ -22,14 +22,26 @@
     },
     "browser-results.json": {
       "success": true,
-      "manifestSha256": "9a859b0e1273f99165320ed07f799b46f6d2b3816c847409244b876d10ebe4e4",
+      "manifestSha256": "9890b2df91f14340d3828a2bdfe16d2e45b36d13a6cdf7b85a9655d5d0ce9ee4",
+      "visibleExtraRequirement": true,
       "visibleFormatReason": true,
       "explicitButtonRepaired": true,
       "visibleRepairedState": true,
+      "copyPayloadUnitVerified": true,
+      "browserClipboardReadbackVerified": false,
+      "realProviderRequests": 0
+    },
+    "installed-entry-results.json": {
+      "success": true,
+      "manifestSha256": "9890b2df91f14340d3828a2bdfe16d2e45b36d13a6cdf7b85a9655d5d0ce9ee4",
+      "actualDesktopEntry": true,
+      "explicitLocalRepair": true,
+      "idempotent": true,
+      "existingImagesUnchanged": true,
       "realProviderRequests": 0
     }
   },
-  "installed": false,
+  "installed": true,
   "scope": [
     "server.step3_image_prompts",
     "server.Handler._handle_json_post",
@@ -37,5 +49,6 @@
     "assets/workflow_view.js"
   ],
   "productionTaskChanges": 0,
-  "realProviderRequests": 0
+  "realProviderRequests": 0,
+  "protectedFiles": 3396
 }

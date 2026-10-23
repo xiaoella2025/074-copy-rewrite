@@ -19,6 +19,7 @@ import prompt_format_repair
 task_queue.TaskQueue.start=lambda self:None
 folder=Path(FOLDER)
 shots=[{'idx':1,'text':'fixture'}]
+(folder/'client_config.json').write_text(json.dumps({'generate':{'extra':'不要添加人名，保留事实和数字。'}}),'utf8')
 raw='[{"id":1,"cap":"fixture "quote" text","desc_prompt":"老人站在庭院里看向远方"}]'
 server.call_llm=lambda *args,**kwargs:raw
 prompts=server.step3_image_prompts({'_prompt_response_dir':folder},shots,'character-story','vintage-film')
