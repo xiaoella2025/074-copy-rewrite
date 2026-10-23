@@ -1,5 +1,5 @@
 {
-  "status": "candidate-verified-not-installed",
+  "status": "installed-and-entry-verified",
   "gates": {
     "tested.json": {
       "testsRun": 89,
@@ -38,9 +38,20 @@
       "conflictingFaceTermsRemoved": true,
       "originalTaskAndImagesUnchanged": true,
       "realProviderRequests": 0
+    },
+    "installed-entry-results.json": {
+      "success": true,
+      "manifestSha256": "28d8179b63b583c6deff9c684ee487c4bea9d98c853e6af025c0a0505284a7fc",
+      "actualDesktopEntry": true,
+      "explicitLocalRepair": true,
+      "idempotent": true,
+      "existingImagesUnchanged": true,
+      "realProviderRequests": 0
     }
   },
   "productionTaskChanges": 0,
   "realProviderRequests": 0,
-  "actualNewImageAppearanceVerified": false
+  "actualNewImageAppearanceVerified": false,
+  "businessFilesChanged": 0,
+  "protectedFiles": 3450
 }
