@@ -1,0 +1,41 @@
+{
+  "status": "candidate-verified-awaiting-normal-exit",
+  "gates": {
+    "tested.json": {
+      "testsRun": 31,
+      "success": true,
+      "manifestSha256": "9a859b0e1273f99165320ed07f799b46f6d2b3816c847409244b876d10ebe4e4",
+      "providerRequests": 0
+    },
+    "candidate-node-results.json": {
+      "success": true,
+      "manifestSha256": "9a859b0e1273f99165320ed07f799b46f6d2b3816c847409244b876d10ebe4e4"
+    },
+    "candidate-entry-results.json": {
+      "success": true,
+      "manifestSha256": "9a859b0e1273f99165320ed07f799b46f6d2b3816c847409244b876d10ebe4e4",
+      "actualDesktopEntry": true,
+      "explicitLocalRepair": true,
+      "idempotent": true,
+      "existingImagesUnchanged": true,
+      "realProviderRequests": 0
+    },
+    "browser-results.json": {
+      "success": true,
+      "manifestSha256": "9a859b0e1273f99165320ed07f799b46f6d2b3816c847409244b876d10ebe4e4",
+      "visibleFormatReason": true,
+      "explicitButtonRepaired": true,
+      "visibleRepairedState": true,
+      "realProviderRequests": 0
+    }
+  },
+  "installed": false,
+  "scope": [
+    "server.step3_image_prompts",
+    "server.Handler._handle_json_post",
+    "prompt_format_repair",
+    "assets/workflow_view.js"
+  ],
+  "productionTaskChanges": 0,
+  "realProviderRequests": 0
+}

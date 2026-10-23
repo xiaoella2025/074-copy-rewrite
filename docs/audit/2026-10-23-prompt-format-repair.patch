@@ -1,0 +1,92 @@
+--- before/server.py
++++ server.py
+@@ -3312,0 +3313,2 @@
++    response_dir=llm_settings.get('_prompt_response_dir')
++
+@@ -3369 +3371 @@
+-        base_user=user_p;arr=None;attempts=[]
++        base_user=user_p;arr=None;attempts=[];responses=[]
+@@ -3372,0 +3375 @@
++                responses.append(text)
+@@ -3403,0 +3407,4 @@
++            repair_id=None
++            if response_dir is not None and responses:
++                import prompt_format_repair
++                repair_id=prompt_format_repair.save_source(response_dir,batch,responses,track,style_prefix,allow_color,reference_kind,style_suffix)
+@@ -3416 +3423 @@
+-                diagnostics[shot['idx']]={'fellBackToSkeleton':True,'attempts':attempts}
++                diagnostics[shot['idx']]={'fellBackToSkeleton':True,'attempts':attempts,**({'repairId':repair_id,'fallbackPrompt':all_results[shot['idx']]} if repair_id else {})}
+@@ -4500,0 +4508,10 @@
++        if self.path.startswith('/api/task/') and self.path.endswith('/repair-prompts'):
++            import prompt_format_repair
++            try:
++                parts=self.path[len('/api/task/'):].split('/')
++                if len(parts)!=2:raise ValueError('无效修复地址')
++                self._json(200,prompt_format_repair.apply(sys.modules[__name__],parts[0],data))
++            except ValueError as error:self._json(400,{'error':str(error)})
++            except TaskBusyError as error:self._json(409,{'error':str(error)})
++            except (OSError,RuntimeError):self._json(500,{'error':'本地修复未完成，原提示词和图片保留，请重新打开任务核对'})
++            return
+@@ -5480 +5497,2 @@
+-                    out["steps"]["3"] = step3_image_prompts(settings, shots, track, style_label, story_ctx, character_card,
++                    prompt_settings={**settings,'_prompt_response_dir':_tasks_root()/(data.get('task_id') or progress_task_id) if (data.get('task_id') or progress_task_id) else None}
++                    out["steps"]["3"] = step3_image_prompts(prompt_settings, shots, track, style_label, story_ctx, character_card,
+--- before/assets/workflow_view.js
++++ assets/workflow_view.js
+@@ -38,0 +39,38 @@
++  }
++
++  function promptFailureReason(value) {
++    const reason=typeof value==='string'?value:'';
++    // Saved JSON errors contain a response excerpt. Explain the failure without
++    // rendering that excerpt (dialogue, provider payloads or credentials).
++    if(/^LLM 返回值不是合法 JSON/.test(reason))return 'JSON 返回格式错误：引号、分隔符或数据完整性不符合要求。';
++    if(/^(?:LLM|HTTP|All available accounts|No available accounts)/i.test(reason)) {
++      const code=reason.match(/HTTP\s*(\d{3})/i)?.[1],status=code?'（HTTP '+code+'）':'';
++      if(/All\s+available\s+accounts\s+exhausted|No\s+available\s+accounts|无可用账号/i.test(reason))return '模型服务'+status+'：服务商当前无可用账号。';
++      if(code==='401'||code==='403')return '模型服务'+status+'：访问被拒绝，请检查凭据或权限。';
++      if(code==='429')return '模型服务'+status+'：请求被限流或额度受限。';
++      if(code)return '模型服务请求失败'+status+'。';
++      if(/连接失败|network|timeout|超时/i.test(reason))return '模型服务连接失败或请求超时。';
++    }
++    if(/^必须返回 \d+ 项 JSON 数组/.test(reason))return '返回的分镜数量或数组格式与输入不一致。';
++    if(/^分镜 id 或顺序/.test(reason))return '返回的分镜编号或顺序不一致，存在遗漏、重复或增删。';
++    if(/^每项必须有非空字符串 desc_prompt/.test(reason))return '返回结果缺少有效的画面描述（desc_prompt）。';
++    if(/^每项必须包含布尔值 use_reference/.test(reason))return '返回结果缺少有效的参考图使用判断（use_reference）。';
++    if(/^desc_prompt 缺少具象画面/.test(reason))return '画面描述缺少具体场景，只有台词或空话。';
++    if(/^desc_prompt 含元描述空话|^画面内容元描述/.test(reason))return '画面描述含空泛指令，缺少具体人物、物品或光影。';
++    if(/^引号包裹文字 |^(?:说出|吐出|撂下|念出|喊出|写着|提及|念叨|质问)含台词原文/.test(reason))return '画面描述直接引用台词，需要改成具体动作和神情。';
++    if(/^批次内半数以上画面末尾相同/.test(reason))return '批次内半数以上画面结尾重复，构图与光影变化不足。';
++    if(/^use_reference 整批一致/.test(reason))return '整批使用了相同的参考图判断，没有按分镜分别判断。';
++    return '现有记录无法确定具体原因。';
++  }
++
++  function promptWarning(diagnostic) {
++    const attempts=(Array.isArray(diagnostic.attempts)?diagnostic.attempts:[]).filter(item=>item&&typeof item==='object');
++    const warning=node('div','wv-prompt-warning');
++    const last=attempts.length?promptFailureReason(attempts[attempts.length-1].reason):'旧记录未记录具体原因。';
++    warning.append(node('div','',last+(attempts.length?' 已尝试 '+attempts.length+' 次。':'')+' 当前使用赛道备用画面；可从绘图提示词步骤重跑。'));
++    if(attempts.length){
++      const details=node('details',''),summary=node('summary','','查看每次失败原因');details.append(summary);
++      attempts.forEach((item,index)=>details.append(node('div','','第 '+(index+1)+' 次：'+promptFailureReason(item.reason))));
++      warning.append(details);
++    }
++    return warning;
+@@ -594 +632,16 @@
+-            if(prompt.diagnostic?.fellBackToSkeleton)row.append(node('div','wv-prompt-warning','AI 提示词未通过校验，当前使用赛道兜底画面；可从绘图提示词步骤重跑。'));
++            if(prompt.diagnostic?.fellBackToSkeleton){
++              const warning=promptWarning(prompt.diagnostic),repair=node('button','','尝试修复格式');repair.type='button';
++              const active=['running','queued','pausing','cancelling'].includes(detail?.info?.queue?.status);
++              repair.disabled=!prompt.diagnostic.repairId||active;
++              warning.append(repair);
++              warning.append(node('div','','仅修复本地格式，通过校验后替换备用提示词；不调用模型、不重新生图。'));
++              if(!prompt.diagnostic.repairId)warning.append(node('div','','旧记录未保存完整返回，无法本地修复。'));
++              else if(active)warning.append(node('div','','请等任务停止后再修复格式。'));
++              repair.onclick=async()=>{
++                if(repair.disabled)return;
++                repair.disabled=true;repair.textContent='修复中…';
++                try{await postTask('repair-prompts',{repair_id:prompt.diagnostic.repairId});await refreshDetail();}
++                catch(error){warning.append(node('div','','修复未完成：'+error.message));repair.disabled=false;repair.textContent='尝试修复格式';}
++              };
++              row.append(warning);
++            }else if(prompt.diagnostic?.formatRepaired)row.append(node('div','','提示词格式已本地修复并通过校验；现有图片保留。'));
