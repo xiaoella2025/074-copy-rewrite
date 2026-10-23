@@ -1,0 +1,34 @@
+{
+  "status": "candidate-verified-not-installed",
+  "gates": {
+    "tested.json": {
+      "testsRun": 88,
+      "success": true,
+      "manifestSha256": "c1bd49f70f8fffa16e1da27777321b3846434d76adc8577b0db6dd019ef1eb62",
+      "providerRequests": 0
+    },
+    "candidate-node-results.json": {
+      "success": true,
+      "manifestSha256": "c1bd49f70f8fffa16e1da27777321b3846434d76adc8577b0db6dd019ef1eb62"
+    },
+    "candidate-entry-results.json": {
+      "success": true,
+      "manifestSha256": "c1bd49f70f8fffa16e1da27777321b3846434d76adc8577b0db6dd019ef1eb62",
+      "actualDesktopEntry": true,
+      "explicitLocalRepair": true,
+      "idempotent": true,
+      "existingImagesUnchanged": true,
+      "realProviderRequests": 0
+    },
+    "browser-results.json": {
+      "success": true,
+      "manifestSha256": "c1bd49f70f8fffa16e1da27777321b3846434d76adc8577b0db6dd019ef1eb62",
+      "savedAndDisplayedNoFaceRequirement": true,
+      "providerWirePromptFakeVerified": true,
+      "actualImageGenerationVerified": false,
+      "realProviderRequests": 0
+    }
+  },
+  "productionTaskChanges": 0,
+  "realProviderRequests": 0
+}

@@ -1,0 +1,48 @@
+--- before/server.py
++++ server.py
+@@ -2162,0 +2163,2 @@
++    import visual_requirements
++    submitted_prompt=visual_requirements.apply(prompt,visual_requirements.load(task_dir))
+@@ -2166,2 +2168,2 @@
+-            return image_dispatcher(image_cfg, prompt, ratio=ratio, resolution=resolution, reference_data_url=reference_data_url)
+-        return image_dispatcher(image_cfg, prompt, ratio=ratio, resolution=resolution)
++            return image_dispatcher(image_cfg, submitted_prompt, ratio=ratio, resolution=resolution, reference_data_url=reference_data_url)
++        return image_dispatcher(image_cfg, submitted_prompt, ratio=ratio, resolution=resolution)
+@@ -2206 +2208 @@
+-               'credential': task_cover.credential(image_cfg), 'prompt': prompt, 'ratio': ratio, 'resolution': resolution}
++               'credential': task_cover.credential(image_cfg), 'prompt': prompt, 'submittedPrompt':submitted_prompt, 'ratio': ratio, 'resolution': resolution}
+@@ -2215 +2217 @@
+-            result = image_dispatcher(image_cfg, prompt, ratio=ratio, resolution=resolution,
++            result = image_dispatcher(image_cfg, submitted_prompt, ratio=ratio, resolution=resolution,
+@@ -3313,0 +3316,2 @@
++    import visual_requirements
++    visual_extra=llm_settings.get('_visual_extra') or ''
+@@ -3370,0 +3375 @@
++        user_p+='\n\n'+visual_requirements.block(visual_extra)
+@@ -3403 +3408 @@
+-                all_results[int(idx)] = p
++                all_results[int(idx)] = visual_requirements.apply(p,visual_extra)
+@@ -3421,0 +3427 @@
++                all_results[shot['idx']]=visual_requirements.apply(all_results[shot['idx']],visual_extra)
+@@ -3433 +3439 @@
+-        {"idx": s["idx"], "text": s["text"], "desc_prompt": all_results.get(s["idx"], ""),
++        {"idx": s["idx"], "text": s["text"], "desc_prompt": visual_requirements.apply(all_results.get(s["idx"], ""),visual_extra),
+@@ -5497 +5503 @@
+-                    prompt_settings={**settings,'_prompt_response_dir':_tasks_root()/(data.get('task_id') or progress_task_id) if (data.get('task_id') or progress_task_id) else None}
++                    prompt_settings={**settings,'_visual_extra':extra,'_prompt_response_dir':_tasks_root()/(data.get('task_id') or progress_task_id) if (data.get('task_id') or progress_task_id) else None}
+--- before/task_cover.py
++++ task_cover.py
+@@ -247,0 +248,2 @@
++    import visual_requirements
++    system+='\n'+visual_requirements.block(visual_requirements.load(folder))
+@@ -250 +252 @@
+-    return backend.compose_story_cover_prompt(visual,info['title'],info['subtitle'],info['withTitle'],info['style'],selected)
++    return visual_requirements.apply(backend.compose_story_cover_prompt(visual,info['title'],info['subtitle'],info['withTitle'],info['style'],selected),visual_requirements.load(folder))
+@@ -395,0 +398,2 @@
++        import visual_requirements
++        prompt=visual_requirements.apply(prompt,visual_requirements.load(folder))
+--- before/prompt_format_repair.py
++++ prompt_format_repair.py
+@@ -68,0 +69,2 @@
++            import visual_requirements
++            value=visual_requirements.apply(value,visual_requirements.load(folder))

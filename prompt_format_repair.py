@@ -66,6 +66,8 @@ def apply(backend,tid,data):
         for p in selected:
             value=by_id[p['idx']]['desc_prompt']
             if not source['allow_color']:value=backend.story_grayscale_prompt(value,backend.story_workflow_reference())
+            import visual_requirements
+            value=visual_requirements.apply(value,visual_requirements.load(folder))
             p['desc_prompt']=value
             if source['reference_kind']:p['use_reference']=by_id[p['idx']]['use_reference']
             p['diagnostic']={**p['diagnostic'],'fellBackToSkeleton':False,'formatRepaired':True}
