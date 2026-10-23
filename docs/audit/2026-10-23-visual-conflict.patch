@@ -1,0 +1,21 @@
+--- before/server.py
++++ server.py
+@@ -3333 +3333 @@
+-    if character_card and character_card.get("identity") and isinstance(character_card.get("ageStages"), list):
++    if character_card and not visual_requirements.no_face(visual_extra) and character_card.get("identity") and isinstance(character_card.get("ageStages"), list):
+@@ -3372 +3372 @@
+-            f"返回 JSON 数组（长度 {len(batch)}），每项含 id/cap/desc_prompt"
++            f"返回 JSON 数组（长度 {len(batch)}），每项只含 id/desc_prompt，不要复述 cap 或原文。字符串内双引号必须按 JSON 转义，换行必须转义，不要输出分析或示例"
+@@ -3418 +3418 @@
+-            stages=(character_card or {}).get('ageStages') or []
++            stages=[] if visual_requirements.no_face(visual_extra) else (character_card or {}).get('ageStages') or []
+--- before/visual_requirements.py
++++ visual_requirements.py
+@@ -5,0 +6 @@
++COMPOSITION='环境与物品为主体的远景叙事，若有人物仅见完全背对镜头的后脑和后背，镜头位于人物正后方'
+@@ -27,0 +29 @@
++        if prompt.startswith(COMPOSITION):prompt=prompt[len(COMPOSITION):].lstrip('，\n ')
+@@ -29 +31,2 @@
+-        prompt='，'.join(part for part in clauses if part and (re.search(r'不|无|禁止|避免',part) or not re.search(r'半身肖像|人物肖像|人物特写|面部特写|面容|面庞|五官|正脸|侧脸|正面|眼神|神情|眼镜|胡须|眉眼',part)))
++        prompt='，'.join(part for part in clauses if part and (re.search(r'不|无|禁止|避免',part) or not re.search(r'半身肖像|人物肖像|人物特写|面部特写|面孔|脸孔|脸庞|脸颊|面容|面庞|五官|正脸|侧脸|正面|眼神|目光|眼睛|神情|眼镜|胡须|眉眼|嘴角',part)))
++        prompt=COMPOSITION+'，'+prompt

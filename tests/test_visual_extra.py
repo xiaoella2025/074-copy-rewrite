@@ -16,6 +16,14 @@ class VisualExtraTests(unittest.TestCase):
  def test_other_requirements_do_not_turn_on_no_face_and_empty_preserves_prompt(self):
   self.assertEqual(visual.apply('侧脸肖像',''),'侧脸肖像')
   self.assertIn('侧脸肖像',visual.apply('侧脸肖像','用蓝色背景'))
+ def test_face_synonyms_and_default_character_card_cannot_override_no_face(self):
+  card={'identity':'fixture-person','ageStages':[{'stage':'青年','appearance':'瘦削书生面孔，目光专注，眼睛明亮','eraVisuals':'旧书桌和印刷机'}]}
+  with patch.object(server,'call_llm',return_value='[]') as call:
+   rows=server.step3_image_prompts({'_visual_extra':EXTRA},[{'idx':1,'text':'人物来到印刷车间'}],'character-story','vintage-film',character_card=card)
+  self.assertNotIn('瘦削书生面孔',call.call_args.args[2]);self.assertNotIn('fixture-person',rows[0]['desc_prompt'])
+  for word in ['面孔','目光','眼睛']:self.assertNotIn(word,visual.apply('瘦削书生面孔，目光专注，眼睛明亮，印刷车间',EXTRA))
+  self.assertTrue(rows[0]['desc_prompt'].startswith('环境与物品为主体'))
+  self.assertIn('不要复述 cap',call.call_args.args[2])
  def test_persisted_empty_requirement_wins_over_old_request(self):
   with tempfile.TemporaryDirectory() as d:
    root=Path(d);(root/'request.json').write_text(json.dumps({'extra':EXTRA}),'utf8')

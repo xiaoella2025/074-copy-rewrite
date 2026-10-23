@@ -3,6 +3,7 @@ import json,re
 from pathlib import Path
 
 MARKER='【用户补充要求】'
+COMPOSITION='环境与物品为主体的远景叙事，若有人物仅见完全背对镜头的后脑和后背，镜头位于人物正后方'
 def load(folder):
     folder=Path(folder)
     for filename,nested in [('client_config.json',True),('request.json',False)]:
@@ -25,6 +26,8 @@ def apply(prompt,extra):
     if not extra:return prompt
     prompt=prompt.split(MARKER,1)[0].rstrip()
     if no_face(extra):
+        if prompt.startswith(COMPOSITION):prompt=prompt[len(COMPOSITION):].lstrip('，\n ')
         clauses=re.split(r'[，,。；;\n]+',prompt)
-        prompt='，'.join(part for part in clauses if part and (re.search(r'不|无|禁止|避免',part) or not re.search(r'半身肖像|人物肖像|人物特写|面部特写|面容|面庞|五官|正脸|侧脸|正面|眼神|神情|眼镜|胡须|眉眼',part)))
+        prompt='，'.join(part for part in clauses if part and (re.search(r'不|无|禁止|避免',part) or not re.search(r'半身肖像|人物肖像|人物特写|面部特写|面孔|脸孔|脸庞|脸颊|面容|面庞|五官|正脸|侧脸|正面|眼神|目光|眼睛|神情|眼镜|胡须|眉眼|嘴角',part)))
+        prompt=COMPOSITION+'，'+prompt
     return prompt.rstrip()+'\n'+block(extra)

@@ -1,0 +1,46 @@
+{
+  "status": "candidate-verified-not-installed",
+  "gates": {
+    "tested.json": {
+      "testsRun": 89,
+      "success": true,
+      "manifestSha256": "28d8179b63b583c6deff9c684ee487c4bea9d98c853e6af025c0a0505284a7fc",
+      "providerRequests": 0
+    },
+    "candidate-node-results.json": {
+      "success": true,
+      "manifestSha256": "28d8179b63b583c6deff9c684ee487c4bea9d98c853e6af025c0a0505284a7fc"
+    },
+    "candidate-entry-results.json": {
+      "success": true,
+      "manifestSha256": "28d8179b63b583c6deff9c684ee487c4bea9d98c853e6af025c0a0505284a7fc",
+      "actualDesktopEntry": true,
+      "explicitLocalRepair": true,
+      "idempotent": true,
+      "existingImagesUnchanged": true,
+      "realProviderRequests": 0
+    },
+    "browser-results.json": {
+      "success": true,
+      "manifestSha256": "28d8179b63b583c6deff9c684ee487c4bea9d98c853e6af025c0a0505284a7fc",
+      "noFaceCompositionVisible": true,
+      "manualRepairVisible": true,
+      "realProviderRequests": 0
+    },
+    "real-response-replay.json": {
+      "responsesReadOnlyReplayed": 3,
+      "validatedShotsPerResponse": [
+        11,
+        11,
+        11
+      ],
+      "noFaceCompositionPresent": true,
+      "conflictingFaceTermsRemoved": true,
+      "originalTaskAndImagesUnchanged": true,
+      "realProviderRequests": 0
+    }
+  },
+  "productionTaskChanges": 0,
+  "realProviderRequests": 0,
+  "actualNewImageAppearanceVerified": false
+}
