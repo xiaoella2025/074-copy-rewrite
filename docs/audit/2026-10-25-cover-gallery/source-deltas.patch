@@ -1,0 +1,326 @@
+--- before/task_cover.py
++++ task_cover.py
+@@ -111 +111 @@
+-    prompt=backend.compose_story_cover_prompt(directions[direction],title,subs,with_title,style,selected) if directions else job.get('prompt','')
++    prompt=backend.compose_story_cover_prompt(directions[direction],title,subs,with_title,style,selected) if directions else ''
+@@ -128,0 +129,7 @@
++    # History stays inspectable when edited options invalidate the current prompt.
++    # Never promote that history to a new paid submission automatically.
++    result['lastPrompt']=next((value for value in (job.get('prompt'),cover.get('prompt'),cached.get('prompt')) if isinstance(value,str) and value.strip()),'')
++    result['available']=slot==1 or bool(cover or job or editor or cfg.get('extraCover') or base.get('extra') or base.get('extraCover') or request.get('extra_cover'))
++    result['imageInfo']=__import__('cover_images').view(backend,tid,slot,selection=result)
++    if result['imageInfo'].get('recoveryNeeded'):result['cover']={}
++    result['completed']=__import__('task_versions').completed(folder)
+@@ -183,12 +190,2 @@
+-    folder=folder_for(backend,tid);meta_path,target=paths(folder,slot)
+-    # Keep the previous image until validation/download has completed.
+-    tmp=target.with_name(target.name+'.'+uuid.uuid4().hex+'.tmp')
+-    try:
+-        tmp.write_bytes(raw);os.replace(tmp,target)
+-    finally:tmp.unlink(missing_ok=True)
+-    value={**extra,'path':str(target),'url':f'/api/task_cover/{tid}/{slot}.png','updatedAt':time.time_ns()}
+-    write(meta_path,value)
+-    if (folder/'creative.json').is_file():
+-        state=read(folder/'creative.json',{});state['cover2' if slot==2 else 'cover']=value['url'];state['revision']=state.get('revision',0)+1
+-        write(folder/'creative.json',state)
+-    return value
++    return __import__('cover_images').commit(backend,tid,slot,raw,extra)
++
+@@ -246,0 +244,16 @@
++        with __import__('scene_images').LOCK:__import__('cover_images').recover(folder)
++        if name=='recover':return view(backend,tid,slot)
++        if name!='query':__import__('cover_images').require_idle(folder)
++        import task_versions
++        if name in ('save','save-template','directions','generate','upload','replace-unknown') and task_versions.completed(folder):
++            if name=='save':validate_options(backend,data)
++            if name=='generate' and (not isinstance(data.get('operation_id'),str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,100}',data['operation_id'])):raise ValueError('缺少有效封面操作编号')
++            key='cover:'+str(slot)+':'+name+':'+(data.get('operation_id') or hashlib.sha256(json.dumps(data,sort_keys=True,ensure_ascii=False).encode()).hexdigest())
++            new_id=task_versions.fork(backend,tid,'cover',operation_key=key)
++            try:
++                with backend.task_operation(new_id):
++                    result=_action(backend,folder_for(backend,new_id),new_id,slot,name,data)
++            except Exception as error:
++                error.task_id=new_id
++                raise
++            return {**result,'task_id':new_id,'source_task_id':tid}
+@@ -249,0 +263 @@
++    __import__('cover_images').require_idle(folder)
+@@ -297 +311,4 @@
+-    folder=folder_for(backend,tid);info=view(backend,tid,slot);job=info['job'];cover=info['cover']
++    folder=folder_for(backend,tid)
++    with __import__('scene_images').LOCK:__import__('cover_images').recover(folder)
++    __import__('cover_images').require_idle(folder)
++    info=view(backend,tid,slot);job=info['job'];cover=info['cover']
+--- before/task_queue.py
++++ task_queue.py
+@@ -106,2 +106,2 @@
+-                batch['task_ids'].append(tid)
+-                self.enqueue(tid,kind=kind,config=config,batch_id=batch['id'],persist=False)
++                job=self.enqueue(tid,kind=kind,config=config,batch_id=batch['id'],persist=False)
++                if job['task_id'] not in batch['task_ids']:batch['task_ids'].append(job['task_id'])
+@@ -189 +189 @@
+-    def enqueue(self, task_id, from_step=None, kind='image', config=None, batch_id=None,persist=True):
++    def enqueue(self, task_id, from_step=None, kind='image', config=None, batch_id=None,persist=True,operation_id=None):
+@@ -194,0 +195 @@
++        if operation_id is not None and (not isinstance(operation_id,str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,100}',operation_id)):raise ValueError('无效重跑操作编号')
+@@ -210,0 +212,9 @@
++            import task_versions
++            if kind=='image' and task_versions.completed(folder):
++                source_id=task_id;source_folder=folder
++                signature=__import__('hashlib').sha256(json.dumps([from_step,config,batch_id],sort_keys=True).encode()).hexdigest()
++                task_id=task_versions.fork(self.backend,task_id,'pipeline',operation_key='queue:'+(operation_id or signature))
++                if self._find(task_id):return self.get(task_id)
++                folder=self.data_dir/'tasks'/task_id
++                config=task_versions.rebase(config,source_folder,folder,source_id,task_id)
++                old=None
+@@ -318 +328,3 @@
+-                with scene_images.LOCK:scene_images.recover(folder)
++                with scene_images.LOCK:
++                    scene_images.recover(folder)
++                    __import__('cover_images').recover(folder)
+@@ -319,0 +332 @@
++                __import__('cover_images').require_idle(folder)
+--- before/server.py
++++ server.py
+@@ -66 +66,3 @@
+-            with scene_images.LOCK:scene_images.recover(folder)
++            with scene_images.LOCK:
++                scene_images.recover(folder)
++                __import__('cover_images').recover(folder)
+@@ -68 +70,3 @@
+-                try:__import__('scene_reference').require_idle(folder)
++                try:
++                    __import__('scene_reference').require_idle(folder)
++                    __import__('cover_images').require_idle(folder)
+@@ -621 +625 @@
+-    if field not in ("rewrite", "shots", "prompts", "redraw"):
++    if field not in ("rewrite", "shots", "prompts", "redraw", "pipeline"):
+@@ -625,0 +630,3 @@
++    if field=='pipeline':
++        intent=value.get('operation_id') if isinstance(value,dict) else None
++        return __import__('task_versions').fork(sys.modules[__name__],task_id,'pipeline',operation_key='edit:'+intent if isinstance(intent,str) and re.fullmatch(r'[A-Za-z0-9_-]{1,100}',intent) else None)
+@@ -4058,0 +4066,13 @@
++        if self.path.startswith('/api/cover-image/'):
++            import cover_images
++            try:
++                parts=self.path[len('/api/cover-image/'):].split('/')
++                if len(parts) not in (2,3):raise ValueError('封面图片地址无效')
++                tid,slot=parts[0],int(parts[1])
++                if len(parts)==2:self._json(200,cover_images.view(sys.modules[__name__],tid,slot))
++                else:
++                    if not parts[2].endswith('.png'):raise ValueError('封面图片地址无效')
++                    raw=__import__('scene_images').png_bytes(cover_images.media(sys.modules[__name__],tid,slot,parts[2][:-4]).read_bytes())
++                    self.send_response(200);self.send_header('Content-Type','image/png');self.send_header('Content-Length',str(len(raw)));self.send_header('Cache-Control','no-store');self.end_headers();self.wfile.write(raw)
++            except (ValueError,OSError) as error:self._json(400,{'error':str(error)})
++            return
+@@ -4543,0 +4564 @@
++        if __import__('task_versions').route_completed(sys.modules[__name__],self,data):return
+@@ -4612,0 +4634,8 @@
++        if self.path.startswith('/api/cover-image/'):
++            import cover_images
++            try:
++                parts=self.path[len('/api/cover-image/'):].split('/')
++                if len(parts)!=3:raise ValueError('封面图片接口无效')
++                self._json(200,cover_images.action(sys.modules[__name__],parts[0],int(parts[1]),parts[2],data))
++            except (ValueError,OSError,RuntimeError) as error:self._json(409,{'error':str(error),'task_id':getattr(error,'task_id',None),'source_task_id':getattr(error,'source_task_id',None)})
++            return
+@@ -4619 +4648 @@
+-            except (ValueError,OSError,RuntimeError) as error:self._json(409,{'error':str(error)})
++            except (ValueError,OSError,RuntimeError) as error:self._json(409,{'error':str(error),'task_id':getattr(error,'task_id',None)})
+@@ -4643 +4672 @@
+-                if parts[1]=='enqueue':result=queue.enqueue(parts[0],from_step=data.get('from_step'))
++                if parts[1]=='enqueue':result=queue.enqueue(parts[0],from_step=data.get('from_step'),operation_id=data.get('operation_id'))
+@@ -5621 +5650 @@
+-                self._json(200, task_queue.get_queue(sys.modules[__name__]).enqueue(task_id, from_step=str(data.get('from_step'))))
++                self._json(200, task_queue.get_queue(sys.modules[__name__]).enqueue(task_id, from_step=str(data.get('from_step')),operation_id=data.get('operation_id')))
+@@ -5638,0 +5668,7 @@
++                    import task_versions
++                    if task_versions.completed(task_dir):
++                        intent=__import__('hashlib').sha256(json.dumps(data,sort_keys=True).encode()).hexdigest()
++                        task_id=task_versions.fork(sys.modules[__name__],task_id,'config',operation_key='config:'+intent)
++                        task_dir=_tasks_root()/task_id
++                        if task_versions.completed(task_dir) or task_id in TASK_OPERATIONS or task_queue.get_queue(sys.modules[__name__]).owns(task_id):
++                            self._json(200,{'ok':True,'task_id':task_id});return
+@@ -5640,0 +5677,3 @@
++                    ancestry=task_cover.read(task_dir/'fork.json',{}).get('source_task_id')
++                    if isinstance(ancestry,str) and re.fullmatch(r'[A-Za-z0-9_-]{1,100}',ancestry):
++                        data=task_versions.rebase(data,_tasks_root()/ancestry,task_dir,ancestry,task_id)
+--- before/scene_image_recovery.py
++++ scene_image_recovery.py
+@@ -67,0 +68,10 @@
++    import task_versions
++    if task_versions.completed(folder):
++        with backend.task_operation(tid):
++            child=task_versions.fork(backend,tid,'retry-image',operation_key='retry-image:'+str(index)+':'+operation)
++        try:result=retry(backend,child,data)
++        except Exception as error:
++            error.task_id=child
++            error.source_task_id=tid
++            raise
++        return {**result,'task_id':child,'source_task_id':tid}
+@@ -122 +132 @@
+-            handler._json(409,{'error':str(error) if not isinstance(error,(json.JSONDecodeError,UnicodeError,OSError)) else '补图记录无法读取或保存，请检查记录和磁盘','retryable':bool(getattr(error,'retryable',False))})
++            handler._json(409,{'error':str(error) if not isinstance(error,(json.JSONDecodeError,UnicodeError,OSError)) else '补图记录无法读取或保存，请检查记录和磁盘','retryable':bool(getattr(error,'retryable',False)),'task_id':getattr(error,'task_id',None),'source_task_id':getattr(error,'source_task_id',None)})
+--- before/assets/task_cover.js
++++ assets/task_cover.js
+@@ -6 +6 @@
+- async function api(path,body){const r=await fetch(path,body===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}),v=await r.json();if(!r.ok)throw Error(v.error||'HTTP '+r.status);return v;}
++ async function api(path,body){const r=await fetch(path,body===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}),v=await r.json();if(!r.ok){const error=Error(v.error||'HTTP '+r.status);error.task_id=v.task_id;throw error;}return v;}
+@@ -24 +24,2 @@
+-  async function act(name,body={},changes=false){if(busy)return;busy=true;draw();try{info=await api(base+'/'+name,{slot,...body});if(['generate','query','upload'].includes(name)&&info.job.status==='ok'||name==='upload')actionError=null;if(name==='generate')operationId=root.crypto?.randomUUID?.()||'cover-'+Date.now();if(changes&&onChanged){try{await onChanged();}catch(e){report('封面已保存，页面刷新失败，请稍后刷新页面。',true);}}if(host.isConnected){edited=false;draw();report(info.message||(['generate','query','upload'].includes(name)?'封面已更新，已有草稿请点「重新打包」':'已保存'));}}catch(e){try{info=await api(base+'?slot='+slot);}catch(_){}if(host.isConnected){if(['generate','query'].includes(name)){actionError=failure(e.message);notice=null;draw();}else report('封面操作失败，请检查输入和设置后重试。',true);}}finally{busy=false;if(host.isConnected)draw();}}
++  function goRevision(value){if(value?.task_id&&value.task_id!==taskId&&/^[A-Za-z0-9_-]{1,100}$/.test(value.task_id)){root.location.href='/result.html?task='+encodeURIComponent(value.task_id);return true;}return false;}
++  async function act(name,body={},changes=false){if(busy)return;busy=true;draw();try{info=await api(base+'/'+name,{slot,...body});if(goRevision(info))return;if(['generate','query','upload'].includes(name)&&info.job.status==='ok'||name==='upload')actionError=null;if(name==='generate')operationId=root.crypto?.randomUUID?.()||'cover-'+Date.now();if(changes&&onChanged){try{await onChanged();}catch(e){report('封面已保存，页面刷新失败，请稍后刷新页面。',true);}}if(host.isConnected){edited=false;draw();report(info.message||(['generate','query','upload'].includes(name)?'封面已更新，已有草稿请点「重新打包」':'已保存'));}}catch(e){if(goRevision(e))return;try{info=await api(base+'?slot='+slot);}catch(_){}if(host.isConnected){if(['generate','query'].includes(name)){actionError=failure(e.message);notice=null;draw();}else report('封面操作失败，请检查输入和设置后重试。',true);}}finally{busy=false;if(host.isConnected)draw();}}
+@@ -43,0 +45,16 @@
++  function galleryDetails(card,pending){
++   if(!options.gallery)return;
++   const block=node('div','cover-gallery-details'),image=info.imageInfo||{};
++   block.append(node('b','','当前图片使用的提示词'),node('pre','cover-gallery-prompt',image.actualPrompt||((image.current||info.cover.url)?'这张封面未保存出图提示词。':'尚无封面图片。')));
++   if(image.actualPrompt)block.append(button('复制图片提示词',()=>copy(image.actualPrompt)));
++   if(info.prompt&&info.prompt!==image.actualPrompt)block.append(node('b','','当前参数准备出图的提示词'),node('pre','cover-gallery-prompt',info.prompt));
++   else if(!image.actualPrompt&&info.lastPrompt)block.append(node('b','','上次保存的提示词（仅供参考）'),node('pre','cover-gallery-prompt',info.lastPrompt));
++   if(info.prompt)block.append(button('复制待出图提示词',()=>copy(info.prompt)));
++   if(image.provider)block.append(node('small','cover-result-hint','当前图片来源：'+(providers.find(x=>x[0]===image.provider)?.[1]||image.provider)));
++   const actions=node('div','wv-gallery-actions');
++   if(root.app074SceneImages){for(const [label,name] of [['裁剪','open'],['参考图编辑','reference'],['图片历史','history']]){
++    const disabled=pending&&name!=='reference'||!(image.current||info.cover.url)&&name!=='history';
++    actions.append(button(label,()=>root.app074SceneImages[name]({taskId,index:slot,coverSlot:slot,caption:[info.title,...info.subtitle].join('\n'),onChanged:async()=>{await refresh();await onChanged?.();}}).catch(error=>report(error.message,true)),disabled));
++   }}
++   block.prepend(actions);card.append(block);
++  }
+@@ -46 +63,2 @@
+-   host.replaceChildren();const card=node('section','cover-result-card'),head=node('div','cover-result-head'),body=node('div','cover-result-body');
++   host.replaceChildren();const card=node('section','cover-result-card'),head=node('div','cover-result-head'),body=node('div','cover-result-body'+(options.gallery?' cover-gallery-body':''));
++   if(info.completed)card.append(node('p','cover-result-message','原任务已完成；修改封面会另建新任务，历史成品保留。'));
+@@ -49,2 +67,3 @@
+-   const pending=['submitting','unknown','pending','download_pending'].includes(info.job.status),local=['local','upload'].includes(info.mode);
+-   const source=info.cover.url?info.cover.url+(info.cover.url.includes('?')?'&':'?')+'v='+(info.cover.updatedAt||Date.now()):'';
++   const pending=['submitting','unknown','pending','download_pending'].includes(info.job.status)||['submitting','unknown','pending','download_pending'].includes(info.imageInfo?.referenceJob?.status)||info.imageInfo?.recoveryNeeded,local=['local','upload'].includes(info.mode);
++   const imageURL=options.gallery?(info.imageInfo?.current||info.cover.url):info.cover.url;
++   const source=imageURL?imageURL+(imageURL.includes('?')?'&':'?')+'v='+(info.cover.updatedAt||Date.now()):'';
+@@ -51,0 +71 @@
++   if(info.imageInfo?.recoveryNeeded){head.append(button('恢复封面保存',()=>act('recover',{},true)));card.append(head,node('p','cover-result-message','上次封面保存未完成，点击恢复可取回本地结果，不重新生成。'));host.append(card);return;}
+@@ -56 +76 @@
+-    body.append(thumb,node('p','cover-result-hint','这张封面来自本地图片，未使用 AI 出图。想换图点「换本地图」；想让 AI 按模板重新设计，点「改用 AI 出图」。'));
++    body.append(thumb);if(options.gallery)galleryDetails(body,pending);else body.append(node('p','cover-result-hint','这张封面来自本地图片，未使用 AI 出图。想换图点「换本地图」；想让 AI 按模板重新设计，点「改用 AI 出图」。'));
+@@ -63 +83 @@
+-   if(info.mode==='off'&&!source&&!expanded){head.append(button('生成封面海报',()=>{expanded=true;draw();}));card.append(head,node('p','cover-result-message',previous||'未生成 · 建任务时选了不生成'));host.append(card);return;}
++   if(info.mode==='off'&&!source&&!expanded){head.append(button('生成封面海报',()=>{expanded=true;draw();}));card.append(head,node('p','cover-result-message',previous||'未生成 · 建任务时选了不生成'));galleryDetails(card,pending);host.append(card);return;}
+@@ -66 +86,2 @@
+-   head.append(button(source?'换本地图':'上传图片',upload,pending),button('编辑提示词',()=>{showPrompt=!showPrompt;draw();},pending),button('复制提示词',()=>copy(info.prompt),!info.prompt),button('编辑封面文字',()=>titleEditor(body),pending));
++   const visiblePrompt=info.prompt||info.lastPrompt||'';
++   head.append(button(source?'换本地图':'上传图片',upload,pending),button('编辑提示词',()=>{showPrompt=!showPrompt;draw();}),button('复制提示词',()=>copy(visiblePrompt),!visiblePrompt),button('编辑封面文字',()=>titleEditor(body),pending));
+@@ -68 +89 @@
+-   card.append(head);if(showPrompt){const editor=node('div','cover-result-editor'),text=node('textarea');text.value=info.prompt;text.rows=6;text.setAttribute('aria-label','完整的封面海报提示词');editor.append(node('p','','编辑本次出图用的完整提示词（已含画面风格与标题文字指令）。本次一次性，不改动构图方向 / 风格 / 模板设置。'),text,button('取消',()=>{showPrompt=false;draw();}),button('出图（用修改的提示词）',()=>act('generate',{operation_id:operationId,prompt:text.value}),pending,true));card.append(editor);}
++   card.append(head);if(showPrompt){const editor=node('div','cover-result-editor'),text=node('textarea'),historical=!info.prompt&&!!info.lastPrompt;text.value=visiblePrompt;text.rows=6;text.readOnly=pending;text.setAttribute('aria-label','完整的封面海报提示词');const submit=button('出图（用修改的提示词）',()=>act('generate',{operation_id:operationId,prompt:text.value}),pending||historical||!visiblePrompt,true);text.oninput=()=>{submit.disabled=busy||pending||!text.value.trim()||(historical&&text.value===visiblePrompt);};editor.append(node('p','',historical?'上次保存的提示词：当前参数已变化，仅供参考。请先在这里改正文字，再明确点击出图；不会自动使用旧词重新生成。':visiblePrompt?'编辑本次出图用的完整提示词（已含画面风格与标题文字指令）。本次一次性，不改动构图方向 / 风格 / 模板设置。':'尚无已保存的提示词。可先生成构图方向，或在这里填写完整提示词。'),node('small','',pending?'封面生成期间可查看、复制，不能修改或再次出图。':'点击出图会提交一次新的生图请求，按所选平台计费；保存封面文字不会直接修改已有图片。'),text,button('取消',()=>{showPrompt=false;draw();}),submit);card.append(editor);}
+@@ -74 +95 @@
+-   body.append(thumb,controls);card.append(body,message());host.append(card);
++   body.append(thumb);if(options.gallery){galleryDetails(body,pending);const settings=node('details','cover-gallery-settings');settings.append(node('summary','','封面模板与构图设置'),controls);card.append(body,settings,message());}else{body.append(controls);card.append(body,message());}host.append(card);
+--- before/assets/workflow_actions.js
++++ assets/workflow_actions.js
+@@ -130,0 +131 @@
++const TASK_RESUME_OPERATIONS_074=new Map();
+@@ -136 +137,4 @@
+-  const job=await api(`/api/task/${encodeURIComponent(taskId)}/enqueue`, "POST", {from_step:String(fromKey)});
++  const intentKey=taskId+':'+fromKey;
++  if(!TASK_RESUME_OPERATIONS_074.has(intentKey))TASK_RESUME_OPERATIONS_074.set(intentKey,globalThis.crypto?.randomUUID?.()||'resume-'+Date.now()+'-'+Math.random().toString(16).slice(2));
++  const job=await api(`/api/task/${encodeURIComponent(taskId)}/enqueue`, "POST", {from_step:String(fromKey),operation_id:TASK_RESUME_OPERATIONS_074.get(intentKey)});
++  TASK_RESUME_OPERATIONS_074.delete(intentKey);
+@@ -138 +142 @@
+-  location.href = "/result.html?task=" + encodeURIComponent(taskId);
++  location.href = "/result.html?task=" + encodeURIComponent(job.task_id||taskId);
+@@ -146,0 +151,2 @@
++  let revisionCreated=false;
++  const revisionOperation=globalThis.crypto?.randomUUID?.()||'revision-'+Date.now()+'-'+Math.random().toString(16).slice(2);
+@@ -210 +216 @@
+-    saveControl.textContent=waitingForPause?'暂停完成后可保存':resumePausedDraft?'保存并从断点续跑':'保存并从这一步重跑';
++    saveControl.textContent=waitingForPause?'暂停完成后可保存':resumePausedDraft?'保存并从断点续跑':((detail.info?.completed_steps||[]).map(String).includes('6')||detail.steps?.draft?.draft_dir)?'保存为新任务并重跑':'保存并从这一步重跑';
+@@ -476,0 +483,4 @@
++      if(!revisionCreated&&((detail.info?.completed_steps||[]).map(String).includes('6')||detail.steps?.draft?.draft_dir)){
++        const revision=await api('/api/task/fork','POST',{task_id:taskId,field:'pipeline',value:{operation_id:revisionOperation}});
++        if(!revision.task_id)throw Error('未取得新版本任务编号');taskId=revision.task_id;revisionCreated=true;
++      }
+@@ -486 +496,2 @@
+-      await api(`/api/task/${encodeURIComponent(taskId)}/config`, "POST", nextCfg);
++      const savedConfig=await api(`/api/task/${encodeURIComponent(taskId)}/config`, "POST", nextCfg);
++      if(savedConfig.task_id)taskId=savedConfig.task_id;
+--- before/assets/workflow_view.js
++++ assets/workflow_view.js
+@@ -13 +13 @@
+-  const TAB_NAMES = {preview: "▤ 产物预览", audio: "♫ 配音试听", gallery: "▧ 分镜画廊", captions: "☷ 字幕断行"};
++  const TAB_NAMES = {preview: "▤ 产物预览", audio: "♫ 配音试听", gallery: "▧ 分镜画廊", covers: "▧ 封面画廊", captions: "☷ 字幕断行"};
+@@ -264,0 +265,2 @@
++    const taskMutationOperations=new Map();
++    let revisionNavigation='';
+@@ -265,0 +268 @@
++    let coverGalleryTask='',coverGalleryControllers=[];
+@@ -276,0 +280 @@
++      if(key==='covers')renderCoverGallery();
+@@ -879,2 +883,11 @@
+-      const res = await fetch(`/api/task/${encodeURIComponent(taskId)}/${action}`, {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+-      const value = await res.json(); if (!res.ok){const error=new Error(value.error || "操作失败");error.retryable=value.retryable===true;throw error;} return value;
++      const key=JSON.stringify([taskId,action,body]);
++      if(!taskMutationOperations.has(key))taskMutationOperations.set(key,body.operation_id||root.crypto?.randomUUID?.()||'edit-'+Date.now()+'-'+Math.random().toString(16).slice(2));
++      const res = await fetch(`/api/task/${encodeURIComponent(taskId)}/${action}`, {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...body,operation_id:taskMutationOperations.get(key)})});
++      const value = await res.json();
++      if(value.source_task_id&&value.task_id&&value.task_id!==taskId&&/^[A-Za-z0-9_-]{1,100}$/.test(value.task_id)){
++        taskId=value.task_id;root.history?.replaceState?.(null,'','/result.html?task='+encodeURIComponent(taskId));
++        revisionNavigation=taskId;
++        if(!res.ok){try{await refreshDetail();}catch(_){}}
++      }
++      if (!res.ok){const error=new Error(value.error || "操作失败");error.retryable=value.retryable===true;throw error;}
++      taskMutationOperations.delete(key);return value;
+@@ -888,0 +902,18 @@
++      if(revisionNavigation&&root.location){const next=revisionNavigation;revisionNavigation='';root.location.href='/result.html?task='+encodeURIComponent(next);}
++    }
++    function renderCoverGallery(){
++      if(activeTab!=='covers')return;
++      const panel=panels.covers;
++      if(!taskId||!root.app074TaskCover){panel.replaceChildren(node('p','wv-empty','任务创建后显示封面。'));return;}
++      const creative=detail?.creative||{},cfg=creative.config||{};
++      const extra=!!(detail?.steps?.cover2||detail?.steps?.meta?.cover2||cfg.extraCover||detail?.request?.extra_cover||detail?.client_config?.cover?.extra||detail?.client_config?.cover?.extraCover);
++      const key=taskId+':'+extra;
++      if(coverGalleryTask!==key){
++        for(const controller of coverGalleryControllers)controller.dispose?.();coverGalleryControllers=[];coverGalleryTask=key;panel.replaceChildren();
++        for(const slot of extra?[1,2]:[1]){const host=node('div');panel.append(host);coverGalleryControllers.push(root.app074TaskCover.render(host,{taskId,slot,gallery:true,onChanged:async()=>{await refreshDetail();selectTab('covers');await handlers.onTaskUpdated?.();}}));}
++        // Older tasks may have a second cover without a saved enable flag.
++        if(!extra)fetch('/api/task-cover/'+encodeURIComponent(taskId)+'?slot=2').then(r=>r.ok?r.json():null).then(info=>{
++          if(coverGalleryTask!==key||!info||!info.available)return;
++          const host=node('div');panel.append(host);coverGalleryControllers.push(root.app074TaskCover.render(host,{taskId,slot:2,gallery:true,onChanged:async()=>{await refreshDetail();selectTab('covers');await handlers.onTaskUpdated?.();}}));
++        }).catch(()=>{});
++      }else for(const controller of coverGalleryControllers)controller.refresh?.();
+@@ -937,0 +969 @@
++      renderCoverGallery();
+--- before/assets/scene_image_editor.js
++++ assets/scene_image_editor.js
+@@ -20,2 +20,2 @@
+- async function api(path,body){const r=await fetch(path,body===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}),v=await r.json();if(!r.ok)throw Error(v.error||'操作失败');return v;}
+- const base=(id,index)=>'/api/scene-image/'+encodeURIComponent(id)+'/'+index;
++ async function api(path,body){const r=await fetch(path,body===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}),v=await r.json();if(v.source_task_id&&v.task_id&&/^[A-Za-z0-9_-]{1,100}$/.test(v.task_id))root.location.href='/result.html?task='+encodeURIComponent(v.task_id);if(!r.ok)throw Error(v.error||'操作失败');return v;}
++ const base=(id,index,options={})=>(options.coverSlot?'/api/cover-image/':'/api/scene-image/')+encodeURIComponent(id)+'/'+index;
+@@ -27 +27 @@
+-  const {taskId,index}=options,path=base(taskId,index),info=await api(path);
++  const {taskId,index}=options,path=base(taskId,index,options),info=await api(path);
+@@ -62,2 +62,2 @@
+- async function history(options){const path=base(options.taskId,options.index),info=await api(path),overlay=n('div','scene-crop-overlay'),dialog=n('div','scene-history-dialog'),head=n('header'),status=n('p','scene-crop-status');let busy=false;
+-  const close=()=>{if(!busy)overlay.remove();};head.append(n('b','','图片历史 · #'+String(options.index).padStart(2,'0')),button('×',close,'scene-crop-close'));const grid=n('div','scene-history-grid');
++ async function history(options){const path=base(options.taskId,options.index,options),info=await api(path),overlay=n('div','scene-crop-overlay'),dialog=n('div','scene-history-dialog'),head=n('header'),status=n('p','scene-crop-status');let busy=false;
++  const close=()=>{if(!busy)overlay.remove();};head.append(n('b','',(options.coverSlot?'封面历史 · ':'图片历史 · #')+String(options.index).padStart(2,'0')),button('×',close,'scene-crop-close'));const grid=n('div','scene-history-grid');
+@@ -66 +66 @@
+-    try{await api(path+'/restore',{id:entry.id,expectedRevision:info.revision});busy=false;close();await changed(options);}catch(e){busy=false;status.textContent=e.message;for(const button of dialog.querySelectorAll('button'))button.disabled=false;}},'btn btn-sm');card.append(img,n('small','hint',new Date(entry.savedAt*1000).toLocaleString()),b);grid.append(card);}
++    try{await api(path+'/restore',{id:entry.id,expectedRevision:info.revision});busy=false;close();await changed(options);}catch(e){busy=false;status.textContent=e.message;for(const button of dialog.querySelectorAll('button'))button.disabled=false;}},'btn btn-sm');card.append(img,n('small','hint',new Date(entry.savedAt*1000).toLocaleString()));if(options.coverSlot)card.append(n('p','hint',entry.prompt||'此版本未保存提示词'));card.append(b);grid.append(card);}
+@@ -69 +69 @@
+- async function replace(options){const path=base(options.taskId,options.index),info=await api(path),file=document.createElement('input');file.type='file';file.accept='image/png,image/jpeg,image/webp,image/bmp';file.onchange=()=>{const selected=file.files[0];if(!selected)return;if(selected.size>20*1024*1024){alert('图片超过20MB');return;}const reader=new FileReader();reader.onload=async()=>{try{await api(path+'/replace',{data_url:reader.result,expectedRevision:info.revision});await changed(options);}catch(e){alert(e.message);}};reader.onerror=()=>alert('读取图片失败');reader.readAsDataURL(selected);};file.click();}
++ async function replace(options){const path=base(options.taskId,options.index,options),info=await api(path),file=document.createElement('input');file.type='file';file.accept='image/png,image/jpeg,image/webp,image/bmp';file.onchange=()=>{const selected=file.files[0];if(!selected)return;if(selected.size>20*1024*1024){alert('图片超过20MB');return;}const reader=new FileReader();reader.onload=async()=>{try{await api(path+'/replace',{data_url:reader.result,expectedRevision:info.revision});await changed(options);}catch(e){alert(e.message);}};reader.onerror=()=>alert('读取图片失败');reader.readAsDataURL(selected);};file.click();}
+@@ -71 +71 @@
+-  const path=base(options.taskId,options.index),info=await api(path),controller=new AbortController(),overlay=n('div','scene-crop-overlay'),dialog=n('div','scene-reference-dialog'),input=n('input'),thumbs=n('div','ref-edit-thumbs'),drop=n('div','ref-edit-drop'),instruction=n('textarea'),error=n('div','ref-edit-error'),footer=n('div','ref-edit-actions');
++  const path=base(options.taskId,options.index,options),info=await api(path),controller=new AbortController(),overlay=n('div','scene-crop-overlay'),dialog=n('div','scene-reference-dialog'),input=n('input'),thumbs=n('div','ref-edit-thumbs'),drop=n('div','ref-edit-drop'),instruction=n('textarea'),error=n('div','ref-edit-error'),footer=n('div','ref-edit-actions');
+@@ -98 +98 @@
+-  footer.append(pickMaterial,cancel,query,submit);submit.title='生成新图（Ctrl/Cmd+Enter）';dialog.append(n('h3','','参考图编辑 · #'+String(options.index).padStart(2,'0')),n('p','hint','字幕原文：'+(options.caption||'')),n('div','ref-edit-section-label','参考图：原图自动作为基底，可追加最多 2 张额外参考图'),drop,n('div','ref-edit-section-label','修改指令'),instruction,n('small','hint','使用系统设置里的绘图凭据，按所选平台计费。'),error,footer);overlay.append(dialog);overlay.onclick=e=>{if(e.target===overlay)close();};window.addEventListener('keydown',e=>{if(e.key==='Escape'){e.preventDefault();close();}else if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();if(!pending())run(false);}},{signal:controller.signal});document.body.append(overlay);
++  footer.append(pickMaterial,cancel,query,submit);submit.title='生成新图（Ctrl/Cmd+Enter）';dialog.append(n('h3','','参考图编辑 · #'+String(options.index).padStart(2,'0')),n('p','hint',(options.coverSlot?'封面文字：':'字幕原文：')+(options.caption||'')),n('div','ref-edit-section-label','参考图：原图自动作为基底，可追加最多 2 张额外参考图'),drop,n('div','ref-edit-section-label','修改指令'),instruction,n('small','hint',options.coverSlot?'使用当前封面所选引擎（'+(info.editProviderLabel||info.provider||'跟随系统')+'），生成新图按所选平台计费；不支持编辑的引擎不会自动切换。':'使用系统设置里的绘图凭据，按所选平台计费。'),error,footer);overlay.append(dialog);overlay.onclick=e=>{if(e.target===overlay)close();};window.addEventListener('keydown',e=>{if(e.key==='Escape'){e.preventDefault();close();}else if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();if(!pending())run(false);}},{signal:controller.signal});document.body.append(overlay);
+--- before/assets/task_cover.css
++++ assets/task_cover.css
+@@ -4,0 +5,4 @@
++
++.cover-gallery-details{padding:12px 16px;border-top:1px solid var(--border)}.cover-gallery-details>b{display:block;margin:8px 0;font-size:12px}.cover-gallery-prompt{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;font-size:12px;line-height:1.7;color:var(--text-secondary);user-select:text;margin:8px 0 12px}.cover-gallery-details .wv-gallery-actions{margin:10px 0;display:flex;flex-wrap:wrap;gap:6px}
++
++.cover-gallery-body>.cover-gallery-details{flex:1;min-width:0;padding:0;border-top:0}.cover-gallery-settings{padding:12px 16px;border-top:1px solid var(--border);font-size:12px}.cover-gallery-settings>summary{cursor:pointer;color:var(--text-secondary)}.cover-gallery-settings .cover-result-options{margin-top:12px}.cover-gallery-details .cover-gallery-prompt{margin-top:6px}

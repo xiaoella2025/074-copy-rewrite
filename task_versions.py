@@ -26,7 +26,7 @@ def rebase(value,source,target,old_id,new_id):
     for prefix in (str(source),source.as_posix()):
         if value==prefix:return str(target)
         if value.startswith(prefix+'\\') or value.startswith(prefix+'/'):return str(target)+value[len(prefix):]
-    for kind in ('task_cover','task_video','task_image','audio','task_animation'):
+    for kind in ('task_cover','task_video','task_image','audio','task_animation','cover-image'):
         prefix='/api/'+kind+'/'+old_id+'/'
         if value.startswith(prefix):return '/api/'+kind+'/'+new_id+'/'+value[len(prefix):]
     return value
