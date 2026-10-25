@@ -143,4 +143,15 @@ class CoverGalleryTests(unittest.TestCase):
   with self.assertRaises(RuntimeError) as failure:cover_images.action(server,'test',1,'reference',{'action':'generate','operation_id':'private-error','prompt':'correct text','references':[uri()]})
   self.assertNotIn('SENTINEL_PRIVATE_KEY',str(failure.exception));self.assertNotIn('SENTINEL_PRIVATE_KEY',(self.folder/'cover-reference-1.json').read_text('utf8'))
 
+ def test_plain_cover_reference_keeps_existing_no_text_mode(self):
+  task_cover.write(self.folder/'client_config.json',{'cover':{'mode':'plain'}})
+  result=cover_images.action(server,'test',1,'reference',{'action':'generate','operation_id':'plain','prompt':'修改风景','references':[uri()]})
+  state=task_cover.view(server,'test',1);self.assertEqual(state['mode'],'plain');self.assertFalse(state['withTitle'])
+ def test_plain_cover_history_restore_keeps_no_text_mode(self):
+  task_cover.write(self.folder/'client_config.json',{'cover':{'mode':'plain'}})
+  task_cover.commit(server,'test',1,png('white'),{'prompt':'无字底图'})
+  result=cover_images.action(server,'test',1,'replace',{'data_url':uri()})
+  cover_images.action(server,'test',1,'restore',{'id':result['history'][0]['id']})
+  state=task_cover.view(server,'test',1);self.assertEqual(state['mode'],'plain');self.assertFalse(state['withTitle'])
+
 if __name__=='__main__':unittest.main()

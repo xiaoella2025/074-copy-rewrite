@@ -15,6 +15,12 @@ def recover(backend,task_id,archive_name,backup):
     if source.resolve().parent!=root.resolve():raise ValueError('恢复路径无效')
     marker=task_cover.read(source/'restored-history.json',{})
     if task_versions.completed(source) and marker:return {**marker,'alreadyRestored':True}
+    was_completed=task_versions.completed(source)
+    current_finished=task_cover.read(source/'06-draft-meta.json',{}) if was_completed else None
+    current_draft=None
+    if was_completed:
+        current_draft=Path(current_finished.get('draft_content_path') or Path(current_finished['draft_dir'])/'draft_content.json')
+        if not current_draft.is_file() or not json.loads(current_draft.read_text('utf8')).get('tracks'):raise ValueError('当前成品草稿无法核验，先保留现状')
     archive=source/'.reruns'/archive_name
     if archive.resolve().parent!=(source/'.reruns').resolve():raise ValueError('归档路径无效')
     meta=task_cover.read(archive/'06-draft-meta.json',{})
@@ -27,11 +33,12 @@ def recover(backend,task_id,archive_name,backup):
     if any(j['status'] in task_queue.ACTIVE for j in jobs):raise ValueError('请先暂停该任务并退出074')
     if backup.exists() or source.resolve() in backup.resolve().parents:raise ValueError('恢复备份路径无效')
     backup.mkdir(parents=True);shutil.copytree(source,backup/'current-task');(backup/'task-queue.json').write_bytes(queue_bytes)
-    expected=hashes(archive);draft_hash=hashlib.sha256(draft.read_bytes()).hexdigest();new_id=None
+    expected=hashes(archive);draft_hash=hashlib.sha256(draft.read_bytes()).hexdigest();current_draft_hash=hashlib.sha256(current_draft.read_bytes()).hexdigest() if current_draft else None;new_id=None
     try:
         with patch.object(task_queue,'get_queue',return_value=SimpleNamespace(owns=lambda _:False)):
             new_id=task_versions.fork(backend,task_id,'recovered-working-version')
         target=root/new_id
+        if was_completed:task_cover.write(target/'06-draft-meta.json',task_versions.rebase(current_finished,source,target,task_id,new_id))
         for item in archive.iterdir():
             dest=source/item.name
             if dest.resolve().parent!=source.resolve():raise ValueError('写入路径越界')
@@ -51,7 +58,9 @@ def recover(backend,task_id,archive_name,backup):
         position=queue['jobs'].index(current) if jobs else len(queue['jobs'])
         queue['jobs']=[j for j in queue['jobs'] if j['task_id']!=task_id]
         working=task_versions.rebase(current,source,target,task_id,new_id)
-        working.update(task_id=new_id,status='paused',manual_pause=True,config=task_cover.read(target/'client_config.json',{}))
+        working.update(task_id=new_id,status='completed' if was_completed else 'paused',config=task_cover.read(target/'client_config.json',{}))
+        if was_completed:working.pop('manual_pause',None)
+        else:working['manual_pause']=True
         queue['jobs'].insert(min(position,len(queue['jobs'])),working)
         queue['jobs'].append({'id':uuid.uuid4().hex,'task_id':task_id,'kind':'image','status':'completed','config':task_cover.read(source/'client_config.json',{}),'created_at':source.stat().st_ctime,'updated_at':(archive/'06-draft-meta.json').stat().st_mtime,'recovered_from_archive':archive_name})
         for batch in queue.get('batches',[]):
@@ -61,11 +70,12 @@ def recover(backend,task_id,archive_name,backup):
         task_cover.write(queue_path,queue)
         task_cover.write(source/'progress.json',{'step':'6','status':'done','recovered_from_archive':archive_name})
         progress=task_cover.read(backup/'current-task/progress.json',{})
-        task_cover.write(target/'progress.json',{**progress,'status':'paused'})
+        task_cover.write(target/'progress.json',{**progress,'status':'done' if was_completed else 'paused'})
         assert all(hashlib.sha256((source/name).read_bytes()).hexdigest()==digest for name,digest in expected.items())
         assert hashlib.sha256(draft.read_bytes()).hexdigest()==draft_hash
-        assert not (target/'06-draft-meta.json').exists()
-        result={'original_task_id':task_id,'working_task_id':new_id,'archive':archive_name,'originalCompleted':True,'workingPaused':True,'archivedFilesVerified':len(expected),'externalDraftUnchanged':True,'originalConfigSnapshotAvailable':False,'realGenerationSubmissions':0}
+        assert (target/'06-draft-meta.json').exists()==was_completed
+        if current_draft:assert hashlib.sha256(current_draft.read_bytes()).hexdigest()==current_draft_hash
+        result={'original_task_id':task_id,'working_task_id':new_id,'archive':archive_name,'originalCompleted':True,'workingPaused':not was_completed,'workingCompleted':was_completed,'currentExternalDraftUnchanged':True,'archivedFilesVerified':len(expected),'externalDraftUnchanged':True,'originalConfigSnapshotAvailable':False,'realGenerationSubmissions':0}
         task_cover.write(source/'restored-history.json',result)
         return result
     except BaseException:

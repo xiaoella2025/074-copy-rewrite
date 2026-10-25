@@ -61,7 +61,8 @@ def commit(backend,tid,slot,raw,extra,extra_writes=None):
    prior=store(folder,previous)
    origin=item.get('origin') if item.get('revision')==revision(previous) else prior
    history=[{'id':uuid.uuid4().hex,'file':prior,'origin':origin or prior,'crop':item.get('crop') if item.get('revision')==revision(previous) else None,'meta':oldmeta,'savedAt':time.time()},*history][:5]
-  extra=dict(extra);crop=extra.pop('_cover_crop',None);origin=extra.pop('_cover_origin',None)
+  selected=task_cover.view(backend,tid,slot)
+  extra=dict(extra);extra.setdefault('imageMode',selected['mode']);extra.setdefault('imageWithTitle',selected['withTitle']);crop=extra.pop('_cover_crop',None);origin=extra.pop('_cover_origin',None)
   current=store(folder,raw);origin=origin or current
   # Every referenced path is owned by this task, including restored origins.
   images.bounded(folder,origin)
@@ -94,6 +95,7 @@ def view(backend,tid,slot,selection=None):
    'actualPrompt':meta.get('prompt','') if raw else '', 'provider':meta.get('provider',''),
    'history':[{'id':e['id'],'url':base+e['id']+'.png','savedAt':e['savedAt'],'prompt':e.get('meta',{}).get('prompt',''),'provider':e.get('meta',{}).get('provider','')} for e in item.get('history',[])],
    'editProviderLabel':selection['provider'] or '跟随系统',
+   'motion':__import__('cover_motion').view(backend,tid,slot),
    'referenceJob':{k:job[k] for k in ('status','taskId','provider','operationId','prompt','error') if k in job}}
 
 def media(backend,tid,slot,key):
@@ -109,6 +111,7 @@ def media(backend,tid,slot,key):
   return images.bounded(folder,entry['file'])
 
 def require_idle(folder):
+ __import__('cover_motion').require_idle(folder)
  if any(read(folder/f'cover-reference-{slot}.json',{}).get('status') in PENDING for slot in (1,2)):
   raise ValueError('封面参考图编辑在途或提交状态不明，请先查询原任务')
 
@@ -144,7 +147,7 @@ def action(backend,tid,slot,name,data):
     raw=images.bounded(folder,entry['file']).read_bytes();meta={**entry.get('meta',{}),'_cover_crop':entry.get('crop'),'_cover_origin':entry['origin']}
    writes={f'cover-job-{slot}.json':{}}
    if name in ('replace','restore'):
-    editors=read(folder/'cover-editor.json',{});editors[str(slot)]={**editors.get(str(slot),{}),'mode':'local' if meta.get('provider')=='upload' else 'titled'};writes['cover-editor.json']=editors
+    editors=read(folder/'cover-editor.json',{});selected=task_cover.view(backend,tid,slot);with_title=meta.get('imageWithTitle',selected['withTitle']);mode=meta.get('imageMode',selected['mode']);mode='local' if meta.get('provider')=='upload' else mode if mode not in ('local','upload','off') else 'titled' if with_title else 'plain';editors[str(slot)]={**editors.get(str(slot),{}),'mode':mode,'withTitle':with_title};writes['cover-editor.json']=editors
    commit(backend,tid,slot,raw,meta,extra_writes=writes)
    return view(backend,tid,slot)
 
@@ -193,7 +196,7 @@ def reference(backend,tid,slot,data):
    if spec.get('image_param')=='image' and len(refs)>1:raise ValueError('当前模型只支持1张参考图')
   if not cfg.get('api_key'):raise ValueError('请先配置绘图凭据')
   cfg={**cfg,'auto_fallback_gpt':False}
-  job={'status':'submitting','operationId':op,'provider':cfg['provider'],'credential':task_cover.credential(cfg),'prompt':prompt.strip(),'sourcePrompt':info['actualPrompt'],'ratio':selected['ratio'],'revision':info['revision']};write(path,job)
+  job={'status':'submitting','operationId':op,'provider':cfg['provider'],'credential':task_cover.credential(cfg),'prompt':prompt.strip(),'sourcePrompt':info['actualPrompt'],'imageMode':selected['mode'],'imageWithTitle':selected['withTitle'],'ratio':selected['ratio'],'revision':info['revision']};write(path,job)
   def remember(task_id,actual_cfg=None):
    job.update(taskId=task_id,status='pending',credential=task_cover.credential(actual_cfg or cfg));write(path,job)
   try:result=backend.image_dispatcher(cfg,prompt.strip(),ratio=job['ratio'],resolution=cfg.get('resolution') or '1k',reference_data_url=normalized,on_task_id=remember)
@@ -221,6 +224,7 @@ def reference(backend,tid,slot,data):
  current=view(backend,tid,slot)
  if current['revision']!=job['revision']:raise ValueError('封面已经更新，保留原编辑结果，请核对后处理')
  job.update(status='ok',appliedRevision=revision(raw))
- editors=read(folder/'cover-editor.json',{});editors[str(slot)]={**editors.get(str(slot),{}),'mode':'titled'}
- commit(backend,tid,slot,raw,{'provider':job['provider'],'prompt':'参考图编辑指令：'+job['prompt'],'sourcePrompt':job.get('sourcePrompt','')},extra_writes={path.name:job,f'cover-job-{slot}.json':{},'cover-editor.json':editors})
+ selected=task_cover.view(backend,tid,slot);with_title=job.get('imageWithTitle',selected['withTitle']);mode=job.get('imageMode',selected['mode']);mode=mode if mode not in ('local','upload','off') else 'titled' if with_title else 'plain'
+ editors=read(folder/'cover-editor.json',{});editors[str(slot)]={**editors.get(str(slot),{}),'mode':mode,'withTitle':with_title}
+ commit(backend,tid,slot,raw,{'provider':job['provider'],'prompt':'参考图编辑指令：'+job['prompt'],'sourcePrompt':job.get('sourcePrompt',''),'imageMode':mode,'imageWithTitle':with_title},extra_writes={path.name:job,f'cover-job-{slot}.json':{},'cover-editor.json':editors})
  return view(backend,tid,slot)

@@ -2,7 +2,7 @@ const test=require('node:test'),assert=require('node:assert/strict'),fs=require(
 function setup(info,post,options={}){
  class El{constructor(tag){this.tag=tag;this.children=[];this.isConnected=true;this.className='';this.textContent='';this.value='';this.classList={toggle(){},add(){}};}append(...x){this.children.push(...x);}prepend(...x){this.children.unshift(...x);}replaceChildren(...x){this.children=x;}setAttribute(){}focus(){}querySelector(selector){return this.all().find(e=>e.className?.split(' ').includes(selector.slice(1)))||null;}all(){return this.children.flatMap(c=>[c,...(c.all?.()||[])]);}remove(){this.isConnected=false;}}
  const host=new El('host'),calls=[],copied=[];const context={window:{location:{href:''},crypto:{randomUUID:()=> 'fixed-operation'}},document:{createElement:t=>new El(t),body:new El('body')},navigator:{clipboard:{writeText:async text=>copied.push(text)}},Date,fetch:async(path,options={})=>{calls.push({path,body:options.body?JSON.parse(options.body):null});return options.method==='POST'?post(JSON.parse(options.body),path):{ok:true,json:async()=>info};}};
- vm.runInNewContext(fs.readFileSync('assets/task_cover.js','utf8'),context);const edits=[];context.window.app074SceneImages=Object.fromEntries(['open','history','reference'].map(name=>[name,async value=>edits.push({name,value})]));let control=context.window.app074TaskCover.render(host,{taskId:'fixture',gallery:true,...options});
+ vm.runInNewContext(fs.readFileSync('assets/task_cover.js','utf8'),context);const edits=[];context.window.app074SceneImages=Object.fromEntries(['open','history','reference','replace'].map(name=>[name,async value=>edits.push({name,value})]));let control=context.window.app074TaskCover.render(host,{taskId:'fixture',gallery:true,...options});
  return {host,calls,copied,edits,location:context.window.location,refresh:()=>control.refresh(),remount:()=>{control.dispose();control=context.window.app074TaskCover.render(host,{taskId:'fixture'});},button:label=>host.all().find(e=>e.tag==='button'&&e.textContent===label)};
 }
 function info(extra={}){return {title:'title',subtitle:[],template:'template',templates:[{id:'template',name:'模板',directions:[{label:'正面'}]}],directions:['scene'],direction:0,ratio:'3:4',withTitle:true,mode:'titled',cover:{},prompt:'stored original prompt',provider:'',job:{},...extra};}
@@ -35,4 +35,10 @@ test('cover gallery is adjacent to scene gallery and scene dialogs support separ
 test('legacy covers without meta URL render and edit through the cover media endpoint',async()=>{
  const s=setup(info({cover:{path:'legacy-owned-file'},imageInfo:{current:'/api/cover-image/fixture/1/current.png',actualPrompt:'legacy prompt'}}));await tick();
  assert.ok(s.host.all().some(e=>e.tag==='img'&&String(e.src).startsWith('/api/cover-image/fixture/1/current.png')));assert.equal(s.button('裁剪').disabled,false);
+});
+
+test('cover tiles expose all six scene-gallery actions and the exact prompt',async()=>{
+ const s=setup(info({cover:{url:'/image.png'},imageInfo:{current:'/api/cover-image/fixture/1/current.png',actualPrompt:'实际封面提示词'}}));await tick();
+ for(const label of ['裁剪','参考图编辑','图片历史','替换图片','生成动画版视频','生成 AI 图生视频'])assert.ok(s.button(label),label);
+ assert.ok(s.host.all().some(e=>e.tag==='pre'&&e.textContent==='实际封面提示词'));await s.button('替换图片').onclick();assert.equal(s.edits[0].name,'replace');assert.equal(s.edits[0].value.coverSlot,1);
 });

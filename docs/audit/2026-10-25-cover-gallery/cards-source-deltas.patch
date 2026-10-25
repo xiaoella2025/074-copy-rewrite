@@ -1,0 +1,106 @@
+--- before/server.py
++++ server.py
+@@ -4065,0 +4066,8 @@
++        if self.path.startswith('/api/cover-motion/'):
++            import cover_motion
++            try:
++                parts=self.path[len('/api/cover-motion/'):].split('/')
++                if len(parts)!=3:raise ValueError('封面视频地址无效')
++                self._creative_media(cover_motion.media(sys.modules[__name__],parts[0],int(parts[1]),parts[2]),'video/mp4')
++            except (ValueError,OSError) as error:self._json(400,{'error':str(error)})
++            return
+@@ -4632,0 +4641,8 @@
++            return
++        if self.path.startswith('/api/cover-motion/'):
++            import cover_motion
++            try:
++                parts=self.path[len('/api/cover-motion/'):].split('/')
++                if len(parts)!=3:raise ValueError('封面视频接口无效')
++                self._json(200,cover_motion.action(sys.modules[__name__],parts[0],int(parts[1]),parts[2],data))
++            except (ValueError,OSError,RuntimeError) as error:self._json(409,{'error':str(error),'task_id':getattr(error,'task_id',None),'source_task_id':getattr(error,'source_task_id',None)})
+--- before/cover_images.py
++++ cover_images.py
+@@ -64 +64,2 @@
+-  extra=dict(extra);crop=extra.pop('_cover_crop',None);origin=extra.pop('_cover_origin',None)
++  selected=task_cover.view(backend,tid,slot)
++  extra=dict(extra);extra.setdefault('imageMode',selected['mode']);extra.setdefault('imageWithTitle',selected['withTitle']);crop=extra.pop('_cover_crop',None);origin=extra.pop('_cover_origin',None)
+@@ -96,0 +98 @@
++   'motion':__import__('cover_motion').view(backend,tid,slot),
+@@ -111,0 +114 @@
++ __import__('cover_motion').require_idle(folder)
+@@ -147 +150 @@
+-    editors=read(folder/'cover-editor.json',{});editors[str(slot)]={**editors.get(str(slot),{}),'mode':'local' if meta.get('provider')=='upload' else 'titled'};writes['cover-editor.json']=editors
++    editors=read(folder/'cover-editor.json',{});selected=task_cover.view(backend,tid,slot);with_title=meta.get('imageWithTitle',selected['withTitle']);mode=meta.get('imageMode',selected['mode']);mode='local' if meta.get('provider')=='upload' else mode if mode not in ('local','upload','off') else 'titled' if with_title else 'plain';editors[str(slot)]={**editors.get(str(slot),{}),'mode':mode,'withTitle':with_title};writes['cover-editor.json']=editors
+@@ -196 +199 @@
+-  job={'status':'submitting','operationId':op,'provider':cfg['provider'],'credential':task_cover.credential(cfg),'prompt':prompt.strip(),'sourcePrompt':info['actualPrompt'],'ratio':selected['ratio'],'revision':info['revision']};write(path,job)
++  job={'status':'submitting','operationId':op,'provider':cfg['provider'],'credential':task_cover.credential(cfg),'prompt':prompt.strip(),'sourcePrompt':info['actualPrompt'],'imageMode':selected['mode'],'imageWithTitle':selected['withTitle'],'ratio':selected['ratio'],'revision':info['revision']};write(path,job)
+@@ -224,2 +227,3 @@
+- editors=read(folder/'cover-editor.json',{});editors[str(slot)]={**editors.get(str(slot),{}),'mode':'titled'}
+- commit(backend,tid,slot,raw,{'provider':job['provider'],'prompt':'参考图编辑指令：'+job['prompt'],'sourcePrompt':job.get('sourcePrompt','')},extra_writes={path.name:job,f'cover-job-{slot}.json':{},'cover-editor.json':editors})
++ selected=task_cover.view(backend,tid,slot);with_title=job.get('imageWithTitle',selected['withTitle']);mode=job.get('imageMode',selected['mode']);mode=mode if mode not in ('local','upload','off') else 'titled' if with_title else 'plain'
++ editors=read(folder/'cover-editor.json',{});editors[str(slot)]={**editors.get(str(slot),{}),'mode':mode,'withTitle':with_title}
++ commit(backend,tid,slot,raw,{'provider':job['provider'],'prompt':'参考图编辑指令：'+job['prompt'],'sourcePrompt':job.get('sourcePrompt',''),'imageMode':mode,'imageWithTitle':with_title},extra_writes={path.name:job,f'cover-job-{slot}.json':{},'cover-editor.json':editors})
+--- before/assets/task_cover.js
++++ assets/task_cover.js
+@@ -13 +13 @@
+-  const {taskId,slot=1,onChanged}=options;let info,busy=false,edited=false,showPrompt=false,expanded=false,active=true,refreshing=null,drawnSignature='',notice=null,actionError=null;
++  const {taskId,slot=1,onChanged}=options;let info,busy=false,videoBusy=false,edited=false,showPrompt=false,expanded=false,active=true,refreshing=null,drawnSignature='',notice=null,actionError=null;
+@@ -26 +26 @@
+-  function button(label,click,disabled=false,primary=false){const b=node('button','btn '+(primary?'btn-primary':'btn-ghost'),label);b.type='button';b.disabled=busy||disabled;b.onclick=click;return b;}
++  function button(label,click,disabled=false,primary=false){const b=node('button','btn '+(primary?'btn-primary':'btn-ghost'),label);b.type='button';b.disabled=busy||videoBusy||disabled;b.onclick=click;return b;}
+@@ -44,0 +45,13 @@
++  async function coverMotion(name,body={}){
++   if(videoBusy)return;videoBusy=true;draw();
++   try{const result=await api('/api/cover-motion/'+encodeURIComponent(taskId)+'/'+slot+'/'+name,body);if(goRevision(result))return null;await refresh();return result;}
++   finally{videoBusy=false;if(host.isConnected)draw();}
++  }
++  function aiCoverVideo(){
++   const job=info.imageInfo?.motion?.job||{},restoring=info.imageInfo?.motion?.restoring,continuing=restoring||['pending','unknown','submitting','download_pending'].includes(job.status),request=job.request||{};
++   if(continuing)return coverMotion('query',{}).catch(e=>{if(!goRevision(e))report(e.message,true);});
++   const videoOperation=root.crypto?.randomUUID?.()||'video-'+Date.now();
++   root.app074VideoPrompt?.open({title:'生成封面 AI 图生视频',message:'使用 RunningHub 全能视频 X，消耗钱包余额（不是RH币）。支持的比例沿用分镜视频；3:4、4:3封面的视频使用9:16。只有点击确认才提交生成。生成的封面视频可预览、下载，不替换正片分镜。',initialDurationSec:6,standalone:true,durationHint:'封面独立视频，默认6秒，不跟随正文配音。',
++    loadPrompt:async()=> (await api('/api/cover-motion/'+encodeURIComponent(taskId)+'/'+slot+'/prompt',{})).prompt,
++    onConfirm:async(prompt,seconds)=>{try{await coverMotion('generate',{operation_id:videoOperation,prompt,duration_sec:seconds,regenerate:['ok','failed'].includes(job.status)});}catch(e){if(!goRevision(e))throw e;}}});
++  }
+@@ -55 +68 @@
+-   if(root.app074SceneImages){for(const [label,name] of [['裁剪','open'],['参考图编辑','reference'],['图片历史','history']]){
++   if(root.app074SceneImages){for(const [label,name] of [['裁剪','open'],['参考图编辑','reference'],['图片历史','history'],['替换图片','replace']]){
+@@ -59 +72,5 @@
+-   block.prepend(actions);card.append(block);
++   const videoActions=node('div','cover-gallery-video-actions'),videoJob=image.motion?.job||{},videoPending=['pending','unknown','submitting','download_pending'].includes(videoJob.status);
++   videoActions.append(button('生成动画版视频',async()=>{try{await coverMotion('animation',{operation_id:operationId});}catch(e){if(!goRevision(e))report(e.message,true);}},pending||!image.current));
++   videoActions.append(button(image.motion?.restoring?'使用已有 AI 视频':videoPending?'继续查询 AI 视频':'生成 AI 图生视频',aiCoverVideo,(!videoPending&&pending)||!image.current||!root.app074VideoPrompt));
++   if(image.motion?.result?.video_url){const video=node('video','wv-gallery-video');video.src=image.motion.result.video_url;video.controls=true;video.preload='metadata';videoActions.append(video);const download=node('a','btn btn-ghost','下载封面视频');download.href=video.src;download.download='封面'+slot+'.mp4';videoActions.append(download);}
++   block.prepend(actions,videoActions);card.append(block);
+@@ -63 +80 @@
+-   host.replaceChildren();const card=node('section','cover-result-card'),head=node('div','cover-result-head'),body=node('div','cover-result-body'+(options.gallery?' cover-gallery-body':''));
++   host.replaceChildren();const card=node('section','cover-result-card'+(options.gallery?' cover-gallery-tile':'')),head=node('div','cover-result-head'),body=node('div','cover-result-body'+(options.gallery?' cover-gallery-body':''));
+@@ -67 +84 @@
+-   const pending=['submitting','unknown','pending','download_pending'].includes(info.job.status)||['submitting','unknown','pending','download_pending'].includes(info.imageInfo?.referenceJob?.status)||info.imageInfo?.recoveryNeeded,local=['local','upload'].includes(info.mode);
++   const pending=['submitting','unknown','pending','download_pending'].includes(info.job.status)||['submitting','unknown','pending','download_pending'].includes(info.imageInfo?.referenceJob?.status)||['pending','unknown','submitting','download_pending'].includes(info.imageInfo?.motion?.job?.status)||info.imageInfo?.recoveryNeeded,local=['local','upload'].includes(info.mode);
+@@ -76,2 +93,2 @@
+-    body.append(thumb);if(options.gallery)galleryDetails(body,pending);else body.append(node('p','cover-result-hint','这张封面来自本地图片，未使用 AI 出图。想换图点「换本地图」；想让 AI 按模板重新设计，点「改用 AI 出图」。'));
+-    card.append(head,body,message());host.append(card);return;
++    if(options.gallery)thumb.append(node('small','','封面'+slot+'.png'));body.append(thumb);if(options.gallery)galleryDetails(body,pending);else body.append(node('p','cover-result-hint','这张封面来自本地图片，未使用 AI 出图。想换图点「换本地图」；想让 AI 按模板重新设计，点「改用 AI 出图」。'));
++    if(options.gallery){const settings=node('details','cover-gallery-settings');settings.append(node('summary','','封面设置'),head);card.append(body,settings,message());}else card.append(head,body,message());host.append(card);return;
+@@ -89 +106 @@
+-   card.append(head);if(showPrompt){const editor=node('div','cover-result-editor'),text=node('textarea'),historical=!info.prompt&&!!info.lastPrompt;text.value=visiblePrompt;text.rows=6;text.readOnly=pending;text.setAttribute('aria-label','完整的封面海报提示词');const submit=button('出图（用修改的提示词）',()=>act('generate',{operation_id:operationId,prompt:text.value}),pending||historical||!visiblePrompt,true);text.oninput=()=>{submit.disabled=busy||pending||!text.value.trim()||(historical&&text.value===visiblePrompt);};editor.append(node('p','',historical?'上次保存的提示词：当前参数已变化，仅供参考。请先在这里改正文字，再明确点击出图；不会自动使用旧词重新生成。':visiblePrompt?'编辑本次出图用的完整提示词（已含画面风格与标题文字指令）。本次一次性，不改动构图方向 / 风格 / 模板设置。':'尚无已保存的提示词。可先生成构图方向，或在这里填写完整提示词。'),node('small','',pending?'封面生成期间可查看、复制，不能修改或再次出图。':'点击出图会提交一次新的生图请求，按所选平台计费；保存封面文字不会直接修改已有图片。'),text,button('取消',()=>{showPrompt=false;draw();}),submit);card.append(editor);}
++   if(!options.gallery)card.append(head);if(showPrompt){const editor=node('div','cover-result-editor'),text=node('textarea'),historical=!info.prompt&&!!info.lastPrompt;text.value=visiblePrompt;text.rows=6;text.readOnly=pending;text.setAttribute('aria-label','完整的封面海报提示词');const submit=button('出图（用修改的提示词）',()=>act('generate',{operation_id:operationId,prompt:text.value}),pending||historical||!visiblePrompt,true);text.oninput=()=>{submit.disabled=busy||pending||!text.value.trim()||(historical&&text.value===visiblePrompt);};editor.append(node('p','',historical?'上次保存的提示词：当前参数已变化，仅供参考。请先在这里改正文字，再明确点击出图；不会自动使用旧词重新生成。':visiblePrompt?'编辑本次出图用的完整提示词（已含画面风格与标题文字指令）。本次一次性，不改动构图方向 / 风格 / 模板设置。':'尚无已保存的提示词。可先生成构图方向，或在这里填写完整提示词。'),node('small','',pending?'封面生成期间可查看、复制，不能修改或再次出图。':'点击出图会提交一次新的生图请求，按所选平台计费；保存封面文字不会直接修改已有图片。'),text,button('取消',()=>{showPrompt=false;draw();}),submit);card.append(editor);}
+@@ -95 +112 @@
+-   body.append(thumb);if(options.gallery){galleryDetails(body,pending);const settings=node('details','cover-gallery-settings');settings.append(node('summary','','封面模板与构图设置'),controls);card.append(body,settings,message());}else{body.append(controls);card.append(body,message());}host.append(card);
++   if(options.gallery)thumb.append(node('small','','封面'+slot+'.png'));body.append(thumb);if(options.gallery){galleryDetails(body,pending);const settings=node('details','cover-gallery-settings');settings.append(node('summary','','封面设置与重新生成'),head,controls);card.append(body,settings,message());}else{body.append(controls);card.append(body,message());}host.append(card);
+--- before/assets/task_cover.css
++++ assets/task_cover.css
+@@ -8,0 +9,2 @@
++
++.cover-gallery-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,230px));gap:12px;align-items:start}.cover-gallery-tile{margin-top:0}.cover-gallery-tile .cover-result-body{display:flex;flex-direction:column;padding:8px;gap:7px}.cover-gallery-tile .cover-result-thumb{width:100%;padding:6px;border:1px solid var(--border);border-radius:6px;box-sizing:border-box}.cover-gallery-tile .cover-result-thumb img{border:0;border-radius:4px}.cover-gallery-tile .cover-result-thumb small{display:block;margin-top:5px;color:var(--text-muted)}.cover-gallery-tile .cover-gallery-details{width:100%}.cover-gallery-tile .wv-gallery-actions{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin:0 0 6px}.cover-gallery-tile .wv-gallery-actions .btn{font-size:11px;padding:4px}.cover-gallery-video-actions{display:flex;flex-direction:column;gap:5px;margin-bottom:9px}.cover-gallery-video-actions>.btn{font-size:11px;padding:5px}.cover-gallery-tile .cover-gallery-prompt{max-height:220px;overflow:auto;font-size:11px}.cover-gallery-tile .cover-result-head{padding:6px;flex-direction:column;align-items:stretch}.cover-gallery-tile .cover-result-hint{min-width:0}.cover-gallery-tile .cover-result-chips{gap:3px}.cover-gallery-tile .cover-result-chips .btn{font-size:11px;padding:4px 7px}.cover-gallery-tile .cover-result-editor{padding:8px}.cover-gallery-tile .cover-result-thumb img{aspect-ratio:auto;object-fit:contain}
+--- before/assets/workflow_view.js
++++ assets/workflow_view.js
+@@ -906 +906 @@
+-      const panel=panels.covers;
++      const panel=panels.covers;panel.classList.add('cover-gallery-grid');
+--- before/assets/video_prompt.js
++++ assets/video_prompt.js
+@@ -15 +15 @@
+-    const hint=el('div','video-prompt-hint',(options.durationHint?options.durationHint+'。':'未读取到配音时长，按最低 6 秒起。')+'比配音短的部分打包时自动慢放拉长补足。');
++    const hint=el('div','video-prompt-hint',options.standalone?(options.durationHint||'独立视频，不跟随正文配音。'):(options.durationHint?options.durationHint+'。':'未读取到配音时长，按最低 6 秒起。')+'比配音短的部分打包时自动慢放拉长补足。');
