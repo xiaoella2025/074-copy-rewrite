@@ -1,0 +1,22 @@
+--- before/task_cover.py
++++ task_cover.py
+@@ -20,0 +21,6 @@
++    http=re.search(r'\bHTTP\s+(\d{3})\b',text,re.I)
++    if http:
++        status=int(http[1])
++        if status in (401,403):return {'kind':'authentication','title':f'封面提交被拒绝（HTTP {status}）','body':'绘图平台拒绝访问，请检查所选平台的凭据与权限；本次是否受理以平台记录为准。'}
++        if status==429:return {'kind':'rate_limit','title':'封面提交受限（HTTP 429）','body':'绘图平台限流或额度受限；请先核对平台任务记录和账户状态。'}
++        if status>=500:return {'kind':'upstream','title':f'封面请求异常（HTTP {status}）','body':'平台或网关未正常返回结果，不能据此确认是否已受理；请先核对平台任务记录。'}
+@@ -26,0 +33,2 @@
++    if re.search(r'连接失败|connection|network|连接重置|远程主机|SSL|TLS',text,re.I):
++        return {'kind':'network','title':'封面请求连接异常','body':'未取得完整平台响应，无法确认是否已受理；请先核对平台任务记录。'}
+@@ -31,0 +40,4 @@
++    diagnostic={'kind':details['kind'],'exception':type(error).__name__,'message':details['title']+'：'+details['body'],'at':time.time(),'taskIdSaved':bool(job.get('taskId'))}
++    status=re.search(r'\bHTTP\s+(\d{3})\b',str(error),re.I)
++    if status:diagnostic['httpStatus']=int(status[1])
++    job.setdefault('firstDiagnostic',diagnostic);job['lastDiagnostic']=diagnostic
+@@ -258 +270,3 @@
+-        if not (job.get('taskId') or job.get('result')):raise ValueError('初次封面提交状态不明，请核对供应商记录；不会重复购买')
++        if not (job.get('taskId') or job.get('result')):
++            cause=(job.get('firstDiagnostic') or {}).get('message') or '旧记录未保存首次异常的具体原因'
++            raise ValueError('初次封面提交状态不明；首次原因：'+cause+'；请核对供应商记录，不会重复购买')

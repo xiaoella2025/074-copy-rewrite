@@ -1,0 +1,19 @@
+{
+  "status": "candidate-unit-verified-not-installed",
+  "pythonTests": {
+    "testsRun": 51,
+    "success": true,
+    "manifestSha256": "2dc2f62089359edb535382487ac541d5189f5ac68ab8c15cd9174f3c4925f92c",
+    "providerRequests": 0
+  },
+  "productionWrites": 0,
+  "realProviderRequests": 0,
+  "currentIncident": {
+    "provider": "runninghub",
+    "status": "unknown",
+    "taskIdSaved": false,
+    "resultSaved": false,
+    "originalCausePreserved": false,
+    "requiresSupplierHistoryReconciliation": true
+  }
+}
