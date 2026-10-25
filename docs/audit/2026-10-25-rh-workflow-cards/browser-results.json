@@ -1,0 +1,12 @@
+{
+  "success": true,
+  "manifestSha256": "2bcff6aa6fe4d167c697189a80b71f593cff205d9d9eb90f83ec7e806592c3cb",
+  "flatCards": true,
+  "historicalPriceClearlyMarked": true,
+  "unknownPricesNotInferred": true,
+  "selectionAndSaveVerified": true,
+  "refreshRetainsSavedWorkflow": true,
+  "noPageErrors": true,
+  "isolatedFixture": true,
+  "realGenerationSubmissions": 0
+}

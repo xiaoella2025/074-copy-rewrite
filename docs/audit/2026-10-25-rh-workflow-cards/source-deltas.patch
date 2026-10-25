@@ -1,0 +1,51 @@
+--- before/settings.html
++++ settings.html
+@@ -182,0 +183,7 @@
++.rh-workflow-card{text-align:left;padding:10px;display:flex;flex-direction:column;align-items:flex-start;gap:6px;white-space:normal;}
++.rh-workflow-card .image-provider-tab-badge[hidden]{display:none;}
++.rh-workflow-price{font-size:10.5px;font-weight:700;padding:2px 5px;border-radius:4px;}
++.rh-workflow-price.reference{color:var(--brand);background:var(--brand-soft);}
++.rh-workflow-price.unknown{color:var(--text-muted);background:var(--panel-2);border:1px solid var(--border);}
++.rh-workflow-cost-note{font-size:10.5px;color:var(--text-muted);line-height:1.4;}
++
+@@ -402 +409,3 @@
+-        <select id="rhw-preset" class="input" aria-label="RH币候选工作流"></select>
++        <select id="rhw-preset" class="input" hidden style="display:none" aria-hidden="true" tabindex="-1"></select>
++        <div id="rhw-workflows" class="rh-model-grid" role="group" aria-label="RH币工作流选择"></div>
++        <div class="field-help" style="margin-top:8px">历史参考不是固定单价；未实测的工作流不预填价格。选择后点「保存配置」，不会自动生成。</div>
+--- before/assets/rh_workflow_settings.js
++++ assets/rh_workflow_settings.js
+@@ -6 +6 @@
+-  let state={candidates:[]},busy=false,loaded=false,dirty=false;
++  let state={candidates:[]},busy=false,loaded=false,dirty=false,cardViews=[];
+@@ -14,0 +15 @@
++   for(const view of cardViews)view.button.disabled=busy||!loaded;
+@@ -18,0 +20,22 @@
++  function price(item){
++   return item.key==='qwen-simple'||item.id==='1955160402595233794'
++    ?{label:'历史约12 RH币/张',detail:'你此前反馈的参考值，非固定报价',kind:'reference'}
++    :{label:'费用待实测',detail:'按实际耗时计费，以平台账单为准',kind:'unknown'};
++  }
++  function updateCards(){
++   const selected=$('preset').value;
++   for(const view of cardViews){const active=view.key===selected;view.button.classList.toggle('active',active);view.button.setAttribute('aria-pressed',String(active));view.badge.textContent=active?(dirty?'待保存':'已选中'):view.key===state.preset?'已保存':'';view.badge.hidden=!view.badge.textContent;}
++  }
++  function buildCards(){
++   const host=$('workflows');if(!host)return;host.replaceChildren();cardViews=[];
++   const make=(tag,cls,text)=>{const node=document.createElement(tag);node.className=cls;if(text!==undefined)node.textContent=text;return node;};
++   const descriptions={'qwen-simple':'通用文生图 · 已有历史参考','qwen-native':'原生千问 · 基础备选','flux-native':'通用背景与分镜 · 热门','qwen-chinese':'中文海报 · 优选','sdxl-native':'写实单图 · 基础备选'};
++   for(const item of state.candidates||[]){
++    const cost=price(item),button=make('button','image-provider-tab rh-workflow-card'),top=make('div','rh-model-top'),badge=make('span','image-provider-tab-badge');
++    button.type='button';button.dataset.workflowKey=item.key;button.title=(item.note?item.note+'。':'')+cost.detail;
++    top.append(make('strong','rh-model-name',item.name),make('span','rh-workflow-price '+cost.kind,cost.label),badge);
++    button.append(top,make('span','rh-model-desc',descriptions[item.key]||'自定义单图工作流'),make('span','rh-workflow-cost-note',cost.detail),make('span','rh-model-desc',item.checked?'完整图已核对':'待核对完整图'));
++    button.onclick=()=>{if(busy||!loaded)return;$('preset').value=item.key;$('preset').onchange();};
++    cardViews.push({key:item.key,button,badge});host.append(button);
++   }
++  }
+@@ -22 +45 @@
+-    $('preset').replaceChildren();for(const item of state.candidates||[]){const option=document.createElement('option');option.value=item.key;option.textContent=item.name;$('preset').append(option);}$('preset').value=state.preset||'';link();}
++    $('preset').replaceChildren();for(const item of state.candidates||[]){const option=document.createElement('option');option.value=item.key;option.textContent=item.name;$('preset').append(option);}$('preset').value=state.preset||'';link();buildCards();}
+@@ -26 +49 @@
+-   controls();
++   updateCards();controls();

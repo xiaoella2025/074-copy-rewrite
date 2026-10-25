@@ -1,0 +1,21 @@
+{
+  "success": true,
+  "manifestSha256": "2bcff6aa6fe4d167c697189a80b71f593cff205d9d9eb90f83ec7e806592c3cb",
+  "actualDesktopEntry": true,
+  "formalSettingsSave": true,
+  "catalogAddsWithoutSubmit": true,
+  "independentSceneAndCoverWorkflows": true,
+  "normalizedLocalGraphOnly": true,
+  "sharedMemberConfig": true,
+  "defaultSwitchIsExplicit": true,
+  "authenticatedRoutes": true,
+  "coverReplacementArchivesExactBytes": true,
+  "replacementConfirmationDoesNotSubmit": true,
+  "formalCoverPromptAndRequirementPreserved": true,
+  "formalTaskIdSaved": true,
+  "duplicateSubmitReusesId": true,
+  "keyNotReturned": true,
+  "productionArtifactsUnchanged": true,
+  "mockSubmissions": 2,
+  "realProviderRequests": 0
+}

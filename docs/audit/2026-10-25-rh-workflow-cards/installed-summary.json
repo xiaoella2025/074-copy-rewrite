@@ -1,0 +1,16 @@
+{
+  "runtime": {
+    "kind": "cpython",
+    "executable": "python.exe",
+    "pythonVersion": [
+      3,
+      14,
+      5
+    ],
+    "filesChecked": 2668,
+    "manifestSha256": "2bcff6aa6fe4d167c697189a80b71f593cff205d9d9eb90f83ec7e806592c3cb"
+  },
+  "businessFilesChanged": 0,
+  "frontendOnly": true,
+  "realGenerationSubmissions": 0
+}
