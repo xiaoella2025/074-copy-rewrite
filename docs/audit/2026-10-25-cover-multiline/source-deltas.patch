@@ -1,0 +1,53 @@
+--- before/server.py
++++ server.py
+@@ -2962 +2962 @@
+-    cover_subtitle = [s.strip() for s in cover_subtitle if isinstance(s, str) and s.strip()][:2]
++    cover_subtitle = [s.strip() for s in cover_subtitle if isinstance(s, str) and s.strip()]
+@@ -3561 +3561,7 @@
+-        layout='，'+template['titleLayout'].replace('{{TITLE}}',title,1)
++        title_layout=template['titleLayout']
++        title_lines=title.splitlines()
++        if len(title_lines)>1:
++            title_layout=title_layout.replace('所有字必须在同一水平行上从左到右排列','每一行内的文字从左到右横排，按用户换行分行排列')
++        layout='，'+title_layout.replace('{{TITLE}}',title,1)
++        if len(title_lines)>1:
++            layout+='；主标题按用户换行，严格分为'+str(len(title_lines))+'行，从上到下依次为'+json.dumps(title_lines,ensure_ascii=False)+'；每行横排，不合并行、不调换顺序，手动分行优先于模板的单行要求'
+@@ -3563 +3569,4 @@
+-            layout+='；'+template['subtitleLayout'].replace('{{SUBTITLE}}',''.join('「'+x+'」' for x in subs),1)
++            subtitle_layout=template['subtitleLayout']
++            if len(subs)>1:subtitle_layout=subtitle_layout.replace('一行排副标题','分行排副标题')
++            layout+='；'+subtitle_layout.replace('{{SUBTITLE}}',''.join('「'+x+'」' for x in subs),1)
++            if len(subs)>1:layout+='；副标题按用户换行，以上'+str(len(subs))+'段各占一行，顺序和文字完整保留，不合并、不省略'
+--- before/task_cover.py
++++ task_cover.py
+@@ -147 +147,2 @@
+-    if 'subtitle' in data and (not isinstance(data['subtitle'],list) or len(data['subtitle'])>2 or any(not isinstance(x,str) or len(x)>300 for x in data['subtitle'])):raise ValueError('副标题最多两句，每句300字')
++    if 'subtitle' in data and not isinstance(data['subtitle'],list):raise ValueError('副标题须按行保存为文字列表')
++    if 'subtitle' in data and any(not isinstance(x,str) or len(x)>300 for x in data['subtitle']):raise ValueError('副标题每行须为文字，最多300字；可回车换行')
+--- before/index.html
++++ index.html
+@@ -821,2 +821,2 @@
+-        <label><span class="help">大字标题 · 选填</span><input type="text" id="cover-title" placeholder="留空由 AI 根据文案自动起"></label>
+-        <label><span class="help">副标题 · 选填，最多 2 句</span><textarea id="cover-subtitle" rows="1" placeholder="一行一句，留空不指定"></textarea></label>
++        <label><span class="help">大字标题 · 选填，可回车换行</span><textarea id="cover-title" rows="2" maxlength="200" placeholder="每行一段，留空由 AI 根据文案自动起"></textarea></label>
++        <label><span class="help">副标题 · 选填，可回车换行</span><textarea id="cover-subtitle" rows="2" placeholder="每行一段，留空不指定"></textarea></label>
+--- before/image-lab.html
++++ image-lab.html
+@@ -6 +6 @@
+-<div id="lab-cover-fields" hidden><div class="field"><label for="lab-title">主标题</label><input id="lab-title" placeholder="封面大字标题（选填）"></div><div class="field"><label for="lab-subtitle">副标题</label><textarea id="lab-subtitle" rows="2" placeholder="每行一句，最多2句"></textarea></div><div class="field"><label>封面模板</label><div id="lab-cover-templates" class="chips"></div></div><div class="field"><label>封面文字</label><div class="chips" id="lab-cover-text"></div></div></div>
++<div id="lab-cover-fields" hidden><div class="field"><label for="lab-title">主标题</label><textarea id="lab-title" rows="2" maxlength="200" placeholder="封面大字标题（选填，可回车换行）"></textarea></div><div class="field"><label for="lab-subtitle">副标题</label><textarea id="lab-subtitle" rows="2" placeholder="每行一段，可回车换行"></textarea></div><div class="field"><label>封面模板</label><div id="lab-cover-templates" class="chips"></div></div><div class="field"><label>封面文字</label><div class="chips" id="lab-cover-text"></div></div></div>
+--- before/assets/task_cover.js
++++ assets/task_cover.js
+@@ -29 +29 @@
+-  function titleEditor(body){const area=node('div','cover-result-editor'),title=node('input'),subs=node('textarea');title.value=info.title;title.setAttribute('aria-label','封面主标题');subs.value=info.subtitle.join('\n');subs.setAttribute('aria-label','副标题，最多两句');area.append(node('label','','封面主标题'),title,node('label','','副标题（最多两句）'),subs,button('保存',()=>act('save',{title:title.value,subtitle:subs.value.split(/\r?\n/).filter(x=>x.trim())},true)),button('取消',()=>area.remove()));body.prepend(area);title.focus();}
++  function titleEditor(body){const area=node('div','cover-result-editor'),title=node('textarea'),subs=node('textarea');title.value=info.title;title.rows=2;title.maxLength=200;title.setAttribute('aria-label','封面主标题，可回车换行');subs.value=info.subtitle.join('\n');subs.rows=3;subs.setAttribute('aria-label','副标题，每行一段，可回车换行');area.append(node('label','','封面主标题（可回车换行）'),title,node('label','','副标题（每行一段，可回车换行）'),subs,button('保存',()=>act('save',{title:title.value,subtitle:subs.value.split(/\r?\n/).filter(x=>x.trim())},true)),button('取消',()=>area.remove()));body.prepend(area);title.focus();}
+--- before/assets/creative.js
++++ assets/creative.js
+@@ -18 +18 @@
+- function coverChoices(host){choices(host,'封面海报','cover_mode',[['off','不生成'],['titled','带标题文字'],['plain','留白不带字'],['local','本地上传']],{onChange:show});const local=field(host),file=n('input');file.type='file';file.accept='image/png,image/jpeg,image/webp';file.setAttribute('aria-label','上传封面');file.onchange=async()=>{try{config.cover_data=await imageFile(file.files[0]);notice('封面已选择');}catch(e){notice(e.message);}};local.append(file);const options=n('div');host.append(options);imageChoices(options,true);input(options,'封面大字标题（选填）','coverTitle');input(options,'副标题（选填，最多2句）','coverSubtitle','textarea');choices(options,'封面模板','coverTemplate',stylesData.coverTemplates.map(x=>[x.id,x.name]));choices(options,'封面比例','coverRatio',[['3:4','3:4 封面'],['9:16','9:16 全屏'],['1:1','1:1 方形'],['4:3','4:3 横版'],['16:9','16:9 宽屏']]);choices(options,'增加一张封面（可选不同模板 · +1张图费用）','extraCover',[[false,'不增加'],[true,'增加一张']],{onChange:()=>second.hidden=!config.extraCover});const second=choices(options,'第二张封面模板','coverTemplate2',stylesData.coverTemplates.map(x=>[x.id,x.name]));second.hidden=!config.extraCover;function show(){local.hidden=config.cover_mode!=='local';options.hidden=!['titled','plain'].includes(config.cover_mode);}show();}
++ function coverChoices(host){choices(host,'封面海报','cover_mode',[['off','不生成'],['titled','带标题文字'],['plain','留白不带字'],['local','本地上传']],{onChange:show});const local=field(host),file=n('input');file.type='file';file.accept='image/png,image/jpeg,image/webp';file.setAttribute('aria-label','上传封面');file.onchange=async()=>{try{config.cover_data=await imageFile(file.files[0]);notice('封面已选择');}catch(e){notice(e.message);}};local.append(file);const options=n('div');host.append(options);imageChoices(options,true);input(options,'封面大字标题（选填，可回车换行）','coverTitle','textarea');input(options,'副标题（选填，每行一段）','coverSubtitle','textarea');choices(options,'封面模板','coverTemplate',stylesData.coverTemplates.map(x=>[x.id,x.name]));choices(options,'封面比例','coverRatio',[['3:4','3:4 封面'],['9:16','9:16 全屏'],['1:1','1:1 方形'],['4:3','4:3 横版'],['16:9','16:9 宽屏']]);choices(options,'增加一张封面（可选不同模板 · +1张图费用）','extraCover',[[false,'不增加'],[true,'增加一张']],{onChange:()=>second.hidden=!config.extraCover});const second=choices(options,'第二张封面模板','coverTemplate2',stylesData.coverTemplates.map(x=>[x.id,x.name]));second.hidden=!config.extraCover;function show(){local.hidden=config.cover_mode!=='local';options.hidden=!['titled','plain'].includes(config.cover_mode);}show();}
+--- before/assets/workflow_actions.js
++++ assets/workflow_actions.js
+@@ -91 +91 @@
+-    {label:"封面标题",selector:"#cover-title",path:["cover","title"],type:"text"},
++    {label:"封面标题",selector:"#cover-title",path:["cover","title"],type:"textarea",help:"可回车换行，按填写的行顺序排版。"},

@@ -1,0 +1,12 @@
+{
+  "success": true,
+  "manifestSha256": "c50cdc03a1cd77ac7acebdf3c1261385930715a0fd1c5ca4b74ec7a032403b79",
+  "actualResultPage": true,
+  "bothFieldsMultiline": true,
+  "threeMainTitleLinesSaved": true,
+  "threeSubtitleLinesSaved": true,
+  "refreshRetainsLineBreaks": true,
+  "noPageErrors": true,
+  "isolatedData": true,
+  "realProviderRequests": 0
+}
