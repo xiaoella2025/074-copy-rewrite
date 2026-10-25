@@ -1,0 +1,21 @@
+{
+  "status": "candidate-verified-not-installed",
+  "manifestSha256": "35f5fc9989905777ec9602164399086d5ce5dd781649a3020f8dacfe6fff6ff5",
+  "pythonTests": 69,
+  "nodeTests": 25,
+  "actualDesktopEntry": true,
+  "isolatedBrowser": true,
+  "realProviderRequests": 0,
+  "selectedWorkflowLiveValidated": false,
+  "actualBillingValidated": false,
+  "review": {
+    "importantFindings": 1,
+    "fixed": 1,
+    "test": "test_http_error_body_task_id_is_retained_before_classifying_failure"
+  },
+  "newEntry": "rh-coins-experiment.html",
+  "defaultEnabled": false,
+  "existingProvidersChanged": false,
+  "awaitingNormalAppExit": true,
+  "pendingCoverFirstErrorFixIncluded": true
+}

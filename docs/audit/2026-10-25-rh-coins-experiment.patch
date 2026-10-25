@@ -1,0 +1,61 @@
+--- before/server.py
++++ server.py
+@@ -3990,0 +3991,12 @@
++        if self.path == '/rh-coins-experiment.html':
++            self._file(ROOT/'rh-coins-experiment.html','text/html; charset=utf-8');return
++        if self.path.startswith('/api/rh-coins-experiment'):
++            import rh_coins_experiment as experiment
++            try:
++                if self.path=='/api/rh-coins-experiment':self._json(200,experiment.state(sys.modules[__name__]))
++                elif self.path.startswith('/api/rh-coins-experiment/image/'):
++                    self._creative_media(experiment.media(sys.modules[__name__],self.path[len('/api/rh-coins-experiment/image/'):]),'image/png')
++                else:raise ValueError('RH币独立实验接口不存在')
++            except ValueError as error:self._json(400,{'error':str(error)})
++            except (OSError,RuntimeError):self._json(502,{'error':'RH币独立实验暂不可用，请保留原任务记录'})
++            return
+@@ -4522,0 +4535,15 @@
++            return
++        if self.path.startswith('/api/rh-coins-experiment/'):
++            import rh_coins_experiment as experiment
++            try:
++                backend=sys.modules[__name__]
++                actions={'/config':lambda:experiment.configure(backend,data),'/check':lambda:experiment.check(backend),
++                    '/generate':lambda:experiment.submit(backend,data),'/query':lambda:experiment.query(backend,data.get('operation_id')),
++                    '/export':lambda:experiment.export_image(backend,data)}
++                action=actions.get(self.path[len('/api/rh-coins-experiment'):])
++                if not action:raise ValueError('RH币独立实验操作不存在')
++                self._json(200,action())
++            except ValueError as error:self._json(400,{'error':str(error)})
++            except (OSError,RuntimeError) as error:
++                message=str(error) if isinstance(error,RuntimeError) and str(error).startswith(('账户资料查询','候选工作流读取','查询暂未成功','平台暂未返回','平台未返回预期','平台图片地址','图片取回未完成')) else '独立实验请求暂未完成，请查询原任务，不要重复生成'
++                self._json(502,{'error':message})
+--- before/task_cover.py
++++ task_cover.py
+@@ -20,0 +21,6 @@
++    http=re.search(r'\bHTTP\s+(\d{3})\b',text,re.I)
++    if http:
++        status=int(http[1])
++        if status in (401,403):return {'kind':'authentication','title':f'封面提交被拒绝（HTTP {status}）','body':'绘图平台拒绝访问，请检查所选平台的凭据与权限；本次是否受理以平台记录为准。'}
++        if status==429:return {'kind':'rate_limit','title':'封面提交受限（HTTP 429）','body':'绘图平台限流或额度受限；请先核对平台任务记录和账户状态。'}
++        if status>=500:return {'kind':'upstream','title':f'封面请求异常（HTTP {status}）','body':'平台或网关未正常返回结果，不能据此确认是否已受理；请先核对平台任务记录。'}
+@@ -26,0 +33,2 @@
++    if re.search(r'连接失败|connection|network|连接重置|远程主机|SSL|TLS',text,re.I):
++        return {'kind':'network','title':'封面请求连接异常','body':'未取得完整平台响应，无法确认是否已受理；请先核对平台任务记录。'}
+@@ -31,0 +40,4 @@
++    diagnostic={'kind':details['kind'],'exception':type(error).__name__,'message':details['title']+'：'+details['body'],'at':time.time(),'taskIdSaved':bool(job.get('taskId'))}
++    status=re.search(r'\bHTTP\s+(\d{3})\b',str(error),re.I)
++    if status:diagnostic['httpStatus']=int(status[1])
++    job.setdefault('firstDiagnostic',diagnostic);job['lastDiagnostic']=diagnostic
+@@ -258 +270,3 @@
+-        if not (job.get('taskId') or job.get('result')):raise ValueError('初次封面提交状态不明，请核对供应商记录；不会重复购买')
++        if not (job.get('taskId') or job.get('result')):
++            cause=(job.get('firstDiagnostic') or {}).get('message') or '旧记录未保存首次异常的具体原因'
++            raise ValueError('初次封面提交状态不明；首次原因：'+cause+'；请核对供应商记录，不会重复购买')
+--- before/assets/app_nav.js
++++ assets/app_nav.js
+@@ -5 +5 @@
+-[['image','◇','画图实验室','/image-lab.html'],['tts','♫','配音实验室','/voice-lab.html'],['materials','▧','素材库','/library.html?type=materials']],
++[['image','◇','画图实验室','/image-lab.html'],['rh-coins','◇','RH币生图 · 实验','/rh-coins-experiment.html'],['tts','♫','配音实验室','/voice-lab.html'],['materials','▧','素材库','/library.html?type=materials']],
+@@ -15 +15 @@
+-function active(){const q=new URLSearchParams(location.search),page=location.pathname;let key='new';if(page.endsWith('tasks.html')){const f=q.get('filter');key=f==='done'?'history':'queue';}else if(page.endsWith('result.html'))key='history';else if(page.endsWith('image-lab.html'))key='image';else if(page.endsWith('selection.html'))key='selection';else if(page.endsWith('benchmark.html'))key='benchmark';else if(page.endsWith('market.html')||page==='/market')key='market';else if(page.endsWith('workbench.html'))key='copy';else if(page.endsWith('voice-lab.html'))key='tts';else if(page.endsWith('settings.html'))key='settings';else if(page.endsWith('management.html'))key=q.get('type')||'account';else if(page.endsWith('template-editor.html'))key='drafts';else if(page.endsWith('prompt-editor.html'))key='prompts';else if(page.endsWith('library.html'))key=q.get('type')||'drafts';for(const a of host.querySelectorAll('[data-nav]')){a.classList.toggle('active',a.dataset.nav===key);if(a.dataset.nav===key)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');}}
++function active(){const q=new URLSearchParams(location.search),page=location.pathname;let key='new';if(page.endsWith('tasks.html')){const f=q.get('filter');key=f==='done'?'history':'queue';}else if(page.endsWith('result.html'))key='history';else if(page.endsWith('image-lab.html'))key='image';else if(page.endsWith('rh-coins-experiment.html'))key='rh-coins';else if(page.endsWith('selection.html'))key='selection';else if(page.endsWith('benchmark.html'))key='benchmark';else if(page.endsWith('market.html')||page==='/market')key='market';else if(page.endsWith('workbench.html'))key='copy';else if(page.endsWith('voice-lab.html'))key='tts';else if(page.endsWith('settings.html'))key='settings';else if(page.endsWith('management.html'))key=q.get('type')||'account';else if(page.endsWith('template-editor.html'))key='drafts';else if(page.endsWith('prompt-editor.html'))key='prompts';else if(page.endsWith('library.html'))key=q.get('type')||'drafts';for(const a of host.querySelectorAll('[data-nav]')){a.classList.toggle('active',a.dataset.nav===key);if(a.dataset.nav===key)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');}}
