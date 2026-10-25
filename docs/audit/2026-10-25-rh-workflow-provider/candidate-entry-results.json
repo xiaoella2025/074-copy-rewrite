@@ -1,0 +1,18 @@
+{
+  "success": true,
+  "manifestSha256": "f81937947c928fd9657f81286415e69f2b1d6986437b3bade8138491a4e328f6",
+  "actualDesktopEntry": true,
+  "formalSettingsSave": true,
+  "sharedMemberConfig": true,
+  "defaultSwitchIsExplicit": true,
+  "authenticatedRoutes": true,
+  "coverReplacementArchivesExactBytes": true,
+  "replacementConfirmationDoesNotSubmit": true,
+  "formalCoverPromptAndRequirementPreserved": true,
+  "formalTaskIdSaved": true,
+  "duplicateSubmitReusesId": true,
+  "keyNotReturned": true,
+  "productionArtifactsUnchanged": true,
+  "mockSubmissions": 1,
+  "realProviderRequests": 0
+}

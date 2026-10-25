@@ -1,0 +1,328 @@
+--- before/server.py
++++ server.py
+@@ -1244,0 +1245 @@
++    import rh_workflow_provider
+@@ -1311,0 +1313 @@
++        "runninghub_workflow": rh_workflow_provider.public_config(sys.modules[__name__]),
+@@ -2074,0 +2077,4 @@
++    if provider == 'runninghub_workflow':
++        if reference_data_url:raise ImageSubmissionRejected('RH币工作流当前只支持文生图，不能用于参考图编辑')
++        import rh_workflow_provider
++        return rh_workflow_provider.generate(sys.modules[__name__],image_cfg,prompt,ratio,resolution,on_task_id)
+@@ -2134,0 +2141,3 @@
++    if selected == 'runninghub_workflow':
++        import rh_workflow_provider
++        return rh_workflow_provider.resolve(sys.modules[__name__])
+@@ -2166 +2175 @@
+-    if not path.exists() and image_cfg.get('provider') not in ('modelscope', 'runninghub'):
++    if not path.exists() and image_cfg.get('provider') not in ('modelscope', 'runninghub', 'runninghub_workflow'):
+@@ -2220 +2229 @@
+-            rejected = isinstance(error, ImageSubmissionRejected) or modelscope_quota_exhausted(error) or bool(re.search(r'HTTP\s+(400|401|403|404|422|429)\b', str(error)))
++            rejected = isinstance(error, ImageSubmissionRejected) or getattr(error,'image_not_submitted',False) or modelscope_quota_exhausted(error) or bool(re.search(r'HTTP\s+(400|401|403|404|422|429)\b', str(error)))
+@@ -5170 +5179 @@
+-                if provider == "runninghub" and not image_cfg.get("api_key"):
++                if provider in ("runninghub", "runninghub_workflow") and not image_cfg.get("api_key"):
+@@ -5679 +5688 @@
+-                elif provider == "runninghub":
++                elif provider in ("runninghub", "runninghub_workflow"):
+--- before/creative_workflows.py
++++ creative_workflows.py
+@@ -164 +164 @@
+-    if config.get('coverProvider','') not in ('','gpt_image','modelscope','jimeng','runninghub','custom_image'):raise ValueError('无效封面绘图引擎')
++    if config.get('coverProvider','') not in ('','gpt_image','modelscope','jimeng','runninghub','runninghub_workflow','custom_image'):raise ValueError('无效封面绘图引擎')
+@@ -215,0 +216 @@
++    if cfg.get('provider')=='runninghub_workflow':return cfg
+@@ -369 +370,9 @@
+-    result=backend.image_dispatcher(cfg,prompt,ratio or config.get('ratio','9:16'),config.get('resolution','1k'),reference_data_url=reference or config.get('reference'))
++    if cfg.get('provider')=='runninghub_workflow':
++        import visual_requirements
++        folder=getattr(EXECUTION,'folder',None) or next((parent for parent in path.parents if parent.parent==backend.DATA_DIR/'tasks'),path.parent)
++        prompt=visual_requirements.apply(prompt,visual_requirements.load(folder))
++        receipt_folder=path.parent/'.rh-receipts'/path.name
++        import image_generation_progress
++        result=image_generation_progress.run(receipt_folder,1,ensure_active,backend.batch_image_result,{**cfg,'_checkpoint':ensure_active},prompt,1,ratio or config.get('ratio','9:16'),config.get('resolution','1k'),receipt_folder,reference or config.get('reference'))
++    else:
++        result=backend.image_dispatcher(cfg,prompt,ratio or config.get('ratio','9:16'),config.get('resolution','1k'),reference_data_url=reference or config.get('reference'))
+@@ -1394,0 +1404,10 @@
++            receipt_relative=None
++            if stage=='image':
++                import image_auto_retry
++                selected_asset=Path(asset_path or f'covers/{shot["idx"]}.png')
++                receipt_relative=selected_asset.parent/'.rh-receipts'/selected_asset.name
++                receipt=folder/receipt_relative
++                paid=image_auto_retry.read_record(receipt/'image-jobs'/'1.json')
++                if paid.get('status') in ('pending','unknown','submitting','download_pending') and not paid.get('result'):
++                    raise ValueError('原绘图任务在途或提交状态不明，请先查询原任务，不能丢弃回执后重画')
++                if receipt.is_dir():paths.append(str(receipt_relative))
+@@ -1405 +1424,2 @@
+-                if p.is_file():target=archive/rel;target.parent.mkdir(parents=True,exist_ok=True);shutil.move(str(p),str(target))
++                if p.is_file() or receipt_relative is not None and p==folder/receipt_relative and p.is_dir():
++                    target=archive/rel;target.parent.mkdir(parents=True,exist_ok=True);shutil.move(str(p),str(target))
+--- before/task_cover.py
++++ task_cover.py
+@@ -47,0 +48 @@
++    if isinstance(error,InterruptedError):raise InterruptedError(message) from None
+@@ -122,0 +124 @@
++    result['localCoverAvailable']=bool(local_cover(backend,folder,slot,cover))
+@@ -133 +135 @@
+-    if provider not in ('','gpt_image','custom_image','runninghub','modelscope','jimeng'):raise ValueError('绘图提供商无效')
++    if provider not in ('','gpt_image','custom_image','runninghub','runninghub_workflow','modelscope','jimeng'):raise ValueError('绘图提供商无效')
+@@ -151 +153 @@
+-    if 'provider' in data and data['provider'] not in ('','gpt_image','custom_image','runninghub','modelscope','jimeng'):raise ValueError('绘图提供商无效')
++    if 'provider' in data and data['provider'] not in ('','gpt_image','custom_image','runninghub','runninghub_workflow','modelscope','jimeng'):raise ValueError('绘图提供商无效')
+@@ -218,0 +221,3 @@
++    if cfg['provider']=='runninghub_workflow':
++        import rh_workflow_provider
++        return rh_workflow_provider.query(backend,cfg,tid)
+@@ -265,0 +271,16 @@
++def replacement_intent(job):
++    return job.get('status') in ('replacement_ready','unsubmitted') and bool(job.get('replacement'))
++
++def local_cover(backend,folder,slot,cover):
++    """Find validated owned bytes before considering another paid operation."""
++    candidates=[Path(cover.get('path') or cover.get('local_path') or paths(folder,slot)[1]),paths(folder,slot)[1]]
++    if str(cover.get('url','')).startswith('/covers/'):candidates.append(backend.DATA_DIR/'covers'/Path(cover['url']).name)
++    if slot==1:candidates.extend(folder/f'cover-upload.{ext}' for ext in ('png','jpg','webp','jpeg'))
++    candidates.append(folder/'covers'/('poster.png' if slot==1 else 'poster2.png'))
++    for candidate in candidates:
++        if not candidate.is_file() or not candidate.resolve().is_relative_to(backend.DATA_DIR.resolve()):continue
++        try:raw=image_bytes({'b64':base64.b64encode(candidate.read_bytes()).decode()})
++        except (ValueError,OSError):continue
++        return candidate,raw
++    return None
++
+@@ -268 +289,6 @@
+-    folder=folder_for(backend,tid);info=view(backend,tid,slot);job=info['job']
++    folder=folder_for(backend,tid);info=view(backend,tid,slot);job=info['job'];cover=info['cover']
++    cached=local_cover(backend,folder,slot,cover)
++    if cached:
++        candidate,raw=cached
++        if candidate==paths(folder,slot)[1] and cover.get('url'):return cover
++        return commit(backend,tid,slot,raw,cover)
+@@ -276,9 +302,2 @@
+-    cover=info['cover'];candidate=Path(cover.get('path') or cover.get('local_path') or paths(folder,slot)[1])
+-    if not candidate.is_file() and str(cover.get('url','')).startswith('/covers/'):
+-        candidate=backend.DATA_DIR/'covers'/Path(cover['url']).name
+-    if not candidate.is_file() and slot==1:
+-        candidate=next((folder/f'cover-upload.{ext}' for ext in ('png','jpg','webp','jpeg') if (folder/f'cover-upload.{ext}').is_file()),candidate)
+-    if not candidate.is_file():candidate=folder/'covers'/('poster.png' if slot==1 else 'poster2.png')
+-    if candidate.is_file() and candidate.resolve().is_relative_to(backend.DATA_DIR.resolve()):
+-        if candidate==paths(folder,slot)[1] and cover.get('url'):return cover
+-        return commit(backend,tid,slot,image_bytes({'b64':base64.b64encode(candidate.read_bytes()).decode()}),cover)
++    replacement=replacement_intent(job)
++    if replacement and info['provider']!=job.get('targetProvider'):raise ValueError('已确认的新封面引擎与当前保存设置不一致，请恢复已确认的引擎')
+@@ -290 +309 @@
+-    if cover:raise ValueError('旧封面缓存丢失且没有可查询的供应商编号，请查供应商记录或上传本地图；不会自动再次购买')
++    if cover and not replacement:raise ValueError('旧封面缓存丢失且没有可查询的供应商编号，请查供应商记录或上传本地图；不会自动再次购买')
+@@ -295,0 +315 @@
++        if replacement:options.pop('provider',None)
+@@ -316 +336 @@
+-    return _action(backend,folder,tid,slot,'generate',{'slot':slot,'operation_id':f'workflow-cover-{slot}','prompt':prompt},checkpoint=checkpoint)['cover']
++    return _action(backend,folder,tid,slot,'generate',{'slot':slot,'operation_id':job['operationId'] if replacement else f'workflow-cover-{slot}','prompt':prompt},checkpoint=checkpoint)['cover']
+@@ -320,0 +341,31 @@
++    if name=='replace-unknown':
++        if set(data)-{'slot','provider','operation_id','acknowledge_unknown'}:raise ValueError('未知封面替换设置')
++        op=data.get('operation_id');provider=data.get('provider')
++        if not isinstance(op,str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,100}',op):raise ValueError('缺少有效封面操作编号')
++        if data.get('acknowledge_unknown') is not True:raise ValueError('请明确确认旧封面提交结果仍待核对及新引擎费用')
++        validate_options(backend,{'provider':provider})
++        if not provider:raise ValueError('请明确选择新的封面引擎')
++        # A retry may arrive after the new operation has started or completed.
++        if job.get('operationId')==op and job.get('replacement'):
++            if job.get('targetProvider')!=provider:raise ValueError('本次封面操作的目标引擎已经固定')
++            return info
++        if slot!=1 or job.get('status') not in ('unknown','submitting') or job.get('taskId') or job.get('result') or job.get('operationId')==op:
++            raise ValueError('仅可替换无任务编号、无结果的未知主封面提交')
++        if not job.get('provider') or provider==job.get('provider') or provider!=info['provider']:raise ValueError('新引擎必须与旧单不同，并与已保存的封面设置一致')
++        if local_cover(backend,folder,slot,info['cover']):raise ValueError('已有合法本地封面，请直接继续打包，无需再次生成')
++        archive=folder/'.cover-replacements'/f'{slot}-{op}.json';archive.parent.mkdir(exist_ok=True)
++        old_bytes=job_path.read_bytes()
++        if archive.exists():
++            if archive.read_bytes()!=old_bytes:raise ValueError('封面操作编号已有其他归档，请核对原记录')
++        else:
++            # Complete archive before changing the original receipt. Failed writes
++            # leave the original authoritative record intact.
++            temporary=archive.with_suffix('.'+uuid.uuid4().hex+'.tmp')
++            try:
++                with temporary.open('wb') as handle:
++                    handle.write(old_bytes);handle.flush();os.fsync(handle.fileno())
++                os.replace(temporary,archive)
++            finally:temporary.unlink(missing_ok=True)
++        write(job_path,{'status':'replacement_ready','operationId':op,'provider':provider,'targetProvider':provider,
++                        'replacement':{'archive':str(archive.relative_to(folder)),'previousProvider':job['provider'],'confirmedAt':time.time()}})
++        return view(backend,tid,slot)
+@@ -376,0 +428,2 @@
++        if replacement_intent(job) and (op!=job.get('operationId') or info['provider']!=job.get('targetProvider')):
++            raise ValueError('请继续已确认的封面操作及目标引擎，不能重置替换意图')
+@@ -385,0 +439 @@
++    if name=='generate' and replacement_intent(job) and cfg.get('provider')!=job.get('targetProvider'):raise ValueError('当前绘图配置与已确认的新封面引擎不一致')
+@@ -391 +445 @@
+-    cfg={**cfg,'auto_fallback_gpt':bool(cfg.get('auto_fallback_gpt') and cfg.get('fallback_provider')=='runninghub')}
++    cfg={**cfg,'auto_fallback_gpt':bool(cfg.get('auto_fallback_gpt') and cfg.get('fallback_provider')=='runninghub' and not replacement_intent(job))}
+@@ -398 +452 @@
+-            if not job.get('taskId') or job.get('provider') not in ('runninghub','modelscope'):raise ValueError('没有可查询的供应商任务编号，请核对供应商记录')
++            if not job.get('taskId') or job.get('provider') not in ('runninghub','runninghub_workflow','modelscope'):raise ValueError('没有可查询的供应商任务编号，请核对供应商记录')
+@@ -415 +469,2 @@
+-        job={'operationId':op,'status':'submitting','provider':cfg['provider'],'model':cfg.get('model'),'credential':credential(cfg),'prompt':prompt,'ratio':info['ratio'],'template':info['template']};write(job_path,job)
++        retained={k:job[k] for k in ('replacement','targetProvider') if k in job} if replacement_intent(job) else {}
++        job={**retained,'operationId':op,'status':'submitting','provider':cfg['provider'],'model':cfg.get('model'),'credential':credential(cfg),'prompt':prompt,'ratio':info['ratio'],'template':info['template']};write(job_path,job)
+@@ -418,0 +474 @@
++        if cfg.get('provider')=='runninghub_workflow':cfg={**cfg,'_checkpoint':checkpoint}
+@@ -421 +477 @@
+-            job['status']='failed' if isinstance(error,backend.ImageSubmissionRejected) else 'pending' if job.get('taskId') else 'unknown'
++            job['status']='unsubmitted' if getattr(error,'image_not_submitted',False) else 'failed' if isinstance(error,backend.ImageSubmissionRejected) else 'pending' if job.get('taskId') else 'unknown'
+--- before/rh_coins_workflow.py
++++ rh_coins_workflow.py
+@@ -8 +8 @@
+-RATIOS={'9:16':(576,1024),'3:4':(768,1024),'1:1':(1024,1024),'16:9':(1024,576)}
++RATIOS={'9:16':(576,1024),'3:4':(768,1024),'4:3':(1024,768),'1:1':(1024,1024),'16:9':(1024,576)}
+--- before/settings.html
++++ settings.html
+@@ -166 +166 @@
+-/* === STORY 真值：image-provider-tabs（Settings.js:1620-1637）— 5 个 provider 横向切换 === */
++/* Image provider tabs, including the independent RH member workflow. */
+@@ -383 +383 @@
+-          <div class="settings-section-sub" id="image-sub">5 个 provider 各有独立通道与计费方式 · 点 tab 切换</div>
++          <div class="settings-section-sub" id="image-sub">6 个 provider 各有独立通道与计费方式 · 点 tab 切换</div>
+@@ -393,0 +394,24 @@
++        <button class="image-provider-tab" data-p="runninghub_workflow" type="button">RH币工作流<span class="image-provider-tab-badge" id="img-badge-runninghub_workflow" style="display:none">使用中</span></button>
++      </div>
++
++      <div class="settings-card" id="img-card-runninghub_workflow" style="display:none">
++        <div class="custom-platform-banner">使用 RunningHub 国内站消费级会员 Key，通过已核对的开源工作流消耗 RH币。与原 RunningHub 模型 API 的企业 Key、账户和计费独立。配置与「测试一张」共用，已有 Key 无需重复输入。</div>
++        <div class="field-hd"><span class="label">国内站会员 Key</span><span class="hint">留空保留已保存的 Key</span></div>
++        <div class="key-input"><input type="password" id="rhw-key" class="key-input-field" placeholder="留空保留原值" autocomplete="off"><div class="key-input-actions"><button type="button" class="key-input-btn" data-toggle-key="rhw-key" title="显示/隐藏">👁</button></div></div>
++        <div class="field-hd"><span class="label">候选工作流</span></div>
++        <select id="rhw-preset" class="input" aria-label="RH币候选工作流"></select>
++        <div class="field-help"><a id="rhw-workflow-link" target="_blank" rel="noopener">查看所选工作流 ↗</a></div>
++        <label class="field-help" style="display:block;margin:10px 0"><input id="rhw-enabled" type="checkbox"> 启用 RH币工作流通道</label>
++        <label class="field-help" style="display:block;margin:10px 0"><input id="rhw-member" type="checkbox"> 我使用的是国内站消费级会员 Key</label>
++        <label class="field-help" style="display:block;margin:10px 0"><input id="rhw-web" type="checkbox"> 我已在同一账户网页跑通所选工作流</label>
++        <div class="field-help" id="rhw-account" role="status">正在读取共享配置…</div>
++        <div class="field-help" id="rhw-workflow"></div>
++        <div class="field-help">当前支持国内站、单图 1K；比例支持 9:16、16:9、1:1、3:4、4:3。已有成功图片不会因选择引擎而重画。</div>
++        <div class="settings-card-footer" style="flex-wrap:wrap">
++          <button type="button" class="btn btn-primary" id="rhw-save">保存配置</button>
++          <button type="button" class="btn btn-ghost" id="rhw-default">保存并设为默认</button>
++          <button type="button" class="btn btn-ghost" id="rhw-check">核对配置，不生成</button>
++          <button type="button" class="btn btn-ghost" id="rhw-refresh">刷新配置</button>
++          <a class="btn btn-ghost" href="/rh-coins-experiment.html">测试一张 →</a>
++        </div>
++        <div class="field-help" id="rhw-status" role="status" aria-live="polite"></div>
+@@ -911,0 +936 @@
++<script src="/assets/rh_workflow_settings.js"></script>
+@@ -1593 +1618 @@
+-    // ---- AI 绘图（5 个 tab） ----
++    // ---- AI 绘图（6 个 tab） ----
+@@ -1659 +1684 @@
+-    const imageOk = !!(img.configured || jm.configured || rh.configured || ms.configured || cu.configured);
++    const imageOk = !!(img.configured || jm.configured || rh.configured || ms.configured || cu.configured || s.runninghub_workflow?.configured);
+@@ -1855 +1880 @@
+-  ["jimeng","gpt_image","modelscope","runninghub","custom"].forEach(x => {
++  ["jimeng","gpt_image","modelscope","runninghub","custom","runninghub_workflow"].forEach(x => {
+@@ -1934 +1959 @@
+-  ["jimeng","gpt_image","modelscope","runninghub","custom"].forEach(x => {
++  ["jimeng","gpt_image","modelscope","runninghub","custom","runninghub_workflow"].forEach(x => {
+@@ -2027,0 +2053,4 @@
++}
++
++async function saveImageRunningHubWorkflow(makeDefault = false) {
++  return rhWorkflowSettings.save(makeDefault);
+@@ -2343,0 +2373,4 @@
++const rhWorkflowSettings=window.app074RhWorkflowSettings.mount({
++  onDefault:()=>api('/api/settings','POST',{image_provider:'runninghub_workflow'}),
++  onSaved:async()=>{const selected=currentImgProvider;await refreshSettings();switchImageProvider(selected);},
++});
+--- before/index.html
++++ index.html
+@@ -1955,0 +1956 @@
++    ["runninghub_workflow", "RH币工作流 · 国内站会员", settings.runninghub_workflow],
+--- before/assets/app_nav.js
++++ assets/app_nav.js
+@@ -5 +5 @@
+-[['image','◇','画图实验室','/image-lab.html'],['rh-coins','◇','RH币生图 · 实验','/rh-coins-experiment.html'],['tts','♫','配音实验室','/voice-lab.html'],['materials','▧','素材库','/library.html?type=materials']],
++[['image','◇','画图实验室','/image-lab.html'],['tts','♫','配音实验室','/voice-lab.html'],['materials','▧','素材库','/library.html?type=materials']],
+@@ -15 +15 @@
+-function active(){const q=new URLSearchParams(location.search),page=location.pathname;let key='new';if(page.endsWith('tasks.html')){const f=q.get('filter');key=f==='done'?'history':'queue';}else if(page.endsWith('result.html'))key='history';else if(page.endsWith('image-lab.html'))key='image';else if(page.endsWith('rh-coins-experiment.html'))key='rh-coins';else if(page.endsWith('selection.html'))key='selection';else if(page.endsWith('benchmark.html'))key='benchmark';else if(page.endsWith('market.html')||page==='/market')key='market';else if(page.endsWith('workbench.html'))key='copy';else if(page.endsWith('voice-lab.html'))key='tts';else if(page.endsWith('settings.html'))key='settings';else if(page.endsWith('management.html'))key=q.get('type')||'account';else if(page.endsWith('template-editor.html'))key='drafts';else if(page.endsWith('prompt-editor.html'))key='prompts';else if(page.endsWith('library.html'))key=q.get('type')||'drafts';for(const a of host.querySelectorAll('[data-nav]')){a.classList.toggle('active',a.dataset.nav===key);if(a.dataset.nav===key)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');}}
++function active(){const q=new URLSearchParams(location.search),page=location.pathname;let key='new';if(page.endsWith('tasks.html')){const f=q.get('filter');key=f==='done'?'history':'queue';}else if(page.endsWith('result.html'))key='history';else if(page.endsWith('image-lab.html'))key='image';else if(page.endsWith('/rh-coins-experiment.html'))key='settings';else if(page.endsWith('selection.html'))key='selection';else if(page.endsWith('benchmark.html'))key='benchmark';else if(page.endsWith('market.html')||page==='/market')key='market';else if(page.endsWith('workbench.html'))key='copy';else if(page.endsWith('voice-lab.html'))key='tts';else if(page.endsWith('settings.html'))key='settings';else if(page.endsWith('management.html'))key=q.get('type')||'account';else if(page.endsWith('template-editor.html'))key='drafts';else if(page.endsWith('prompt-editor.html'))key='prompts';else if(page.endsWith('library.html'))key=q.get('type')||'drafts';for(const a of host.querySelectorAll('[data-nav]')){a.classList.toggle('active',a.dataset.nav===key);if(a.dataset.nav===key)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');}}
+--- before/assets/workflow_actions.js
++++ assets/workflow_actions.js
+@@ -59 +59 @@
+-    {label:"绘图引擎", selector:"#img-engine", path:["image","provider"], type:"select",options:[['gpt_image','全能绘图'],['modelscope','魔搭 ModelScope'],['jimeng','即梦'],['runninghub','RunningHub'],['custom','自定义绘图']]},
++    {label:"绘图引擎", selector:"#img-engine", path:["image","provider"], type:"select",options:[['gpt_image','全能绘图'],['modelscope','魔搭 ModelScope'],['jimeng','即梦'],['runninghub','RunningHub'],['custom','自定义绘图'],['runninghub_workflow','RH币工作流']]},
+@@ -86 +86 @@
+-    {label:"封面绘图引擎", selector:"#cover-engine", path:["cover","provider"], type:"select",options:[['','跟随内页绘图引擎'],['gpt_image','全能绘图'],['modelscope','魔搭 ModelScope'],['jimeng','即梦'],['runninghub','RunningHub'],['custom','自定义绘图']]},
++    {label:"封面绘图引擎", selector:"#cover-engine", path:["cover","provider"], type:"select",options:[['','跟随内页绘图引擎'],['gpt_image','全能绘图'],['modelscope','魔搭 ModelScope'],['jimeng','即梦'],['runninghub','RunningHub'],['custom','自定义绘图'],['runninghub_workflow','RH币工作流']]},
+@@ -98,0 +99,10 @@
++
++function _coverReplacementPlan(info,cfg) {
++  const job=info?.job||{},cover=cfg.cover||{};
++  const normalize=value=>value==='custom'?'custom_image':value||'';
++  const provider=normalize(cover.provider||cfg.image?.provider||info?.provider);
++  const mode=cover.mode||info?.mode;
++  const localCoverAvailable=typeof info?.localCoverAvailable==='boolean'?info.localCoverAvailable:!!info?.cover?.url;
++  if(!['unknown','submitting'].includes(job.status)||job.taskId||job.result||!job.provider||localCoverAvailable||cover.dataUrl||!['title','titled','plain','blank'].includes(mode))return '';
++  return provider&&provider!==normalize(job.provider)?provider:'';
++}
+@@ -148,2 +158,2 @@
+-  const resourcePaths = {profiles:'/api/profiles',prompts:'/api/templates/prompts',drafts:'/api/templates/drafts',materials:'/api/materials',settings:'/api/settings',voices:'/assets/story_voice_reference.json'};
+-  const needed = stepKey==='1'?['profiles','prompts']:stepKey==='4'?['materials']:stepKey==='5'?['settings','voices']:stepKey==='6'?['drafts']:[];
++  const resourcePaths = {profiles:'/api/profiles',prompts:'/api/templates/prompts',drafts:'/api/templates/drafts',materials:'/api/materials',settings:'/api/settings',voices:'/assets/story_voice_reference.json',cover:'/api/task-cover/'+encodeURIComponent(taskId)+'?slot=1'};
++  const needed = stepKey==='1'?['profiles','prompts']:stepKey==='4'?['materials']:stepKey==='5'?['settings','voices']:stepKey==='6'?['drafts','cover']:[];
+@@ -181,0 +192,5 @@
++      ${stepKey==='6'?`<div id="cover-replacement-notice" role="status" hidden style="margin-top:14px;padding:12px;border:1px solid var(--warning);border-radius:6px">
++        <p id="cover-replacement-message" style="margin:0 0 10px"></p>
++        <label style="display:flex;gap:8px;align-items:flex-start"><input type="checkbox" id="cover-replacement-ack">我确认保留旧单，并使用所选新平台生成缺失封面，可能产生新平台费用。</label>
++        <p id="cover-replacement-error" aria-live="polite" style="color:var(--warning);margin:8px 0 0"></p>
++      </div>`:''}
+@@ -333,0 +349,21 @@
++  let replacementProvider='',replacementOperation='';
++  const replacementAck=overlay.querySelector('#cover-replacement-ack');
++  const syncCoverReplacement=nextCfg=>{
++    if(stepKey!=='6')return '';
++    if(!nextCfg){nextCfg=JSON.parse(JSON.stringify(cfg));nextCfg.cover ||= {};
++      const select=fieldControl('cover.provider');if(select)nextCfg.cover.provider=select.value;
++      const group=overlay.querySelector('[data-host="cover.mode"]')?.querySelector('.chips, [id$="-edit"]');if(group)nextCfg.cover.mode=_readChips(group);
++      if(overlay.querySelector('[data-host="cover.dataUrl"]')?.querySelector('input')?.files?.[0])nextCfg.cover.dataUrl='local upload';
++    }
++    const provider=_coverReplacementPlan(resources.cover,nextCfg);
++    if(provider!==replacementProvider){replacementAck.checked=false;replacementOperation='';replacementProvider=provider;}
++    const notice=overlay.querySelector('#cover-replacement-notice');if(notice)notice.hidden=!provider;
++    if(provider){const names={runninghub:'RunningHub',modelscope:'魔搭',runninghub_workflow:'RH币工作流',custom_image:'自定义绘图',gpt_image:'全能绘图',jimeng:'即梦'};
++      overlay.querySelector('#cover-replacement-message').textContent=`旧${names[resources.cover.job.provider]||resources.cover.job.provider}提交结果仍待核对，没有平台任务编号或结果；此次会用${names[provider]||provider}新生成一张封面，旧记录保留，可能产生新平台费用。已有成功图片和配音保留。`;
++    }
++    return provider;
++  };
++  if(stepKey==='6'){
++    overlay.addEventListener('change',()=>syncCoverReplacement());overlay.addEventListener('click',()=>syncCoverReplacement());syncCoverReplacement();
++    if(replacementAck)replacementAck.onchange=()=>overlay.querySelector('#cover-replacement-error').textContent='';
++  }
+@@ -413,0 +450,3 @@
++    const replaceProvider=syncCoverReplacement(nextCfg);
++    if(replaceProvider&&!replacementAck.checked){overlay.querySelector('#cover-replacement-error').textContent='请先勾选确认新平台生成与费用，再保存并重跑。';replacementAck.focus();return;}
++    if(replaceProvider&&!replacementOperation)replacementOperation=globalThis.crypto?.randomUUID?.()||'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=Math.random()*16|0;return(c==='x'?r:(r&3|8)).toString(16);});
+@@ -444,0 +484 @@
++      if(replaceProvider)await api(`/api/task-cover/${encodeURIComponent(taskId)}/replace-unknown`, 'POST', {slot:1,provider:replaceProvider,operation_id:replacementOperation,acknowledge_unknown:true});
+--- before/assets/task_cover.js
++++ assets/task_cover.js
+@@ -4 +4 @@
+- const providers=[['','跟随系统'],['gpt_image','全能绘图'],['runninghub','RunningHub'],['custom_image','自定义'],['modelscope','魔搭'],['jimeng','即梦']];
++ const providers=[['','跟随系统'],['gpt_image','全能绘图'],['runninghub','RunningHub'],['custom_image','自定义'],['modelscope','魔搭'],['jimeng','即梦'],['runninghub_workflow','RH币工作流']];
+--- before/assets/creative.js
++++ assets/creative.js
+@@ -21 +21 @@
+- const engineNames={gpt_image:'全能绘图',modelscope:'魔搭',jimeng:'即梦',runninghub:'RunningHub',custom_image:'自定义绘图'};
++ const engineNames={gpt_image:'全能绘图',modelscope:'魔搭',jimeng:'即梦',runninghub:'RunningHub',custom_image:'自定义绘图',runninghub_workflow:'RH币工作流'};
+--- before/assets/image_lab.js
++++ assets/image_lab.js
+@@ -47 +47 @@
+-(async()=>{try{const [r,s,h]=await Promise.all([api('/assets/story_workflow_reference.json'),api('/api/settings'),api('/api/image_lab')]);ref=r;items=h.items;folder=h.folder;const providers=[['gpt_image','全能绘图'],['modelscope','魔搭'],['runninghub','RunningHub'],['jimeng','即梦'],['custom_image',s.custom_image?.display_name||'自定义平台']];for(const [value,label] of providers)$('lab-provider').append(new Option(label,value));$('lab-provider').value=s.image?.provider||'gpt_image';if(mode==='cover')ratios=['3:4'];const selection=new URLSearchParams(location.search);if(ref.styles.some(x=>x.id===selection.get('style')))styles=[selection.get('style')];if(ref.coverTemplates.some(x=>x.id===selection.get('template')))template=selection.get('template');choices();render();}catch(e){$('lab-notice').textContent=e.message;}})();
++(async()=>{try{const [r,s,h]=await Promise.all([api('/assets/story_workflow_reference.json'),api('/api/settings'),api('/api/image_lab')]);ref=r;items=h.items;folder=h.folder;const providers=[['gpt_image','全能绘图'],['modelscope','魔搭'],['runninghub','RunningHub'],['runninghub_workflow','RH币工作流 · 1K'],['jimeng','即梦'],['custom_image',s.custom_image?.display_name||'自定义平台']];for(const [value,label] of providers)$('lab-provider').append(new Option(label,value));$('lab-provider').value=s.image?.provider||'gpt_image';if(mode==='cover')ratios=['3:4'];const selection=new URLSearchParams(location.search);if(ref.styles.some(x=>x.id===selection.get('style')))styles=[selection.get('style')];if(ref.coverTemplates.some(x=>x.id===selection.get('template')))template=selection.get('template');choices();render();}catch(e){$('lab-notice').textContent=e.message;}})();
+--- before/assets/workflow_view.js
++++ assets/workflow_view.js
+@@ -109 +109 @@
+-      add(1, '绘图引擎', mapped({gpt_image:'全能绘图（内置）',modelscope:'魔搭',runninghub:'全能图片',jimeng:'即梦',custom:'自定义'}, img.provider ?? req.image_provider));
++      add(1, '绘图引擎', mapped({gpt_image:'全能绘图（内置）',modelscope:'魔搭',runninghub:'全能图片',runninghub_workflow:'RH币工作流',jimeng:'即梦',custom:'自定义'}, img.provider ?? req.image_provider));
+@@ -145 +145 @@
+-      add(3, '封面绘图引擎', mapped({gpt_image:'全能绘图',modelscope:'魔搭 ModelScope',jimeng:'即梦',runninghub:'RunningHub',custom:'自定义绘图'}, cover.provider || '跟随内页绘图引擎'));
++      add(3, '封面绘图引擎', mapped({gpt_image:'全能绘图',modelscope:'魔搭 ModelScope',jimeng:'即梦',runninghub:'RunningHub',runninghub_workflow:'RH币工作流',custom:'自定义绘图'}, cover.provider || '跟随内页绘图引擎'));
