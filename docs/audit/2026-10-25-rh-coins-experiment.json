@@ -1,5 +1,5 @@
 {
-  "status": "candidate-verified-not-installed",
+  "status": "installed-verified-live-generation-pending",
   "manifestSha256": "35f5fc9989905777ec9602164399086d5ce5dd781649a3020f8dacfe6fff6ff5",
   "pythonTests": 69,
   "nodeTests": 25,
@@ -16,6 +16,26 @@
   "newEntry": "rh-coins-experiment.html",
   "defaultEnabled": false,
   "existingProvidersChanged": false,
-  "awaitingNormalAppExit": true,
-  "pendingCoverFirstErrorFixIncluded": true
+  "awaitingNormalAppExit": false,
+  "pendingCoverFirstErrorFixIncluded": true,
+  "installedRuntimeFiles": 2664,
+  "protectedBusinessFiles": 3832,
+  "businessFilesChanged": 0,
+  "installedActualDesktopEntry": {
+    "success": true,
+    "manifestSha256": "35f5fc9989905777ec9602164399086d5ce5dd781649a3020f8dacfe6fff6ff5",
+    "actualDesktopEntry": true,
+    "defaultOff": true,
+    "singleImageOnly": true,
+    "duplicateSubmitReusesId": true,
+    "disabledQueryRecoversOriginal": true,
+    "authenticatedRoutes": true,
+    "exportCopiesVerified": true,
+    "keyNotReturned": true,
+    "productionConfigAndArtifactsUnchanged": true,
+    "mockSubmissions": 1,
+    "mockQueries": 2,
+    "realProviderRequests": 0
+  },
+  "installedManifestSha256": "35f5fc9989905777ec9602164399086d5ce5dd781649a3020f8dacfe6fff6ff5"
 }

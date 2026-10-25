@@ -1,5 +1,5 @@
 {
-  "status": "candidate-unit-verified-not-installed",
+  "status": "installed-with-rh-coins-bundle",
   "pythonTests": {
     "testsRun": 51,
     "success": true,
@@ -15,5 +15,12 @@
     "resultSaved": false,
     "originalCausePreserved": false,
     "requiresSupplierHistoryReconciliation": true
+  },
+  "installation": {
+    "manifestSha256": "35f5fc9989905777ec9602164399086d5ce5dd781649a3020f8dacfe6fff6ff5",
+    "runtimeFilesVerified": 2664,
+    "businessFilesChanged": 0,
+    "realProviderRequests": 0,
+    "evidence": "2026-10-25-rh-coins-experiment.json"
   }
 }
