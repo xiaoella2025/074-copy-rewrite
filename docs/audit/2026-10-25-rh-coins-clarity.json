@@ -1,0 +1,25 @@
+{
+  "status": "installed-verified",
+  "manifestSha256": "389bf37b1c34c1abe5f10ea67ac4043709ece84e6195b357c8e4d166f5ec4b9b",
+  "staticAssetsChanged": 2,
+  "backendCodeChanged": false,
+  "applicationRestarted": false,
+  "applicationPageReloaded": false,
+  "businessFilesChanged": 0,
+  "protectedFiles": 8,
+  "nodeTests": 8,
+  "installedActualDesktopEntry": true,
+  "isolatedBrowser": true,
+  "realProviderRequestsByAgent": 0,
+  "initialDisabledCheckCause": "member_key_confirmed=false while a Key was saved",
+  "balanceDiscrepancy": "User confirmed two accounts on runninghub.cn: phone-scan account versus original email account; no currency conversion or deduction inferred",
+  "uiChanges": [
+    "numbered save/check/start buttons",
+    "specific blocker message",
+    "adjacent persistent job stage",
+    "grey disabled generation button",
+    "last-checked balance tied to current Key",
+    "null wallet values hidden"
+  ],
+  "screenshot": "screenshots/2026-10-25-rh-coins-progress-isolated.png"
+}

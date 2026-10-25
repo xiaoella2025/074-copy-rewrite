@@ -1,8 +1,8 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
-function fixture({lost=false,reject=false}={}){
+function fixture({lost=false,reject=false,savedConfig={}}={}){
  class Element{constructor(){this.children=[];this.value='';this.checked=false;this.disabled=false;this.style={};this.textContent='';}append(...nodes){this.children.push(...nodes);}replaceChildren(...nodes){this.children=nodes;}}
- const ids=['enabled','key','member','web','preset','save','check','account','workflow','workflow-link','prompt','ratio','generate','refresh','status','jobs','directory','choose'],nodes=Object.fromEntries(ids.map(id=>['rh-'+id,new Element()]));
- nodes['rh-ratio'].value='9:16';let state={enabled:false,configured:false,checked:false,preset:'qwen-simple',candidates:[{key:'qwen-simple',name:'Qwen',url:'https://www.runninghub.cn/post/1955160402595233794'}],jobs:[],exportDirectory:'D:/fixture'},counter=0,storage=new Map(),calls=[],scheduled;
+ const ids=['enabled','key','member','web','preset','save','check','account','workflow','workflow-link','prompt','ratio','generate','refresh','status','jobs','directory','choose','stage','next','check-hint'],nodes=Object.fromEntries(ids.map(id=>['rh-'+id,new Element()]));
+ nodes['rh-ratio'].value='9:16';let state={enabled:false,configured:false,checked:false,preset:'qwen-simple',candidates:[{key:'qwen-simple',name:'Qwen',url:'https://www.runninghub.cn/post/1955160402595233794'}],jobs:[],exportDirectory:'D:/fixture',...savedConfig},counter=0,storage=new Map(),calls=[],scheduled;
  const context={document:{getElementById:id=>nodes[id],createElement:()=>new Element()},window:{addEventListener(){}},sessionStorage:{getItem:key=>storage.get(key)||null,setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key)},crypto:{randomUUID:()=>String(++counter).padStart(32,'a')},setTimeout:fn=>(scheduled=fn,1),clearTimeout:()=>scheduled=null,
  fetch:async(url,options={})=>{const body=options.body?JSON.parse(options.body):null;calls.push({url,body});let result=state;
   if(url.endsWith('/config')){state={...state,...body,configured:!!body.api_key||state.configured,checked:false};delete state.api_key;result=state;}
@@ -41,4 +41,29 @@ test('page and sidebar expose independent entry without replacing existing provi
 test('known preflight rejection permits correcting configuration without a false uncertain lock',async()=>{
  const f=fixture({reject:true});await ready(f);await f.nodes['rh-generate'].onclick();
  assert.equal(f.storage.size,0);assert.equal(f.nodes['rh-generate'].disabled,false);
+});
+test('saved key with missing member confirmation explains the exact disabled check and next step',async()=>{
+ const f=fixture({savedConfig:{enabled:true,configured:true,member_key_confirmed:false,web_tested:true}});await f.tick();
+ assert.equal(f.nodes['rh-check'].disabled,true);
+ assert.match(f.nodes['rh-check-hint'].textContent,/勾选.*消费级会员/);
+ assert.match(f.nodes['rh-next'].textContent,/勾选.*消费级会员/);
+ assert.match(f.nodes['rh-stage'].textContent,/未提交生成/);
+ f.nodes['rh-member'].checked=true;f.nodes['rh-member'].onchange();
+ assert.match(f.nodes['rh-next'].textContent,/保存配置/);
+ await f.nodes['rh-save'].onclick();assert.match(f.nodes['rh-next'].textContent,/核对配置/);
+ assert.equal(f.calls.filter(c=>c.url.endsWith('/generate')).length,0);
+});
+test('visible stage distinguishes ready, submitted and completed without inventing progress',async()=>{
+ const f=fixture();await ready(f);assert.match(f.nodes['rh-next'].textContent,/开始生成/);
+ await f.nodes['rh-generate'].onclick();assert.match(f.nodes['rh-stage'].textContent,/已受理/);
+ assert.equal(f.nodes['rh-generate'].disabled,true);
+ let buttons=f.nodes['rh-jobs'].children[0].children;await buttons.find(n=>n.textContent==='查询原任务').onclick();
+ assert.match(f.nodes['rh-stage'].textContent,/已完成/);assert.equal(f.calls.filter(c=>c.url.endsWith('/generate')).length,1);
+});
+test('account display distinguishes the last interface balance from per-image fees and hides missing money',async()=>{
+ const f=fixture({savedConfig:{configured:true,checked:true,workflow:{nodes:11},account:{remainCoins:'949',remainMoney:'None',currency:'None',apiType:'NORMAL'}}});await f.tick();
+ assert.match(f.nodes['rh-account'].textContent,/上次核对.*949.*不是单张/);
+ assert.match(f.nodes['rh-account'].textContent,/runninghub\.cn/);
+ assert.match(f.nodes['rh-account'].textContent,/钱包余额.*未返回/);
+ assert.doesNotMatch(f.nodes['rh-account'].textContent,/None/);
 });

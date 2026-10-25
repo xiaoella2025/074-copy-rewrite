@@ -37,5 +37,7 @@
     "mockQueries": 2,
     "realProviderRequests": 0
   },
-  "installedManifestSha256": "35f5fc9989905777ec9602164399086d5ce5dd781649a3020f8dacfe6fff6ff5"
+  "installedManifestSha256": "35f5fc9989905777ec9602164399086d5ce5dd781649a3020f8dacfe6fff6ff5",
+  "currentInstalledManifestSha256": "389bf37b1c34c1abe5f10ea67ac4043709ece84e6195b357c8e4d166f5ec4b9b",
+  "staticClarityUpdate": "2026-10-25-rh-coins-clarity.json"
 }
