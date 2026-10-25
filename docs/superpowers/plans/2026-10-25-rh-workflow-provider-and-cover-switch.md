@@ -51,4 +51,4 @@ Files: `settings.html`、新 `assets/rh_workflow_settings.js`、`index.html`、`
 - [x] 接口契约互查，修复遗漏的后端白名单和恢复路径。
 - [x] 独立审查规格及代码，重要问题按失败测试修复。
 - [x] 固定候选清单；候选Python/Node、实际desktop入口和IAB隔离验收；无真实平台请求。
-- [ ] 本次自有文件和旧文件精确delta留档提交；正常退出074后安装，再做安装后复核。
+- [x] 本次自有文件和旧文件精确delta留档提交；正常退出074后安装，再做安装后复核。
