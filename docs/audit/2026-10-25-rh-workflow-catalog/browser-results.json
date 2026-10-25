@@ -1,0 +1,15 @@
+{
+  "success": true,
+  "manifestSha256": "443f5f22702f2a0356fa3da33afa0c628f4a9bd41b33fe9463f3ddd942007b5a",
+  "settingsCatalogOptions": true,
+  "addWorkflowWithoutGeneration": true,
+  "defaultUnchangedOnAdd": true,
+  "independentResumeValues": {
+    "cover": "sdxl-native",
+    "image": "flux-native"
+  },
+  "coverPickerVisible": true,
+  "noPageErrors": true,
+  "isolatedFixture": true,
+  "realProviderRequests": 0
+}

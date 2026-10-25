@@ -13,15 +13,16 @@
   function controls(){
    for(const id of ['save','default','enabled','key','member','web','preset'])$(id).disabled=busy||!loaded;
    $('refresh').disabled=busy;
+   if($('add'))$('add').disabled=busy||!loaded||dirty||!state.configured||!state.member_key_confirmed;
    $('check').disabled=busy||!loaded||dirty||!state.configured||!state.member_key_confirmed;
   }
-  function link(){const candidate=(state.candidates||[]).find(item=>item.key===$('preset').value);$('workflow-link').href=candidate?.url||'https://www.runninghub.cn/call-api/workflow-api';}
+  function link(){const candidate=(state.candidates||[]).find(item=>item.key===$('preset').value);$('workflow-link').href=candidate?.url||'https://www.runninghub.cn/call-api/workflow-api';if($('selection'))$('selection').textContent=(candidate?.note||'')+' '+(candidate?.family?candidate.family.toUpperCase()+' · ':'')+'单张费用未实测，以平台任务账单为准。';}
   function draw(sync=false){
    if(sync){$('enabled').checked=!!state.enabled;$('member').checked=!!state.member_key_confirmed;$('web').checked=!!state.web_tested;
     $('preset').replaceChildren();for(const item of state.candidates||[]){const option=document.createElement('option');option.value=item.key;option.textContent=item.name;$('preset').append(option);}$('preset').value=state.preset||'';link();}
    const account=state.account||{};
    $('account').textContent=(state.configured?'国内站会员 Key 已保存，页面不回显。':'尚未配置国内站会员 Key。')+(state.checked?' 上次核对余额：'+present(account.remainCoins)+' RH币（不是单张费用）；钱包余额：'+present(account.remainMoney)+'；账户来源：runninghub.cn。':' 账户来源：runninghub.cn；请保存并核对账户与完整工作流。');
-   $('workflow').textContent=dirty?'配置有未保存修改，请先保存，再核对。':state.checked?'完整工作流已核对，共 '+(state.workflow?.nodes||0)+' 个节点。实际画质与扣费可用「测试一张」验收。':'完整工作流尚未核对；核对只读取配置，不提交生图。';
+   $('workflow').textContent=dirty?'配置有未保存修改，请先保存，再核对。':state.checked?'完整工作流已核对，共 '+(state.workflow?.nodes||0)+' 个生图节点。'+(state.workflow?.removedNodes?'已直连提示词/尺寸，省去 '+state.workflow.removedNodes+' 个辅助节点。':'')+'实际画质与扣费可用「测试一张」验收。':'完整工作流尚未核对；核对只读取配置，不提交生图。';
    controls();
   }
   async function refresh(){if(busy)return;busy=true;controls();try{state=await request('');loaded=true;dirty=false;draw(true);}catch(error){loaded=false;notice(error.message);}finally{busy=false;controls();}}
@@ -34,6 +35,7 @@
   for(const id of ['key','enabled','member','web','preset'])$(id)[id==='key'?'oninput':'onchange']=()=>{dirty=true;if(id==='preset'){$('web').checked=false;link();}draw();};
   $('save').onclick=()=>save(false);$('default').onclick=()=>save(true);$('refresh').onclick=refresh;
   $('check').onclick=async()=>{if($('check').disabled)return;busy=true;controls();notice('正在核对账户与完整工作流，不提交生图…');try{state=await request('/check',{});draw(true);await onSaved?.();notice('账户与工作流已核对；未提交生成。');}catch(error){state.checked=false;draw();notice(error.message);}finally{busy=false;controls();}};
+  if($('add'))$('add').onclick=async()=>{if($('add').disabled)return;busy=true;controls();notice('正在读取并核对完整工作流，不提交生图…');try{const value=await request('/workflows/add',{name:$('add-name').value.trim(),url:$('add-url').value.trim()});state=await request('');draw(true);$('add-name').value='';$('add-url').value='';await onSaved?.();notice(value.message);}catch(error){notice(error.message);}finally{busy=false;controls();}};
   refresh();return {save,refresh};
  }
  root.app074RhWorkflowSettings={mount};

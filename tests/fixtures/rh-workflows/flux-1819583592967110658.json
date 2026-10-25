@@ -1,0 +1,316 @@
+{
+  "11": {
+    "class_type": "DualCLIPLoader",
+    "inputs": {
+      "clip_name1": "sd3/t5xxl_fp8_e4m3fn.safetensors",
+      "clip_name2": "sd3/clip_l.safetensors",
+      "type": "flux",
+      "device": "default"
+    },
+    "_meta": {
+      "title": "DualCLIPLoader"
+    }
+  },
+  "22": {
+    "class_type": "BasicGuider",
+    "inputs": {
+      "conditioning": [
+        "39",
+        0
+      ],
+      "model": [
+        "12",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "BasicGuider"
+    }
+  },
+  "66": {
+    "class_type": "ImpactSwitch",
+    "inputs": {
+      "select": 1,
+      "input2": [
+        "61",
+        0
+      ],
+      "input1": [
+        "46",
+        0
+      ],
+      "sel_mode": false
+    },
+    "_meta": {
+      "title": "Switch (Any)"
+    }
+  },
+  "12": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "weight_dtype": "fp8_e4m3fn",
+      "unet_name": "flux1-dev-fp8-Kijai.safetensors"
+    },
+    "_meta": {
+      "title": "Load Diffusion Model"
+    }
+  },
+  "45": {
+    "class_type": "ShowText|pysssss",
+    "inputs": {
+      "text2": "A cute anime girl with huge, fluffy fennec fox ears and a big, fluffy tail, messy long golden hair, blue eyes, dressed in a maid outfit with a long black skirt featuring gold foil patterns and a white apron, eating a slice of apple pie in the kitchen of an old, dark Victorian mansion with bright windows, filled with very expensive items everywhere.Best quality, 4k, 8k, ultra high resolution, HDR original, sharp focus,",
+      "text": [
+        "46",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Show Text 🐍"
+    }
+  },
+  "56": {
+    "class_type": "RH_Translator",
+    "inputs": {
+      "seed": 127,
+      "prompt": "可爱的动漫女孩，有着巨大的蓬松耳廓狐耳朵和一条蓬松的大尾巴，金色凌乱的长发，蓝眼睛，穿着女仆装，带有金箔图案的长黑裙和白色围裙，在一座古老的深色维多利亚式豪宅的厨房里吃着一片苹果派，豪宅的窗户明亮，到处都是非常昂贵的东西",
+      "advanced_options": "auto"
+    },
+    "_meta": {
+      "title": "Runninghub Translator"
+    }
+  },
+  "13": {
+    "class_type": "SamplerCustomAdvanced",
+    "inputs": {
+      "guider": [
+        "22",
+        0
+      ],
+      "latent_image": [
+        "5",
+        0
+      ],
+      "noise": [
+        "25",
+        0
+      ],
+      "sigmas": [
+        "17",
+        0
+      ],
+      "sampler": [
+        "16",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "SamplerCustomAdvanced"
+    }
+  },
+  "46": {
+    "class_type": "TextCombinerTwo",
+    "inputs": {
+      "text1": [
+        "56",
+        0
+      ],
+      "text2": [
+        "51",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Text Combiner 2"
+    }
+  },
+  "25": {
+    "class_type": "RandomNoise",
+    "inputs": {
+      "noise_seed": 144507652331700
+    },
+    "_meta": {
+      "title": "RandomNoise"
+    }
+  },
+  "58": {
+    "class_type": "JjkText",
+    "inputs": {
+      "text": "你是一个 stable diffusion prompt 专家，为我生成适用于 Stable Diffusion的prompt。根据我给你相关单词，你帮我扩写为适合 Stable Diffusion 文生图的prompt。要求:1.英文输出 2.除了 prompt 外，不要输出任何其它的信息，100字"
+    },
+    "_meta": {
+      "title": "Text"
+    }
+  },
+  "16": {
+    "class_type": "KSamplerSelect",
+    "inputs": {
+      "sampler_name": "euler"
+    },
+    "_meta": {
+      "title": "KSamplerSelect"
+    }
+  },
+  "17": {
+    "class_type": "BasicScheduler",
+    "inputs": {
+      "scheduler": "simple",
+      "denoise": 1,
+      "model": [
+        "12",
+        0
+      ],
+      "steps": 20
+    },
+    "_meta": {
+      "title": "BasicScheduler"
+    }
+  },
+  "39": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": [
+        "66",
+        0
+      ],
+      "clip": [
+        "11",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "CLIP Text Encode (Prompt)"
+    }
+  },
+  "5": {
+    "class_type": "EmptyLatentImage",
+    "inputs": {
+      "batch_size": 1,
+      "width": [
+        "52",
+        0
+      ],
+      "height": [
+        "52",
+        1
+      ]
+    },
+    "_meta": {
+      "title": "Empty Latent Image"
+    }
+  },
+  "8": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "vae": [
+        "10",
+        0
+      ],
+      "samples": [
+        "13",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "9": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "filename_prefix": "ComfyUI",
+      "images": [
+        "8",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Save Image"
+    }
+  },
+  "60": {
+    "class_type": "Bjornulf_ShowStringText",
+    "inputs": {
+      "STRING": [
+        "62",
+        0
+      ],
+      "text": "一只可爱的动漫少女，长着蓬松的大耳廓狐耳朵和毛茸茸的大尾巴，凌乱的金色长发，蓝眼睛，身穿女仆装——黑色长裙上点缀着金箔花纹，系着白色围裙，在一栋古老阴暗的维多利亚式宅邸的厨房里吃着苹果派。明亮的窗户旁摆满各处价值连城的物品。最佳画质，4K，8K，超高清分辨率，HDR原片，锐利聚焦。"
+    },
+    "_meta": {
+      "title": "👁 Show (String/Text)"
+    }
+  },
+  "61": {
+    "class_type": "RH_Prompter",
+    "inputs": {
+      "seed": 1507,
+      "prompt": [
+        "64",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Midjourney Style Prompter"
+    }
+  },
+  "51": {
+    "class_type": "JjkText",
+    "inputs": {
+      "text": "Best quality, 4k, 8k, ultra high resolution, HDR original, sharp focus,"
+    },
+    "_meta": {
+      "title": "Text"
+    }
+  },
+  "62": {
+    "class_type": "RH_Translator",
+    "inputs": {
+      "seed": 941,
+      "prompt": [
+        "61",
+        0
+      ],
+      "advanced_options": "force_chinese"
+    },
+    "_meta": {
+      "title": "Runninghub Translator"
+    }
+  },
+  "52": {
+    "class_type": "FluxResolutionNode",
+    "inputs": {
+      "aspect_ratio": "3:4 (Golden Ratio)",
+      "megapixel": "1.0",
+      "custom_ratio": false,
+      "custom_aspect_ratio": "1:1"
+    },
+    "_meta": {
+      "title": "Flux Resolution Calc"
+    }
+  },
+  "64": {
+    "class_type": "TextCombinerTwo",
+    "inputs": {
+      "text1": [
+        "58",
+        0
+      ],
+      "text2": [
+        "45",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Text Combiner 2"
+    }
+  },
+  "10": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "ae.sft"
+    },
+    "_meta": {
+      "title": "Load VAE"
+    }
+  }
+}

@@ -17,7 +17,7 @@ test('formal settings reuse saved member key and do not submit generation or cha
 test('provider choices reach creation and task parameters without changing their saved engine',()=>{
  const ctx={};vm.createContext(ctx);vm.runInContext(read('assets/workflow_actions.js')+';this.fields=STEP_FIELDS;',ctx);
  for(const key of ['4','6'])assert.ok(ctx.fields[key].find(f=>f.path.at(-1)==='provider').options.some(x=>x[0]==='runninghub_workflow'));
- const source=read('index.html'),start=source.indexOf('function syncImageOptions()'),end=source.indexOf('function updateImageFallbackHint()',start);
+ const source=read('index.html'),start=source.indexOf('function syncRhWorkflowOptions()'),end=source.indexOf('function updateImageFallbackHint()',start);
  class El{constructor(){this.children=[];this.value='';this.textContent='';}replaceChildren(){this.children=[];}appendChild(x){this.children.push(x);}cloneNode(){return Object.assign(new El(),this);}addEventListener(){}}
  const nodes={'img-engine':new El(),'cover-engine':new El()};vm.runInNewContext(source.slice(start,end)+';syncImageOptions();',{$:id=>nodes[id],document:{createElement:()=>new El()},settings:{image:{provider:'modelscope'},runninghub_workflow:{configured:true}},updateImageFallbackHint(){}});
  assert.equal(nodes['img-engine'].value,'modelscope');for(const id of ['img-engine','cover-engine'])assert.ok(nodes[id].children.some(x=>x.value==='runninghub_workflow'));

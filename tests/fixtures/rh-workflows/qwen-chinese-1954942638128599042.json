@@ -1,0 +1,171 @@
+{
+  "77": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "weight_dtype": "default",
+      "unet_name": "qwen_image_bf16.safetensors"
+    },
+    "_meta": {
+      "title": "UNET加载器"
+    }
+  },
+  "67": {
+    "class_type": "EmptySD3LatentImage",
+    "inputs": {
+      "batch_size": 1,
+      "width": [
+        "70",
+        0
+      ],
+      "height": [
+        "70",
+        1
+      ]
+    },
+    "_meta": {
+      "title": "空Latent_SD3"
+    }
+  },
+  "78": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "qwen_image_vae.safetensors"
+    },
+    "_meta": {
+      "title": "VAE加载器"
+    }
+  },
+  "69": {
+    "class_type": "KSampler",
+    "inputs": {
+      "scheduler": "simple",
+      "negative": [
+        "83",
+        0
+      ],
+      "denoise": 1,
+      "latent_image": [
+        "67",
+        0
+      ],
+      "seed": 1024968895232808,
+      "cfg": 4,
+      "sampler_name": "euler",
+      "model": [
+        "72",
+        0
+      ],
+      "positive": [
+        "76",
+        0
+      ],
+      "steps": 30
+    },
+    "_meta": {
+      "title": "K采样器"
+    }
+  },
+  "70": {
+    "class_type": "FluxResolutionNode",
+    "inputs": {
+      "aspect_ratio": "3:4 (Golden Ratio)",
+      "megapixel": "1.5",
+      "custom_ratio": false,
+      "custom_aspect_ratio": "1:1"
+    },
+    "_meta": {
+      "title": "Flux Resolution Calc"
+    }
+  },
+  "71": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "qwen_2.5_vl_7b_fp8_scaled.safetensors",
+      "type": "qwen_image",
+      "device": "default"
+    },
+    "_meta": {
+      "title": "CLIP加载器"
+    }
+  },
+  "72": {
+    "class_type": "ModelSamplingAuraFlow",
+    "inputs": {
+      "shift": 3.500000000000001,
+      "model": [
+        "77",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "模型采样算法AuraFlow"
+    }
+  },
+  "83": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，杂乱的背景，三条腿",
+      "clip": [
+        "71",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "CLIP文本编码器"
+    }
+  },
+  "73": {
+    "class_type": "PreviewImage",
+    "inputs": {
+      "images": [
+        "75",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "预览图像"
+    }
+  },
+  "74": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "filename_prefix": "ComfyUI",
+      "images": [
+        "75",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "保存图像"
+    }
+  },
+  "75": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "vae": [
+        "78",
+        0
+      ],
+      "samples": [
+        "69",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "VAE解码"
+    }
+  },
+  "76": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "这张图片充满秋季出游的欢乐氛围，整体采用明亮温暖的色调。背景是柔和的米黄色天空，点缀着飘落的橙黄色树叶，展现出秋天的季节特色。左下角可以看到一个白色风车坐落在橙色渐变的山坡上，右侧的粉色汽车和简洁的树木构成丰富的户外旅行场景。\n\n画面中心是一位身穿粉色背带裙、白色长袖衬衫的女性角色，头戴粉色贝雷帽，肩背紫色小包，手持自拍杆，脚穿黑色短靴和白色袜子，边走边自拍，展现自信与活力。她手拉的蓝色行李箱增加了出游的写实感。右边，有一名男角色坐在粉色汽车的车顶，身穿蓝色服装，背着登山包，手持水瓶喝水，彰显户外旅行的惬意与随性。车内还有一位挥手的小女孩，使画面更富动态感。\n\n文字设计醒目且富有层次感，中间核心内容为“追着秋天去旅行”，使用黑色粗字体，加入飘带与粉色相机图案的装饰，呈现趣味十足的视觉吸引力。文字背景为橙黄色色块，与秋天主题相呼应。日期“9.10-9.30”置于主标题下方，采用黑色细字体简洁呈现。正文右下角标注活动时间及主办方信息，字体大小对比突出，具有较强的条理性。\n\n整体风格偏插画童趣风，线条简约，颜色搭配以橙色、粉色、蓝色和黄色为主，营造出温馨愉悦的秋天旅游氛围。此外，中英文文字结合以及细节丰富的画面布局，使得设计既饱满又有条不紊，非常适合推广休闲旅行主题的活动。",
+      "clip": [
+        "71",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "CLIP文本编码器"
+    }
+  }
+}

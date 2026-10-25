@@ -1,0 +1,181 @@
+{
+  "44": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "vae": [
+        "10",
+        2
+      ],
+      "samples": [
+        "35",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "VAE解码"
+    }
+  },
+  "23": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": [
+        "673",
+        0
+      ],
+      "clip": [
+        "10",
+        1
+      ]
+    },
+    "_meta": {
+      "title": "CLIP文本编码器"
+    }
+  },
+  "13": {
+    "class_type": "ShowText|pysssss",
+    "inputs": {
+      "text2": "This is a photograph of a young Asian woman standing on a beach during twilight. The image is taken from a low angle, emphasizing her slender figure and delicate features. She has smooth, fair skin with a slight glow, likely due to the soft lighting. Her dark, straight hair is tied back loosely, with a few strands framing her face. She wears a soft, beige scarf wrapped around her neck, adding a touch of warmth and texture to her otherwise simple black outfit. The background features a serene ocean with gentle waves, its deep blue color contrasting with the sky, which is also a deep blue, indicating either early morning or late evening. The lighting is soft and warm, casting a gentle glow on her face and creating a tranquil, almost ethereal atmosphere. The overall mood of the photograph is calm and introspective, with the subject appearing to be lost in thought.,best quality, ultra-detailed, masterpiece, finely detailed, high res, 8k, realistic, photorealistic,",
+      "text": [
+        "686",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "展示文本"
+    }
+  },
+  "35": {
+    "class_type": "KSampler",
+    "inputs": {
+      "scheduler": "sgm_uniform",
+      "negative": [
+        "23",
+        0
+      ],
+      "denoise": 1,
+      "latent_image": [
+        "689",
+        0
+      ],
+      "seed": 966902812442545,
+      "cfg": 5,
+      "sampler_name": "dpmpp_2m",
+      "model": [
+        "10",
+        0
+      ],
+      "positive": [
+        "14",
+        0
+      ],
+      "steps": 30
+    },
+    "_meta": {
+      "title": "K采样器"
+    }
+  },
+  "46": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "filename_prefix": "SDXL文生图-未放大",
+      "images": [
+        "44",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "保存图像"
+    }
+  },
+  "14": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": [
+        "686",
+        0
+      ],
+      "clip": [
+        "10",
+        1
+      ]
+    },
+    "_meta": {
+      "title": "CLIP文本编码器"
+    }
+  },
+  "673": {
+    "class_type": "TextInputBasic",
+    "inputs": {
+      "text": "worst quality, low quality, normal quality, lower quality, text, error, extra digit, digits, cropped, jpeg artifacts, signature, watermark, username, blurry, (NSFW:1.8), distorted, bad perspective, bad composition, wrong lighting, overexposed, underexposed, poor focus, noise, grainy, oversaturated, desaturated, unnatural colors, unrealistic, cartoonish, sketchy, rough draft, unfinished, draft, low resolution, pixelated, glitched, dirty, smudged, stained, scratched"
+    },
+    "_meta": {
+      "title": "文本输入"
+    }
+  },
+  "686": {
+    "class_type": "CR Text Concatenate",
+    "inputs": {
+      "text1": [
+        "687",
+        0
+      ],
+      "text2": [
+        "688",
+        0
+      ],
+      "separator": ","
+    },
+    "_meta": {
+      "title": "文本联结"
+    }
+  },
+  "676": {
+    "class_type": "EmptyLatentImage",
+    "inputs": {
+      "batch_size": 1,
+      "width": 768,
+      "height": 1024
+    },
+    "_meta": {
+      "title": "空Latent"
+    }
+  },
+  "687": {
+    "class_type": "CR Text",
+    "inputs": {
+      "text": "This is a photograph of a young Asian woman standing on a beach during twilight. The image is taken from a low angle, emphasizing her slender figure and delicate features. She has smooth, fair skin with a slight glow, likely due to the soft lighting. Her dark, straight hair is tied back loosely, with a few strands framing her face. She wears a soft, beige scarf wrapped around her neck, adding a touch of warmth and texture to her otherwise simple black outfit. The background features a serene ocean with gentle waves, its deep blue color contrasting with the sky, which is also a deep blue, indicating either early morning or late evening. The lighting is soft and warm, casting a gentle glow on her face and creating a tranquil, almost ethereal atmosphere. The overall mood of the photograph is calm and introspective, with the subject appearing to be lost in thought."
+    },
+    "_meta": {
+      "title": "文本"
+    }
+  },
+  "688": {
+    "class_type": "CR Text",
+    "inputs": {
+      "text": "best quality, ultra-detailed, masterpiece, finely detailed, high res, 8k, realistic, photorealistic,"
+    },
+    "_meta": {
+      "title": "文本"
+    }
+  },
+  "689": {
+    "class_type": "SDXL Empty Latent Image (rgthree)",
+    "inputs": {
+      "clip_scale": 2,
+      "batch_size": 1,
+      "dimensions": " 768 x 1344  (portrait)"
+    },
+    "_meta": {
+      "title": "SDXL空Latent图像"
+    }
+  },
+  "10": {
+    "class_type": "CheckpointLoaderSimple",
+    "inputs": {
+      "ckpt_name": "真境写真XL Apex _ 商业电商摄影真实写实大师v5.safetensors"
+    },
+    "_meta": {
+      "title": "Checkpoint加载器(简易)"
+    }
+  }
+}

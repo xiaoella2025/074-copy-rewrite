@@ -15,21 +15,24 @@ PROVIDER='runninghub_workflow'
 LOCK=threading.RLock()
 
 
-def resolve(backend):
-    config=experiment.config(backend);saved=read(experiment.directory(backend)/'checked.json',{})
-    candidate=experiment.CANDIDATES[config['preset']]
+def resolve(backend,key=None):
+    import rh_workflow_catalog as catalog
+    config=experiment.config(backend);key=key or config['preset'];candidate=catalog.entries(backend).get(key)
+    if not candidate:raise ValueError('所选RH币工作流不存在，请在系统设置核对')
+    saved=catalog.cached(backend,key,config);valid=experiment.checked({**config,'preset':key},saved)
     return {'provider':PROVIDER,'api_key':config.get('api_key',''),'base_url':experiment.API,
-        'model':'qwen-workflow-'+candidate['id'],'workflow_id':candidate['id'],'preset':config['preset'],
+        'model':('qwen-workflow-' if key.startswith('qwen-') else 'rh-workflow-')+candidate['id'],'workflow_id':candidate['id'],'preset':key,
         'enabled':config.get('enabled') is True,'member_key_confirmed':config.get('member_key_confirmed') is True,
-        'web_tested':config.get('web_tested') is True,'checked':experiment.checked(config,saved),
-        'workflow':saved.get('graph'),'workflow_sha256':saved.get('workflowSha256'),
+        'web_tested':config.get('web_tested') is True if key==config['preset'] else saved.get('web_tested') is True,
+        'checked':valid,'workflow':saved.get('graph'),'workflow_sha256':saved.get('workflowSha256'),
         'ratio':'9:16','resolution':'1k','concurrency':1,'auto_fallback_gpt':False}
 
 
 def public_config(backend):
     try:cfg=resolve(backend)
     except (OSError,ValueError,KeyError):return {'configured':False,'has_key':False,'error':'RH币工作流配置需要重新核对'}
-    return {'configured':bool(cfg['api_key'] and cfg['enabled'] and cfg['member_key_confirmed'] and cfg['web_tested'] and cfg['checked']),
+    import rh_workflow_catalog as catalog
+    return {'candidates':catalog.public_entries(backend),'preset':cfg['preset'],'configured':bool(cfg['api_key'] and cfg['enabled'] and cfg['member_key_confirmed'] and cfg['web_tested'] and cfg['checked']),
         'has_key':bool(cfg['api_key']),**{key:cfg[key] for key in ('enabled','checked','model','workflow_id','base_url','concurrency','resolution','ratio')}}
 
 

@@ -1,0 +1,279 @@
+--- before/server.py
++++ server.py
+@@ -366,2 +366,2 @@
+-                if 'provider' in editor:
+-                    detail['client_config']['cover']={**(detail['client_config'].get('cover') or {}),'provider':editor['provider']}
++                if any(key in editor for key in ('provider','workflow')):
++                    detail['client_config']['cover']={**(detail['client_config'].get('cover') or {}),**{key:editor[key] for key in ('provider','workflow') if key in editor}}
+@@ -4551 +4551,2 @@
+-                    '/export':lambda:experiment.export_image(backend,data)}
++                    '/export':lambda:experiment.export_image(backend,data),
++                    '/workflows/add':lambda:__import__('rh_workflow_catalog').add(backend,data)}
+@@ -5127,0 +5129 @@
++                    if 'workflow' in data:options['workflow']=data['workflow']
+@@ -5171,0 +5174 @@
++                if image_cfg.get('provider')=='runninghub_workflow':image_cfg=__import__('rh_workflow_provider').resolve(sys.modules[__name__],data.get('workflow'))
+@@ -5676,0 +5680 @@
++                if img_cfg.get('provider')=='runninghub_workflow':img_cfg=__import__('rh_workflow_provider').resolve(sys.modules[__name__],data.get('workflow'))
+@@ -5830,0 +5835 @@
++                        if img_cfg.get('provider')=='runninghub_workflow':img_cfg=__import__('rh_workflow_provider').resolve(sys.modules[__name__],data.get('workflow'))
+--- before/creative_workflows.py
++++ creative_workflows.py
+@@ -216 +216,3 @@
+-    if cfg.get('provider')=='runninghub_workflow':return cfg
++    if cfg.get('provider')=='runninghub_workflow':
++        import rh_workflow_provider
++        return rh_workflow_provider.resolve(backend,config.get('imageWorkflow'))
+@@ -241,0 +244,3 @@
++        if cover_cfg.get('provider')=='runninghub_workflow':
++            import rh_workflow_provider
++            cover_cfg=rh_workflow_provider.resolve(backend,config.get('coverWorkflow'))
+--- before/task_cover.py
++++ task_cover.py
+@@ -122 +122 @@
+-            'job':job,'errorInfo':error_info,'profile_id':current_profile,
++            'job':job,'errorInfo':error_info,'workflow':editor.get('workflow',cfg.get('coverWorkflow',base.get('workflow',''))),'profile_id':current_profile,
+@@ -123,0 +124,3 @@
++    if result['provider']=='runninghub_workflow':
++        import rh_workflow_catalog
++        result['workflows']=rh_workflow_catalog.public_entries(backend)
+@@ -132 +135 @@
+-    if old==new:return
++    if old==new and (previous.get('cover') or {}).get('workflow')==(current.get('cover') or {}).get('workflow'):return
+@@ -137 +140 @@
+-    editors['1']={**editors.get('1',{}),'provider':provider}
++    editors['1']={**editors.get('1',{}),'provider':provider,'workflow':(current.get('cover') or {}).get('workflow','')}
+@@ -141 +144 @@
+-    allowed={'slot','title','subtitle','template','direction','ratio','withTitle','provider','mode','profile_id'}
++    allowed={'slot','title','subtitle','template','direction','ratio','withTitle','provider','mode','profile_id','workflow'}
+@@ -148,0 +152,4 @@
++    if 'workflow' in data and not isinstance(data['workflow'],str):raise ValueError('工作流选择必须为文字')
++    if data.get('workflow'):
++        import rh_workflow_catalog
++        if data['workflow'] not in rh_workflow_catalog.entries(backend):raise ValueError('所选RH工作流不存在')
+@@ -317 +324 @@
+-        for key in ('provider','template','direction','ratio','withTitle','profile_id','title','subtitle'):
++        for key in ('provider','workflow','template','direction','ratio','withTitle','profile_id','title','subtitle'):
+@@ -396 +403 @@
+-        if 'provider' in data and slot==1 and (folder/'client_config.json').is_file():
++        if any(key in data for key in ('provider','workflow')) and slot==1 and (folder/'client_config.json').is_file():
+@@ -398 +405 @@
+-            client['cover']={**(client.get('cover') or {}),'provider':data['provider']}
++            client['cover']={**(client.get('cover') or {}),**{key:data[key] for key in ('provider','workflow') if key in data}}
+@@ -438,0 +446,3 @@
++    if name=='generate' and cfg.get('provider')=='runninghub_workflow':
++        import rh_workflow_provider
++        cfg=rh_workflow_provider.resolve(backend,info.get('workflow'))
+--- before/rh_coins_experiment.py
++++ rh_coins_experiment.py
+@@ -22,0 +23,3 @@
++ 'flux-native':{'id':'1819583592967110658','name':'FLUX 文生图 · 热门','family':'flux','note':'约1.09万浏览、200+收藏；2026-10-25核对，适合通用背景与分镜'},
++ 'qwen-chinese':{'id':'1954942638128599042','name':'Qwen 中文海报 · 优选','family':'qwen','note':'597浏览、52收藏；2026-10-25核对，偏中文海报'},
++ 'sdxl-native':{'id':'1912776705101234178','name':'SDXL 文生图 · 基础备选','family':'sdxl','note':'约394浏览、54收藏；2026-10-25核对，基础单图流程'},
+@@ -64 +67,2 @@
+-    cfg=config(backend);root=directory(backend);audit=read(root/'checked.json',{})
++    import rh_workflow_catalog as catalog
++    cfg=config(backend);root=directory(backend);audit=catalog.cached(backend,cfg['preset'],cfg)
+@@ -70 +74 @@
+-        'candidates':[{'key':key,**item,'url':API+'/post/'+item['id']} for key,item in CANDIDATES.items()],
++        'candidates':catalog.public_entries(backend),
+@@ -85 +89,2 @@
+-            if not isinstance(data['preset'],str) or data['preset'] not in CANDIDATES:raise ValueError('请选择已提供的 Qwen 候选')
++            import rh_workflow_catalog as catalog
++            if not isinstance(data['preset'],str) or data['preset'] not in catalog.entries(backend):raise ValueError('请选择已保存的工作流')
+@@ -99,0 +105,5 @@
++        if 'web_tested' in data:
++            import rh_workflow_catalog as catalog
++            saved=catalog.cached(backend,cfg['preset'],cfg)
++            if saved.get('credential')==credential(cfg) and saved.get('preset')==cfg['preset']:
++                write(catalog.cache_path(backend,cfg['preset']),{**saved,'web_tested':cfg['web_tested']})
+@@ -133,3 +143,5 @@
+-    with LOCK:
+-        root=directory(backend);cfg=config(backend)
+-        write(root/'checked.json',{'valid':False})
++    import rh_workflow_catalog as catalog
++    with LOCK:
++        root=directory(backend);cfg=config(backend);entry=catalog.entries(backend).get(cfg['preset'])
++        if not entry:raise ValueError('工作流选择不存在')
++        write(catalog.cache_path(backend,cfg['preset']),{'valid':False});write(root/'checked.json',{'valid':False})
+@@ -138,7 +150,2 @@
+-        value=post(backend,cfg,'/api/openapi/getJsonApiFormat',{'apiKey':cfg.get('api_key'),'workflowId':CANDIDATES[cfg['preset']]['id']})
+-        if value.get('code')!=0 or not isinstance(value.get('data'),dict):raise RuntimeError('候选工作流读取未成功，请核对账户权限；未提交生成')
+-        raw=value['data'].get('prompt')
+-        if not isinstance(raw,str) or len(raw)>200_000:raise ValueError('平台未返回可核对的完整工作流')
+-        graph=json.loads(raw);summary=workflow.audit_graph(graph)
+-        write(root/'checked.json',{'valid':True,'credential':credential(cfg),'preset':cfg['preset'],'account':info,
+-            'graph':graph,'workflowSha256':workflow.digest(graph),'summary':summary,'checkedAt':time.time()})
++        saved=catalog.inspect_entry(backend,cfg,cfg['preset'],entry,info)
++        write(catalog.cache_path(backend,cfg['preset']),saved);write(root/'checked.json',saved)
+@@ -159 +166,2 @@
+-        cfg=config(backend);root=directory(backend);audit=read(root/'checked.json',{})
++        import rh_workflow_catalog as catalog
++        cfg=config(backend);root=directory(backend);audit=catalog.cached(backend,cfg['preset'],cfg)
+@@ -173 +181 @@
+-            'fingerprint':fingerprint,'credential':credential(cfg),'workflowId':CANDIDATES[cfg['preset']]['id'],
++            'fingerprint':fingerprint,'credential':credential(cfg),'workflowId':catalog.entries(backend)[cfg['preset']]['id'],
+--- before/rh_coins_workflow.py
++++ rh_coins_workflow.py
+@@ -40,0 +41,3 @@
++    if isinstance(graph,dict) and any(isinstance(n,dict) and n.get('class_type') in ('CheckpointLoaderSimple','DualCLIPLoader') for n in graph.values()):
++        import rh_workflow_graphs
++        return rh_workflow_graphs.audit_graph(graph)
+@@ -122 +125 @@
+-    result[info['seedNode']]['inputs']['seed']=seed
++    result[info['seedNode']]['inputs'][info.get('seedField','seed')]=seed
+--- before/rh_workflow_provider.py
++++ rh_workflow_provider.py
+@@ -18,3 +18,5 @@
+-def resolve(backend):
+-    config=experiment.config(backend);saved=read(experiment.directory(backend)/'checked.json',{})
+-    candidate=experiment.CANDIDATES[config['preset']]
++def resolve(backend,key=None):
++    import rh_workflow_catalog as catalog
++    config=experiment.config(backend);key=key or config['preset'];candidate=catalog.entries(backend).get(key)
++    if not candidate:raise ValueError('所选RH币工作流不存在，请在系统设置核对')
++    saved=catalog.cached(backend,key,config);valid=experiment.checked({**config,'preset':key},saved)
+@@ -22 +24 @@
+-        'model':'qwen-workflow-'+candidate['id'],'workflow_id':candidate['id'],'preset':config['preset'],
++        'model':('qwen-workflow-' if key.startswith('qwen-') else 'rh-workflow-')+candidate['id'],'workflow_id':candidate['id'],'preset':key,
+@@ -24,2 +26,2 @@
+-        'web_tested':config.get('web_tested') is True,'checked':experiment.checked(config,saved),
+-        'workflow':saved.get('graph'),'workflow_sha256':saved.get('workflowSha256'),
++        'web_tested':config.get('web_tested') is True if key==config['preset'] else saved.get('web_tested') is True,
++        'checked':valid,'workflow':saved.get('graph'),'workflow_sha256':saved.get('workflowSha256'),
+@@ -32 +34,2 @@
+-    return {'configured':bool(cfg['api_key'] and cfg['enabled'] and cfg['member_key_confirmed'] and cfg['web_tested'] and cfg['checked']),
++    import rh_workflow_catalog as catalog
++    return {'candidates':catalog.public_entries(backend),'preset':cfg['preset'],'configured':bool(cfg['api_key'] and cfg['enabled'] and cfg['member_key_confirmed'] and cfg['web_tested'] and cfg['checked']),
+--- before/image_lab.py
++++ image_lab.py
+@@ -51,0 +52,3 @@
++    if cfg.get('provider')=='runninghub_workflow':
++        import rh_workflow_provider
++        cfg=rh_workflow_provider.resolve(backend,data.get('workflow'))
+--- before/settings.html
++++ settings.html
+@@ -403 +403,9 @@
+-        <div class="field-help"><a id="rhw-workflow-link" target="_blank" rel="noopener">查看所选工作流 ↗</a></div>
++        <div class="field-help"><a id="rhw-workflow-link" target="_blank" rel="noopener">查看所选工作流 ↗</a>
++        <div id="rhw-selection" class="field-help" aria-live="polite"></div>
++        <details style="margin:14px 0"><summary>＋ 添加其他生图工作流</summary>
++          <div class="field-help">粘贴国内站工作流链接或ID，自动核对提示词、尺寸和输出。仅添加兼容的单图本地推理工作流；不会提交生图。</div>
++          <label for="rhw-add-name" style="display:block;margin:10px 0 6px">显示名称</label><input id="rhw-add-name" class="input" style="width:100%;box-sizing:border-box" maxlength="60" placeholder="例如：我的SDXL写实">
++          <label for="rhw-add-url" style="display:block;margin:10px 0 6px">工作流链接或ID</label><input id="rhw-add-url" class="input" style="width:100%;box-sizing:border-box;margin-bottom:10px" placeholder="https://www.runninghub.cn/post/…">
++          <button id="rhw-add" class="btn btn-ghost" type="button">核对并添加，不生成</button>
++        </details>
++</div>
+--- before/index.html
++++ index.html
+@@ -708,0 +709 @@
++        <label id="img-workflow-field" hidden>内页RH币工作流<select class="model-select" id="img-workflow" aria-label="内页RH币工作流"></select></label>
+@@ -811,0 +813 @@
++      <label id="cover-workflow-field" hidden>封面RH币工作流<select class="model-select" id="cover-workflow" aria-label="封面RH币工作流"></select></label>
+@@ -1636 +1638 @@
+-      provider: $("cover-engine").value || $("img-engine").value,
++      provider: $("cover-engine").value || $("img-engine").value, workflow: $("cover-workflow").value,
+@@ -1949,0 +1952,18 @@
++function restoreRhWorkflowChoices(config) {
++  const image=config?.image||{},cover=config?.cover||{};
++  if(cover.mode){setChipsActive('cover-mode',({titled:'title',plain:'blank',off:'none',local:'upload'})[cover.mode]||cover.mode,'cv');syncCoverMode();}
++  for(const [id,value] of [['cover-title',cover.title],['cover-subtitle',Array.isArray(cover.subtitle)?cover.subtitle.join('\n'):cover.subtitle]])if($(id)&&value!==undefined)$(id).value=value;
++  for(const [id,value] of [['img-engine',image.provider],['cover-engine',cover.provider],['img-workflow',image.workflow],['cover-workflow',cover.workflow]]){
++    const select=$(id);if(!select||value===undefined)continue;
++    if(value&&![...select.options].some(option=>option.value===String(value)))select.append(new Option('已保存工作流（请核对）',String(value)));
++    select.value=String(value||'');
++  }
++  updateImageFallbackHint();
++}
++function syncRhWorkflowOptions() {
++  const items=settings.runninghub_workflow?.candidates||[];
++  for(const id of ['img-workflow','cover-workflow']){const select=$(id);if(!select)continue;const previous=select.value;select.replaceChildren(new Option('跟随系统工作流',''));
++    for(const item of items)select.append(new Option(item.name+(item.checked?' · 已核对':' · 待核对'),item.key));select.value=previous;}
++  const sync=()=>{if($('img-workflow-field'))$('img-workflow-field').hidden=$('img-engine').value!=='runninghub_workflow';if($('cover-workflow-field'))$('cover-workflow-field').hidden=($('cover-engine').value||$('img-engine').value)!=='runninghub_workflow';};
++  $('img-engine').addEventListener('change',sync);$('cover-engine').addEventListener('change',sync);sync();
++}
+@@ -1977,0 +1998 @@
++  syncRhWorkflowOptions();
+@@ -1982,0 +2004,2 @@
++  if($('img-workflow-field'))$('img-workflow-field').hidden=$('img-engine').value!=='runninghub_workflow';
++  if($('cover-workflow-field'))$('cover-workflow-field').hidden=($('cover-engine').value||$('img-engine').value)!=='runninghub_workflow';
+@@ -2402 +2425 @@
+-        provider: imageProvider,
++        provider: imageProvider, workflow: $("img-workflow").value,
+@@ -2418 +2441 @@
+-        provider: $("cover-engine").value,
++        provider: $("cover-engine").value, workflow: $("cover-workflow").value,
+@@ -2814,0 +2838,2 @@
++  if (req.image_workflow) setText("img-workflow", req.image_workflow);
++  if (req.cover_workflow) setText("cover-workflow", req.cover_workflow);
+--- before/rh-coins-experiment.html
++++ rh-coins-experiment.html
+@@ -9 +9 @@
+-<div class="field"><label for="rh-preset">Qwen 工作流候选</label><select id="rh-preset"></select><a id="rh-workflow-link" target="_blank" rel="noopener">查看所选工作流 ↗</a></div></div>
++<div class="field"><label for="rh-preset">生图工作流候选</label><select id="rh-preset"></select><a id="rh-workflow-link" target="_blank" rel="noopener">查看所选工作流 ↗</a></div></div>
+--- before/assets/rh_workflow_settings.js
++++ assets/rh_workflow_settings.js
+@@ -15,0 +16 @@
++   if($('add'))$('add').disabled=busy||!loaded||dirty||!state.configured||!state.member_key_confirmed;
+@@ -18 +19 @@
+-  function link(){const candidate=(state.candidates||[]).find(item=>item.key===$('preset').value);$('workflow-link').href=candidate?.url||'https://www.runninghub.cn/call-api/workflow-api';}
++  function link(){const candidate=(state.candidates||[]).find(item=>item.key===$('preset').value);$('workflow-link').href=candidate?.url||'https://www.runninghub.cn/call-api/workflow-api';if($('selection'))$('selection').textContent=(candidate?.note||'')+' '+(candidate?.family?candidate.family.toUpperCase()+' · ':'')+'单张费用未实测，以平台任务账单为准。';}
+@@ -24 +25 @@
+-   $('workflow').textContent=dirty?'配置有未保存修改，请先保存，再核对。':state.checked?'完整工作流已核对，共 '+(state.workflow?.nodes||0)+' 个节点。实际画质与扣费可用「测试一张」验收。':'完整工作流尚未核对；核对只读取配置，不提交生图。';
++   $('workflow').textContent=dirty?'配置有未保存修改，请先保存，再核对。':state.checked?'完整工作流已核对，共 '+(state.workflow?.nodes||0)+' 个生图节点。'+(state.workflow?.removedNodes?'已直连提示词/尺寸，省去 '+state.workflow.removedNodes+' 个辅助节点。':'')+'实际画质与扣费可用「测试一张」验收。':'完整工作流尚未核对；核对只读取配置，不提交生图。';
+@@ -36,0 +38 @@
++  if($('add'))$('add').onclick=async()=>{if($('add').disabled)return;busy=true;controls();notice('正在读取并核对完整工作流，不提交生图…');try{const value=await request('/workflows/add',{name:$('add-name').value.trim(),url:$('add-url').value.trim()});state=await request('');draw(true);$('add-name').value='';$('add-url').value='';await onSaved?.();notice(value.message);}catch(error){notice(error.message);}finally{busy=false;controls();}};
+--- before/assets/workflow_actions.js
++++ assets/workflow_actions.js
+@@ -57,0 +58 @@
++    {label:"内页RH币工作流",path:["image","workflow"],type:"select",options:[],catalog:'rhworkflows'},
+@@ -82,0 +84 @@
++    {label:"封面RH币工作流",path:["cover","workflow"],type:"select",options:[],catalog:'rhworkflows'},
+@@ -159 +161 @@
+-  const needed = stepKey==='1'?['profiles','prompts']:stepKey==='4'?['materials']:stepKey==='5'?['settings','voices']:stepKey==='6'?['drafts','cover']:[];
++  const needed = stepKey==='1'?['profiles','prompts']:stepKey==='4'?['materials','settings']:stepKey==='5'?['settings','voices']:stepKey==='6'?['drafts','cover','settings']:[];
+@@ -298,0 +301 @@
++      if(f.catalog==='rhworkflows')choices=[['','跟随系统工作流'],...(resources.settings?.runninghub_workflow?.candidates||[]).map(x=>[x.key,x.name+(x.checked?' · 已核对':' · 待核对')])];
+--- before/assets/image_pipeline.js
++++ assets/image_pipeline.js
+@@ -244 +244 @@
+-        provider: externalProvider, retry: image.autoRetry !== false, task_id: taskId,
++        provider: externalProvider, workflow: image.workflow || "", retry: image.autoRetry !== false, task_id: taskId,
+@@ -247,0 +248 @@
++      payload.workflow ??= image.workflow || '';
+@@ -307 +308 @@
+-      task_id: taskId, provider: cover.provider || image.provider, profile_id: cover.profileId || "", title: cover.title || title,
++      task_id: taskId, provider: cover.provider || image.provider, workflow: cover.workflow || "", profile_id: cover.profileId || "", title: cover.title || title,
+--- before/assets/task_cover.js
++++ assets/task_cover.js
+@@ -59,0 +60 @@
++   if(info.provider==='runninghub_workflow'){const choice=node('select');choice.setAttribute('aria-label','RH币工作流选择');choice.append(new Option('跟随系统工作流',''));for(const item of info.workflows||[])choice.append(new Option(item.name,item.key));choice.value=info.workflow||'';choice.disabled=busy||pending;choice.onchange=()=>act('save',{workflow:choice.value});head.append(choice);}
+--- before/assets/creative.js
++++ assets/creative.js
+@@ -34 +34,3 @@
+-  engine.onchange=()=>{draw();savePrefs();};draw();
++  const workflowKey=cover?'coverWorkflow':'imageWorkflow',workflow=n('select');workflow.setAttribute('aria-label',cover?'封面RH币工作流':'内页RH币工作流');workflow.append(new Option('跟随系统工作流',''));
++  for(const item of settings.runninghub_workflow?.candidates||[])workflow.append(new Option(item.name,item.key));workflow.value=config[workflowKey]||'';row.append(workflow);workflow.onchange=()=>{config[workflowKey]=workflow.value;savePrefs();};
++  engine.onchange=()=>{draw();workflow.hidden=engine.value!=='runninghub_workflow';savePrefs();};draw();workflow.hidden=engine.value!=='runninghub_workflow';
+--- before/assets/task_reuse.js
++++ assets/task_reuse.js
+@@ -11 +11 @@
+-    const image=pick(i,['source','provider','style','ratio','resolution','concurrency','autoRetry','templateId','materials']);
++    const image=pick(i,['source','provider','workflow','style','ratio','resolution','concurrency','autoRetry','templateId','materials']);
+@@ -19 +19 @@
+-    const cover=pick(v,['mode','provider','template','direction','ratio']);
++    const cover=pick(v,['mode','provider','workflow','template','direction','ratio']);
+@@ -76,0 +77 @@
++    set('img-workflow',i.workflow||'');set('cover-workflow',v.workflow||'');
+--- before/assets/image_lab.js
++++ assets/image_lab.js
+@@ -46,2 +46,2 @@
+-$('lab-generate').onclick=async()=>{if(busy||referenceBusy||!$('lab-prompt').value.trim()||!ratios.length)return;const submittedComposition=compositionKey();busy=true;ready();$('lab-generate').textContent='生成中…';try{const result=await api('/api/image_lab',{prompt:$('lab-prompt').value,mode,styles,ratios,resolution,style_prompt:customStyle,provider:$('lab-provider').value,count:Number($('lab-count').value),references:mode==='text2img'?[]:referenceData.map(ref=>ref.data),title:$('lab-title').value,subtitle:$('lab-subtitle').value,template,cover_mode:coverMode});items.unshift(...result.items);if(mode==='cover'&&compositionKey()===submittedComposition){compositionMetadata=result.items.find(item=>item.metadata&&typeof item.metadata==='object')?.metadata||null;renderPublication();}render();$('lab-notice').textContent=result.items.filter(x=>x.ok).length+' 张已生成，'+result.items.filter(x=>!x.ok).length+' 张失败';}catch(e){$('lab-notice').textContent='生成失败：'+e.message;}finally{busy=false;ready();$('lab-generate').textContent='开始生成';}};
+-(async()=>{try{const [r,s,h]=await Promise.all([api('/assets/story_workflow_reference.json'),api('/api/settings'),api('/api/image_lab')]);ref=r;items=h.items;folder=h.folder;const providers=[['gpt_image','全能绘图'],['modelscope','魔搭'],['runninghub','RunningHub'],['runninghub_workflow','RH币工作流 · 1K'],['jimeng','即梦'],['custom_image',s.custom_image?.display_name||'自定义平台']];for(const [value,label] of providers)$('lab-provider').append(new Option(label,value));$('lab-provider').value=s.image?.provider||'gpt_image';if(mode==='cover')ratios=['3:4'];const selection=new URLSearchParams(location.search);if(ref.styles.some(x=>x.id===selection.get('style')))styles=[selection.get('style')];if(ref.coverTemplates.some(x=>x.id===selection.get('template')))template=selection.get('template');choices();render();}catch(e){$('lab-notice').textContent=e.message;}})();
++$('lab-generate').onclick=async()=>{if(busy||referenceBusy||!$('lab-prompt').value.trim()||!ratios.length)return;const submittedComposition=compositionKey();busy=true;ready();$('lab-generate').textContent='生成中…';try{const result=await api('/api/image_lab',{prompt:$('lab-prompt').value,mode,styles,ratios,resolution,style_prompt:customStyle,provider:$('lab-provider').value,workflow:$('lab-workflow')?.value||'',count:Number($('lab-count').value),references:mode==='text2img'?[]:referenceData.map(ref=>ref.data),title:$('lab-title').value,subtitle:$('lab-subtitle').value,template,cover_mode:coverMode});items.unshift(...result.items);if(mode==='cover'&&compositionKey()===submittedComposition){compositionMetadata=result.items.find(item=>item.metadata&&typeof item.metadata==='object')?.metadata||null;renderPublication();}render();$('lab-notice').textContent=result.items.filter(x=>x.ok).length+' 张已生成，'+result.items.filter(x=>!x.ok).length+' 张失败';}catch(e){$('lab-notice').textContent='生成失败：'+e.message;}finally{busy=false;ready();$('lab-generate').textContent='开始生成';}};
++(async()=>{try{const [r,s,h]=await Promise.all([api('/assets/story_workflow_reference.json'),api('/api/settings'),api('/api/image_lab')]);ref=r;items=h.items;folder=h.folder;const providers=[['gpt_image','全能绘图'],['modelscope','魔搭'],['runninghub','RunningHub'],['runninghub_workflow','RH币工作流 · 1K'],['jimeng','即梦'],['custom_image',s.custom_image?.display_name||'自定义平台']];for(const [value,label] of providers)$('lab-provider').append(new Option(label,value));$('lab-provider').value=s.image?.provider||'gpt_image';if($('lab-provider').parentElement){const wf=document.createElement('select');wf.id='lab-workflow';wf.setAttribute('aria-label','RH币工作流选择');wf.append(new Option('跟随系统工作流',''));for(const item of s.runninghub_workflow?.candidates||[])wf.append(new Option(item.name,item.key));$('lab-provider').parentElement.append(wf);const sync=()=>wf.hidden=$('lab-provider').value!=='runninghub_workflow';$('lab-provider').addEventListener('change',sync);sync();}if(mode==='cover')ratios=['3:4'];const selection=new URLSearchParams(location.search);if(ref.styles.some(x=>x.id===selection.get('style')))styles=[selection.get('style')];if(ref.coverTemplates.some(x=>x.id===selection.get('template')))template=selection.get('template');choices();render();}catch(e){$('lab-notice').textContent=e.message;}})();
+--- before/assets/form_libraries.js
++++ assets/form_libraries.js
+@@ -60 +60 @@
+-  if(q.has('resume')){const d=await api('/api/task/'+encodeURIComponent(q.get('resume')));if(d.client_config){populateFromRequest(d.client_config.generate,q.get('from'));restoreLibraryChoices({...d.client_config.image,promptTemplate:d.client_config.generate?.prompt_template});
++  if(q.has('resume')){await formSettingsReady;const d=await api('/api/task/'+encodeURIComponent(q.get('resume')));if(d.client_config){restoreRhWorkflowChoices(d.client_config);populateFromRequest(d.client_config.generate,q.get('from'));restoreLibraryChoices({...d.client_config.image,promptTemplate:d.client_config.generate?.prompt_template});

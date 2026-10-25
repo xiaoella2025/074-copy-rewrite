@@ -20,6 +20,9 @@ API='https://www.runninghub.cn'
 CANDIDATES={
  'qwen-simple':{'id':'1955160402595233794','name':'Qwen 文生图 · 原生候选'},
  'qwen-native':{'id':'2027264283821744129','name':'Qwen-Image ComfyUI 原生 · 备选'},
+ 'flux-native':{'id':'1819583592967110658','name':'FLUX 文生图 · 热门','family':'flux','note':'约1.09万浏览、200+收藏；2026-10-25核对，适合通用背景与分镜'},
+ 'qwen-chinese':{'id':'1954942638128599042','name':'Qwen 中文海报 · 优选','family':'qwen','note':'597浏览、52收藏；2026-10-25核对，偏中文海报'},
+ 'sdxl-native':{'id':'1912776705101234178','name':'SDXL 文生图 · 基础备选','family':'sdxl','note':'约394浏览、54收藏；2026-10-25核对，基础单图流程'},
 }
 LOCK=threading.RLock()
 ACTIVE={'submitting','pending','queued','running','unknown','download_pending'}
@@ -61,13 +64,14 @@ def checked(cfg,audit):
 
 
 def state(backend):
-    cfg=config(backend);root=directory(backend);audit=read(root/'checked.json',{})
+    import rh_workflow_catalog as catalog
+    cfg=config(backend);root=directory(backend);audit=catalog.cached(backend,cfg['preset'],cfg)
     jobs=[read(path,{}) for path in (root/'jobs').glob('*/job.json')]
     return {'enabled':cfg['enabled'],'configured':bool(cfg.get('api_key')),'preset':cfg['preset'],
         'member_key_confirmed':cfg['member_key_confirmed'],'web_tested':cfg['web_tested'],
         'checked':checked(cfg,audit),'account':audit.get('account',{}) if checked(cfg,audit) else {},
         'workflow':audit.get('summary',{}) if checked(cfg,audit) else {},
-        'candidates':[{'key':key,**item,'url':API+'/post/'+item['id']} for key,item in CANDIDATES.items()],
+        'candidates':catalog.public_entries(backend),
         'jobs':[public(job) for job in sorted(jobs,key=lambda j:j.get('createdAt',0),reverse=True)[:30]],
         'exportDirectory':str(Path.home()/'Downloads' if (Path.home()/'Downloads').is_dir() else Path.home())}
 
@@ -82,7 +86,8 @@ def configure(backend,data):
                 if type(data[field]) is not bool:raise ValueError('开关必须为布尔值')
                 cfg[field]=data[field]
         if 'preset' in data:
-            if not isinstance(data['preset'],str) or data['preset'] not in CANDIDATES:raise ValueError('请选择已提供的 Qwen 候选')
+            import rh_workflow_catalog as catalog
+            if not isinstance(data['preset'],str) or data['preset'] not in catalog.entries(backend):raise ValueError('请选择已保存的工作流')
             cfg['preset']=data['preset']
         if 'api_key' in data:
             key=data['api_key']
@@ -97,6 +102,11 @@ def configure(backend,data):
             write(directory(backend)/'checked.json',{'valid':False})
         # A new key and explicit checkbox confirmation may be saved together.
         if data.get('web_tested') is True:cfg['web_tested']=True
+        if 'web_tested' in data:
+            import rh_workflow_catalog as catalog
+            saved=catalog.cached(backend,cfg['preset'],cfg)
+            if saved.get('credential')==credential(cfg) and saved.get('preset')==cfg['preset']:
+                write(catalog.cache_path(backend,cfg['preset']),{**saved,'web_tested':cfg['web_tested']})
         write(directory(backend)/'config.json',cfg)
     return state(backend)
 
@@ -130,18 +140,15 @@ def account(backend,cfg):
 
 
 def check(backend):
+    import rh_workflow_catalog as catalog
     with LOCK:
-        root=directory(backend);cfg=config(backend)
-        write(root/'checked.json',{'valid':False})
+        root=directory(backend);cfg=config(backend);entry=catalog.entries(backend).get(cfg['preset'])
+        if not entry:raise ValueError('工作流选择不存在')
+        write(catalog.cache_path(backend,cfg['preset']),{'valid':False});write(root/'checked.json',{'valid':False})
         if cfg.get('member_key_confirmed') is not True:raise ValueError('请确认 Key 来自国内站消费级会员页面')
         info=account(backend,cfg)
-        value=post(backend,cfg,'/api/openapi/getJsonApiFormat',{'apiKey':cfg.get('api_key'),'workflowId':CANDIDATES[cfg['preset']]['id']})
-        if value.get('code')!=0 or not isinstance(value.get('data'),dict):raise RuntimeError('候选工作流读取未成功，请核对账户权限；未提交生成')
-        raw=value['data'].get('prompt')
-        if not isinstance(raw,str) or len(raw)>200_000:raise ValueError('平台未返回可核对的完整工作流')
-        graph=json.loads(raw);summary=workflow.audit_graph(graph)
-        write(root/'checked.json',{'valid':True,'credential':credential(cfg),'preset':cfg['preset'],'account':info,
-            'graph':graph,'workflowSha256':workflow.digest(graph),'summary':summary,'checkedAt':time.time()})
+        saved=catalog.inspect_entry(backend,cfg,cfg['preset'],entry,info)
+        write(catalog.cache_path(backend,cfg['preset']),saved);write(root/'checked.json',saved)
     return state(backend)
 
 
@@ -156,7 +163,8 @@ def submit(backend,data):
         if previous:
             if previous.get('fingerprint')!=fingerprint:raise ValueError('本次操作参数已改变，请先查询原任务')
             return public(previous)
-        cfg=config(backend);root=directory(backend);audit=read(root/'checked.json',{})
+        import rh_workflow_catalog as catalog
+        cfg=config(backend);root=directory(backend);audit=catalog.cached(backend,cfg['preset'],cfg)
         if cfg.get('enabled') is not True:raise ValueError('请先启用 RH 币独立实验')
         if not checked(cfg,audit) or not cfg.get('member_key_confirmed'):raise ValueError('请先核对会员 Key 和完整工作流')
         if cfg.get('web_tested') is not True:raise ValueError('请先按手册在网页运行所选工作流并确认正常出图')
@@ -170,7 +178,7 @@ def submit(backend,data):
         if not math.isfinite(coins) or coins<=0:raise ValueError('未查询到可用 RH 币，请核对消费级会员账户')
         seed=secrets.randbits(32);graph=workflow.build_graph(graph,prompt,ratio,seed)
         job={'operationId':operation,'status':'submitting','prompt':prompt.strip(),'ratio':ratio,'seed':seed,
-            'fingerprint':fingerprint,'credential':credential(cfg),'workflowId':CANDIDATES[cfg['preset']]['id'],
+            'fingerprint':fingerprint,'credential':credential(cfg),'workflowId':catalog.entries(backend)[cfg['preset']]['id'],
             'workflowSha256':workflow.digest(graph),'createdAt':time.time(),'updatedAt':time.time()}
         write(folder/'workflow.json',graph);write(path,job)
     try:
