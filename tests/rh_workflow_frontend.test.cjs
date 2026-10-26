@@ -47,9 +47,9 @@ test('cover recovery trusts verified local availability over historical metadata
 function editorFixture({rejectReplacement=false}={}){
  class El{
   constructor(tag='div'){this.tagName=tag.toUpperCase();this.children=[];this.dataset={};this.style={};this.value='';this.checked=false;this.disabled=false;this.textContent='';this.events={};}
-  append(...items){this.children.push(...items);}appendChild(item){this.append(item);return item;}replaceChildren(...items){this.children=items;}cloneNode(){return new El(this.tagName);}get options(){return this.children;}addEventListener(key,fn){this.events[key]=fn;}setAttribute(key,value){this[key]=value;}focus(){this.focused=true;}remove(){this.removed=true;}
-  set innerHTML(html){this.hosts=new Map([...html.matchAll(/data-host="([^"]+)"/g)].map(m=>[m[1],new El()]));this.ids=new Map([...html.matchAll(/id="([^"]+)"/g)].map(m=>[m[1],new El()]));}
-  querySelector(selector){if(selector.startsWith('[data-host='))return this.hosts?.get(selector.match(/"([^"]+)"/)[1]);if(selector.startsWith('#'))return this.ids?.get(selector.slice(1));return this.children.find(x=>selector.split(',').some(s=>s.trim().split('[')[0].toUpperCase()===x.tagName));}
+  append(...items){this.children.push(...items);}appendChild(item){this.append(item);return item;}replaceChildren(...items){this.children=items;}cloneNode(){return new El(this.tagName);}get options(){return this.children;}addEventListener(key,fn){const prior=this.events[key];this.events[key]=prior?()=>{prior();fn();}:fn;}setAttribute(key,value){this[key]=value;}focus(){this.focused=true;}remove(){this.removed=true;}
+  set innerHTML(html){this.hosts=new Map([...html.matchAll(/data-host="([^"]+)"/g)].map(m=>[m[1],new El()]));this.paths=new Map([...html.matchAll(/data-path="([^"]+)"/g)].map(m=>[m[1],new El()]));this.ids=new Map([...html.matchAll(/id="([^"]+)"/g)].map(m=>[m[1],new El()]));}
+  querySelector(selector){if(selector.startsWith('[data-host='))return this.hosts?.get(selector.match(/"([^"]+)"/)[1]);if(selector.startsWith('[data-path='))return this.paths?.get(selector.match(/"([^"]+)"/)[1]);if(selector.startsWith('#'))return this.ids?.get(selector.slice(1));return this.children.find(x=>selector.split(',').some(s=>s.trim().split('[')[0].toUpperCase()===x.tagName));}
  }
  const body=new El('body'),calls=[],gets=[],alerts=[];let config={image:{provider:'gpt_image'},cover:{mode:'titled',provider:'modelscope'},generate:{},tts:{}};
  const cover={mode:'titled',provider:'modelscope',cover:{},job:{status:'unknown',provider:'runninghub'}};
@@ -63,7 +63,15 @@ test('step six requires inline acknowledgement before saving and orders config, 
  const f=editorFixture();await f.open();const dialog=f.dialog();assert.ok(f.gets.includes('/api/task-cover/isolated-cover?slot=1'));assert.equal(dialog.ids.get('cover-replacement-notice').hidden,false);
  await dialog.ids.get('step-editor-save').onclick();assert.equal(f.calls.length,0);assert.match(dialog.ids.get('cover-replacement-error').textContent,/勾选/);
  dialog.ids.get('cover-replacement-ack').checked=true;await dialog.ids.get('step-editor-save').onclick();assert.deepEqual(f.calls.map(x=>x.path),['/api/task/isolated-cover/config','/api/task-cover/isolated-cover/replace-unknown','/api/task/isolated-cover/enqueue']);
- assert.deepEqual(f.calls[1].body,{slot:1,provider:'modelscope',operation_id:'11111111-2222-4333-8444-555555555555',acknowledge_unknown:true});assert.deepEqual(f.calls[2].body,{from_step:'6'});
+ assert.deepEqual(f.calls[1].body,{slot:1,provider:'modelscope',operation_id:'11111111-2222-4333-8444-555555555555',acknowledge_unknown:true});assert.equal(f.calls[2].body.from_step,'6');assert.ok(f.calls[2].body.operation_id);
+});
+test('ModelScope cover hides the RH selector and selecting RH shows it',async()=>{
+ const f=editorFixture();await f.open();const dialog=f.dialog(),row=dialog.paths.get('cover.workflow');
+ assert.equal(row.hidden,true);
+ dialog.hosts.get('cover.provider').children[0].value='runninghub_workflow';dialog.events.change();
+ assert.equal(row.hidden,false);
+ dialog.hosts.get('cover.provider').children[0].value='modelscope';dialog.events.change();
+ assert.equal(row.hidden,true);
 });
 test('failed recovery never enqueues and retry preserves operation identity',async()=>{
  const f=editorFixture({rejectReplacement:true});await f.open();const dialog=f.dialog();dialog.ids.get('cover-replacement-ack').checked=true;
