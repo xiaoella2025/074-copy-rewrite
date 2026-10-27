@@ -55,6 +55,24 @@ class CatalogTests(unittest.TestCase):
   exp.configure(self.backend,{'web_tested':True})
   exp.configure(self.backend,{'preset':'sdxl-native','web_tested':True});exp.check(self.backend)
   self.assertTrue(provider.resolve(self.backend,'flux-native')['web_tested'])
+ def test_verified_api_output_unlocks_only_matching_graph_and_key(self):
+  exp.configure(self.backend,{'preset':'flux-native','web_tested':False});exp.check(self.backend)
+  saved=catalog.cached(self.backend,'flux-native')
+  proof={'status':'ok','workflowId':saved['workflowId'],'sourceSha256':saved['sourceSha256'],
+         'credential':saved['credential'],'taskId':'real-task-123','imageSha256':'a'*64,'spentCoins':6}
+  write(catalog.cache_path(self.backend,'flux-native'),{**saved,'api_test':proof})
+  cfg=provider.resolve(self.backend,'flux-native')
+  self.assertFalse(cfg['web_tested']);self.assertTrue(cfg['api_tested']);self.assertTrue(cfg['live_tested'])
+  self.assertTrue(provider.public_config(self.backend)['configured'])
+  self.assertTrue(exp.state(self.backend)['live_tested'])
+  self.assertEqual(catalog.public_entries(self.backend)[2]['api_test_cost'],6)
+  exp.check(self.backend)
+  self.assertTrue(provider.resolve(self.backend,'flux-native')['api_tested'])
+  changed=read(catalog.cache_path(self.backend,'flux-native'),{})
+  write(catalog.cache_path(self.backend,'flux-native'),{**changed,'sourceSha256':'different'})
+  self.assertFalse(provider.resolve(self.backend,'flux-native')['live_tested'])
+  exp.configure(self.backend,{'api_key':'different-key'})
+  self.assertFalse(provider.resolve(self.backend,'flux-native')['checked'])
  def test_invalid_url_unknown_nodes_and_wrong_credentials_do_not_replace_config(self):
   before=exp.config(self.backend).copy()
   for url in ['https://evil.invalid/post/123','../123','https://www.runninghub.cn/post/1912776705101234178?apiKey=secret']:

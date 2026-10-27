@@ -67,8 +67,10 @@ def state(backend):
     import rh_workflow_catalog as catalog
     cfg=config(backend);root=directory(backend);audit=catalog.cached(backend,cfg['preset'],cfg)
     jobs=[read(path,{}) for path in (root/'jobs').glob('*/job.json')]
+    live_tested=cfg['web_tested'] or (checked(cfg,audit) and catalog.api_tested(audit))
     return {'enabled':cfg['enabled'],'configured':bool(cfg.get('api_key')),'preset':cfg['preset'],
         'member_key_confirmed':cfg['member_key_confirmed'],'web_tested':cfg['web_tested'],
+        'live_tested':live_tested,
         'checked':checked(cfg,audit),'account':audit.get('account',{}) if checked(cfg,audit) else {},
         'workflow':audit.get('summary',{}) if checked(cfg,audit) else {},
         'candidates':catalog.public_entries(backend),
@@ -144,10 +146,15 @@ def check(backend):
     with LOCK:
         root=directory(backend);cfg=config(backend);entry=catalog.entries(backend).get(cfg['preset'])
         if not entry:raise ValueError('工作流选择不存在')
+        previous=catalog.cached(backend,cfg['preset'],cfg)
         write(catalog.cache_path(backend,cfg['preset']),{'valid':False});write(root/'checked.json',{'valid':False})
         if cfg.get('member_key_confirmed') is not True:raise ValueError('请确认 Key 来自国内站消费级会员页面')
         info=account(backend,cfg)
         saved=catalog.inspect_entry(backend,cfg,cfg['preset'],entry,info)
+        if (catalog.api_tested(previous) and previous.get('sourceSha256')==saved['sourceSha256']
+                and previous.get('workflowSha256')==saved['workflowSha256']
+                and previous.get('credential')==saved['credential']):
+            saved['api_test']=previous['api_test']
         write(catalog.cache_path(backend,cfg['preset']),saved);write(root/'checked.json',saved)
     return state(backend)
 
@@ -167,7 +174,8 @@ def submit(backend,data):
         cfg=config(backend);root=directory(backend);audit=catalog.cached(backend,cfg['preset'],cfg)
         if cfg.get('enabled') is not True:raise ValueError('请先启用 RH 币独立实验')
         if not checked(cfg,audit) or not cfg.get('member_key_confirmed'):raise ValueError('请先核对会员 Key 和完整工作流')
-        if cfg.get('web_tested') is not True:raise ValueError('请先按手册在网页运行所选工作流并确认正常出图')
+        if not (cfg.get('web_tested') is True or catalog.api_tested(audit)):
+            raise ValueError('请先在同一账户完成网页或API单张出图验证')
         if any(read(item,{}).get('status') in ACTIVE for item in (root/'jobs').glob('*/job.json')):raise ValueError('已有在途或状态不明的任务，请先查询原任务，不会重复购买')
         graph=audit.get('graph')
         if workflow.digest(graph)!=audit.get('workflowSha256'):raise ValueError('工作流快照校验失败，请重新核对')

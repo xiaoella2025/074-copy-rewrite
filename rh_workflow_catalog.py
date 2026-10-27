@@ -39,6 +39,16 @@ def cached(backend,key,cfg=None):
     return saved
 
 
+def api_tested(saved):
+    proof=saved.get('api_test') if isinstance(saved,dict) else None
+    return bool(isinstance(proof,dict) and saved.get('valid') is True
+                and proof.get('status')=='ok' and proof.get('workflowId')==saved.get('workflowId')
+                and proof.get('sourceSha256')==saved.get('sourceSha256')
+                and proof.get('credential')==saved.get('credential')
+                and isinstance(proof.get('taskId'),str) and re.fullmatch(r'[A-Za-z0-9_-]{1,200}',proof['taskId'])
+                and isinstance(proof.get('imageSha256'),str) and re.fullmatch(r'[a-f0-9]{64}',proof['imageSha256']))
+
+
 def inspect_entry(backend,cfg,key,entry,account=None):
     import rh_coins_experiment as experiment
     if cfg.get('member_key_confirmed') is not True:raise ValueError('请先保存并确认国内站会员Key')
@@ -51,6 +61,11 @@ def inspect_entry(backend,cfg,key,entry,account=None):
            'account':account or {},'graph':prepared['graph'],'workflowSha256':workflow.digest(prepared['graph']),
            'sourceSha256':workflow.digest(source),'summary':prepared['summary'],'checkedAt':time.time(),
            'web_tested':cfg.get('web_tested') is True}
+    previous=cached(backend,key,cfg)
+    if (api_tested(previous) and previous.get('sourceSha256')==saved['sourceSha256']
+            and previous.get('workflowSha256')==saved['workflowSha256']
+            and previous.get('credential')==saved['credential']):
+        saved['api_test']=previous['api_test']
     return saved
 
 
@@ -62,6 +77,8 @@ def public_entries(backend):
         result.append({'key':key,'id':entry['id'],'name':entry['name'],'url':experiment.API+'/post/'+entry['id'],
                        'note':entry.get('note','单张费用未实测'),'family':entry.get('family') or saved.get('summary',{}).get('kind',''),
                        'checked':valid,'web_tested':saved.get('web_tested',False) if valid else False,
+                       'api_tested':api_tested(saved) if valid else False,
+                       'api_test_cost':saved.get('api_test',{}).get('spentCoins') if valid and api_tested(saved) else None,
                        'summary':saved.get('summary',{}) if valid else {}})
     return result
 

@@ -12,7 +12,7 @@
  }
  function controls(){
   const pending=state.jobs.some(active)||!!uncertain;
-  $('generate').disabled=!loaded||busy||dirty||!state.enabled||!state.configured||!state.checked||!state.member_key_confirmed||!state.web_tested||pending||!$('prompt').value.trim();
+  $('generate').disabled=!loaded||busy||dirty||!state.enabled||!state.configured||!state.checked||!state.member_key_confirmed||!state.live_tested||pending||!$('prompt').value.trim();
   for(const id of ['save','enabled','key','member','web','preset'])$(id).disabled=busy||!loaded;
   $('check').disabled=busy||!loaded||dirty||!state.configured||!state.member_key_confirmed;
   $('prompt').disabled=busy||pending;$('ratio').disabled=busy||pending;$('refresh').disabled=busy;
@@ -21,7 +21,7 @@
   $('save').textContent='① 保存配置';$('check').textContent=activity==='正在核对配置'?'正在核对…':'② 核对配置，不生成';
   $('generate').textContent=activity==='正在提交1张图片'?'正在提交1张…':pending?'已有任务，勿重复提交':'③ 开始生成1张（消耗RH币）';
   const reason=checkReason();if($('check-hint'))$('check-hint').textContent=reason||'核对只读取账户与工作流，不会提交生图。';
-  let next=reason||(!state.enabled?'先勾选“启用 RH 币独立实验”。':!state.checked?'下一步：点击②“核对配置，不生成”。':!state.web_tested?'先在同一账户网页跑通所选工作流，再勾选网页出图确认并点①保存配置。':!$('prompt').value.trim()?'填写画面描述，再点击③“开始生成1张”。':'可以开始：点击③“开始生成1张”才会提交并消耗RH币。');
+  let next=reason||(!state.enabled?'先勾选“启用 RH 币独立实验”。':!state.checked?'下一步：点击②“核对配置，不生成”。':!state.live_tested?'先在同一账户完成网页或 API 单张出图验证。':!$('prompt').value.trim()?'填写画面描述，再点击③“开始生成1张”。':'可以开始：点击③“开始生成1张”才会提交并消耗RH币。');
   let stage='尚未开始 · 未提交生成';
   if(activity){stage=activity;next=activity==='正在核对配置'?'正在读取账户和完整工作流，不会生成图片。':activity==='正在提交1张图片'?'正在提交本次单图，请勿重复点击；返回RH任务编号后会继续查询。':'正在处理本次操作，请稍候。';}
   else if(uncertain){stage='提交结果待核对';next='提交响应尚未确认，请刷新原任务记录并核对RH账单；不会另开任务。';}
@@ -50,7 +50,7 @@
  function render(){
   controls();const account=state.account||{},currency=present(account.currency);
   $('account').textContent=(state.configured?'会员 Key 已保存，页面不回显。':'尚未配置独立会员 Key。')+(state.checked?' 上次核对余额（当前Key对应账户）：'+present(account.remainCoins)+' RH币（不是单张费用）；来源：runninghub.cn；钱包余额：'+present(account.remainMoney)+(currency==='接口未返回'?'':' '+currency) :' 当前接口来源：runninghub.cn。');
-  $('workflow').textContent=dirty?'配置有未保存的修改，请先保存，再核对。':state.checked?'完整工作流已核对，共 '+state.workflow.nodes+' 个节点；待实际单张出图与账单验收。':'工作流尚未核对，不能提交生成。';
+  $('workflow').textContent=dirty?'配置有未保存的修改，请先保存，再核对。':state.checked?'完整工作流已核对，共 '+state.workflow.nodes+' 个节点；'+(state.live_tested?'已有同账户单张出图验证。':'待实际单张出图与账单验收。'):'工作流尚未核对，不能提交生成。';
   const host=$('jobs');host.replaceChildren();
   const labels={submitting:'提交中',pending:'已受理，等待平台',queued:'排队中',running:'生成中',unknown:'状态待核对',download_pending:'图片取回中',ok:'已完成',failed:'平台确认失败',rejected:'平台拒绝提交'};
   for(const job of state.jobs){

@@ -21,9 +21,9 @@ def cover_error(error):
     if text.startswith('RH币工作流完整图未核对：'):
         return {'kind':'workflow_preflight','title':'所选 RH 币工作流尚未核对完整图',
                 'body':'到系统设置核对这条候选工作流后再试；本次未提交生成，也没有产生 RH 任务编号。'}
-    if text.startswith('RH币工作流尚未网页实测：'):
-        return {'kind':'workflow_preflight','title':'所选 RH 币工作流尚未网页实测',
-                'body':'请在同一账户网页运行这条工作流并确认出图，再到系统设置勾选网页实测；本次未提交生成，也没有产生 RH 任务编号。'}
+    if text.startswith(('RH币工作流尚未网页实测：','RH币工作流尚未真实出图验证：')):
+        return {'kind':'workflow_preflight','title':'所选 RH 币工作流尚未真实出图验证',
+                'body':'请在同一账户网页运行，或完成可核对任务号的 API 单张测试；本次未提交生成，也没有产生 RH 任务编号。'}
     if text.startswith('RH币工作流配置未完成：'):
         return {'kind':'workflow_preflight','title':'RH 币工作流配置未完成',
                 'body':'请到系统设置检查会员 Key 与工作流开关；本次未提交生成，也没有产生 RH 任务编号。'}

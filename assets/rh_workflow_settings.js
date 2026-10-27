@@ -18,6 +18,8 @@
    $('check').disabled=busy||!loaded||dirty||!state.configured||!state.member_key_confirmed;
   }
   function price(item){
+   if(item.api_tested&&Number.isFinite(Number(item.api_test_cost)))
+    return {label:'约 '+item.api_test_cost+' RH币/张',detail:'本次单张 API 实测消耗 '+item.api_test_cost+' RH币；后续费用可能随耗时变化，以平台账单为准',kind:'reference'};
    return item.key==='qwen-simple'||item.id==='1955160402595233794'
     ?{label:'历史约12 RH币/张',detail:'你此前反馈的参考值，非固定报价',kind:'reference'}
     :{label:'费用待实测',detail:'按实际耗时计费，以平台账单为准',kind:'unknown'};
@@ -34,12 +36,12 @@
     const cost=price(item),button=make('button','image-provider-tab rh-workflow-card'),top=make('div','rh-model-top'),badge=make('span','image-provider-tab-badge');
     button.type='button';button.dataset.workflowKey=item.key;button.title=(item.note?item.note+'。':'')+cost.detail;
     top.append(make('strong','rh-model-name',item.name),make('span','rh-workflow-price '+cost.kind,cost.label),badge);
-    button.append(top,make('span','rh-model-desc',descriptions[item.key]||'自定义单图工作流'),make('span','rh-workflow-cost-note',cost.detail),make('span','rh-model-desc',item.checked?'完整图已核对':'待核对完整图'));
+    button.append(top,make('span','rh-model-desc',descriptions[item.key]||'自定义单图工作流'),make('span','rh-workflow-cost-note',cost.detail),make('span','rh-model-desc',item.api_tested?'API 已实际出图':item.checked?'完整图已核对':'待核对完整图'));
     button.onclick=()=>{if(busy||!loaded)return;$('preset').value=item.key;$('preset').onchange();};
     cardViews.push({key:item.key,button,badge});host.append(button);
    }
   }
-  function link(){const candidate=(state.candidates||[]).find(item=>item.key===$('preset').value);$('workflow-link').href=candidate?.url||'https://www.runninghub.cn/call-api/workflow-api';if($('selection'))$('selection').textContent=(candidate?.note||'')+' '+(candidate?.family?candidate.family.toUpperCase()+' · ':'')+'单张费用未实测，以平台任务账单为准。';}
+  function link(){const candidate=(state.candidates||[]).find(item=>item.key===$('preset').value);$('workflow-link').href=candidate?.url||'https://www.runninghub.cn/call-api/workflow-api';if($('selection'))$('selection').textContent=(candidate?.note||'')+' '+(candidate?.family?candidate.family.toUpperCase()+' · ':'')+(candidate?.api_tested?'约 '+candidate.api_test_cost+' RH币/张（本次单张 API 实测）；后续以平台账单为准。':'单张费用未实测，以平台任务账单为准。');}
   function draw(sync=false){
    if(sync){$('enabled').checked=!!state.enabled;$('member').checked=!!state.member_key_confirmed;$('web').checked=!!state.web_tested;
     $('preset').replaceChildren();for(const item of state.candidates||[]){const option=document.createElement('option');option.value=item.key;option.textContent=item.name;$('preset').append(option);}$('preset').value=state.preset||'';link();buildCards();}

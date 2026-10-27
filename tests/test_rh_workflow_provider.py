@@ -80,8 +80,8 @@ class FormalProviderTests(unittest.TestCase):
         with self.assertRaisesRegex(server.ImageSubmissionRejected,'完整图未核对') as error:
             provider.generate(server,cfg,'封面画面','9:16','1k')
         self.assertIn('未提交生成',task_cover.cover_error(error.exception)['body'])
-        cfg['checked']=True;cfg['web_tested']=False
-        with self.assertRaisesRegex(server.ImageSubmissionRejected,'尚未网页实测') as error:
+        cfg['checked']=True;cfg['web_tested']=False;cfg['live_tested']=False
+        with self.assertRaisesRegex(server.ImageSubmissionRejected,'尚未真实出图验证') as error:
             provider.generate(server,cfg,'封面画面','9:16','1k')
         self.assertIn('未提交生成',task_cover.cover_error(error.exception)['body'])
         self.assertEqual(self.events,[])

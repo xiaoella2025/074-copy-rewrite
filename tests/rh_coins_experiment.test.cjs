@@ -5,8 +5,8 @@ function fixture({lost=false,reject=false,savedConfig={}}={}){
  nodes['rh-ratio'].value='9:16';let state={enabled:false,configured:false,checked:false,preset:'qwen-simple',candidates:[{key:'qwen-simple',name:'Qwen',url:'https://www.runninghub.cn/post/1955160402595233794'}],jobs:[],exportDirectory:'D:/fixture',...savedConfig},counter=0,storage=new Map(),calls=[],scheduled;
  const context={document:{getElementById:id=>nodes[id],createElement:()=>new Element()},window:{addEventListener(){}},sessionStorage:{getItem:key=>storage.get(key)||null,setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key)},crypto:{randomUUID:()=>String(++counter).padStart(32,'a')},setTimeout:fn=>(scheduled=fn,1),clearTimeout:()=>scheduled=null,
  fetch:async(url,options={})=>{const body=options.body?JSON.parse(options.body):null;calls.push({url,body});let result=state;
-  if(url.endsWith('/config')){state={...state,...body,configured:!!body.api_key||state.configured,checked:false};delete state.api_key;result=state;}
-  if(url.endsWith('/check')){state={...state,checked:true,account:{remainCoins:'73100',remainMoney:'0.001',apiType:'NORMAL'},workflow:{nodes:9}};result=state;}
+  if(url.endsWith('/config')){state={...state,...body,live_tested:!!body.web_tested,configured:!!body.api_key||state.configured,checked:false};delete state.api_key;result=state;}
+  if(url.endsWith('/check')){state={...state,checked:true,live_tested:!!state.web_tested,account:{remainCoins:'73100',remainMoney:'0.001',apiType:'NORMAL'},workflow:{nodes:9}};result=state;}
   if(url.endsWith('/generate')){if(reject)return {ok:false,status:400,json:async()=>({error:'请先核对账户'})};if(lost)throw Error('response lost');state.jobs=[{operationId:body.operation_id,prompt:body.prompt,status:'pending',taskId:'fixture-id'}];result=state.jobs[0];}
   if(url.endsWith('/query')){state.jobs[0]={...state.jobs[0],status:'ok',url:'/fixture.png'};result=state.jobs[0];}
   if(url.endsWith('/export'))result={path:'D:/fixture/result.png'};

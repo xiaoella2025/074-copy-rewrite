@@ -20,10 +20,12 @@ def resolve(backend,key=None):
     config=experiment.config(backend);key=key or config['preset'];candidate=catalog.entries(backend).get(key)
     if not candidate:raise ValueError('所选RH币工作流不存在，请在系统设置核对')
     saved=catalog.cached(backend,key,config);valid=experiment.checked({**config,'preset':key},saved)
+    web_tested=config.get('web_tested') is True if key==config['preset'] else saved.get('web_tested') is True
+    api_tested=catalog.api_tested(saved) if valid else False
     return {'provider':PROVIDER,'api_key':config.get('api_key',''),'base_url':experiment.API,
         'model':('qwen-workflow-' if key.startswith('qwen-') else 'rh-workflow-')+candidate['id'],'workflow_id':candidate['id'],'preset':key,
         'enabled':config.get('enabled') is True,'member_key_confirmed':config.get('member_key_confirmed') is True,
-        'web_tested':config.get('web_tested') is True if key==config['preset'] else saved.get('web_tested') is True,
+        'web_tested':web_tested,'api_tested':api_tested,'live_tested':web_tested or api_tested,
         'checked':valid,'workflow':saved.get('graph'),'workflow_sha256':saved.get('workflowSha256'),
         'ratio':'9:16','resolution':'1k','concurrency':1,'auto_fallback_gpt':False}
 
@@ -32,7 +34,7 @@ def public_config(backend):
     try:cfg=resolve(backend)
     except (OSError,ValueError,KeyError):return {'configured':False,'has_key':False,'error':'RH币工作流配置需要重新核对'}
     import rh_workflow_catalog as catalog
-    return {'candidates':catalog.public_entries(backend),'preset':cfg['preset'],'configured':bool(cfg['api_key'] and cfg['enabled'] and cfg['member_key_confirmed'] and cfg['web_tested'] and cfg['checked']),
+    return {'candidates':catalog.public_entries(backend),'preset':cfg['preset'],'configured':bool(cfg['api_key'] and cfg['enabled'] and cfg['member_key_confirmed'] and cfg['live_tested'] and cfg['checked']),
         'has_key':bool(cfg['api_key']),**{key:cfg[key] for key in ('enabled','checked','model','workflow_id','base_url','concurrency','resolution','ratio')}}
 
 
@@ -60,8 +62,8 @@ def generate(backend,cfg,prompt,ratio='9:16',resolution='1k',on_task_id=None):
             raise ValueError('RH币工作流配置未完成：请在系统设置启用并核对会员Key；未提交生成')
         if not cfg.get('checked'):
             raise ValueError('RH币工作流完整图未核对：请核对所选候选的完整工作流；未提交生成')
-        if not cfg.get('web_tested'):
-            raise ValueError('RH币工作流尚未网页实测：请在同一账户网页运行所选工作流并确认出图；未提交生成')
+        if not cfg.get('live_tested'):
+            raise ValueError('RH币工作流尚未真实出图验证：请在同一账户完成网页或API单张测试；未提交生成')
         if cfg.get('base_url')!=experiment.API:raise ValueError('RH币工作流仅使用已核对的国内站')
         if str(resolution).lower()!='1k':raise ValueError('RH币工作流当前支持1K，请在任务参数选择1K')
         graph=cfg.get('workflow')
