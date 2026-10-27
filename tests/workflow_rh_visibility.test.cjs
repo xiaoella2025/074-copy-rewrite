@@ -5,7 +5,19 @@ const vm=require('node:vm');
 
 const context={};
 vm.createContext(context);
-vm.runInContext(fs.readFileSync('assets/workflow_actions.js','utf8')+';this.rhWorkflowActive=rhWorkflowActive;this.clearInactiveRhWorkflow=clearInactiveRhWorkflow;',context);
+vm.runInContext(fs.readFileSync('assets/workflow_actions.js','utf8')+';this.rhWorkflowActive=rhWorkflowActive;this.clearInactiveRhWorkflow=clearInactiveRhWorkflow;this.stepFields=STEP_FIELDS;',context);
+
+test('wallet drawing and coin workflows have distinct labels and workflow choice follows provider',()=>{
+  for(const step of ['4','6']){
+    const fields=context.stepFields[step],scope=step==='4'?'image':'cover';
+    const providerIndex=fields.findIndex(f=>f.path.join('.')===scope+'.provider');
+    const workflowIndex=fields.findIndex(f=>f.path.join('.')===scope+'.workflow');
+    assert.equal(workflowIndex,providerIndex+1);
+    const choices=fields[providerIndex].options;
+    assert.match(choices.find(([value])=>value==='runninghub')[1],/钱包.*不选工作流/);
+    assert.match(choices.find(([value])=>value==='runninghub_workflow')[1],/RH币.*选候选/);
+  }
+});
 
 test('cover RH workflow follows the effective cover engine',()=>{
   const cfg={cover:{provider:'modelscope',workflow:'qwen-simple'},image:{provider:'runninghub_workflow'}};
