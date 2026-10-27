@@ -56,8 +56,12 @@ def query(backend,cfg,task_id):
 
 def generate(backend,cfg,prompt,ratio='9:16',resolution='1k',on_task_id=None):
     try:
-        if not (cfg.get('enabled') and cfg.get('api_key') and cfg.get('member_key_confirmed') and cfg.get('web_tested') and cfg.get('checked')):
-            raise ValueError('请先在系统设置启用并核对RH币工作流及会员Key')
+        if not (cfg.get('enabled') and cfg.get('api_key') and cfg.get('member_key_confirmed')):
+            raise ValueError('RH币工作流配置未完成：请在系统设置启用并核对会员Key；未提交生成')
+        if not cfg.get('checked'):
+            raise ValueError('RH币工作流完整图未核对：请核对所选候选的完整工作流；未提交生成')
+        if not cfg.get('web_tested'):
+            raise ValueError('RH币工作流尚未网页实测：请在同一账户网页运行所选工作流并确认出图；未提交生成')
         if cfg.get('base_url')!=experiment.API:raise ValueError('RH币工作流仅使用已核对的国内站')
         if str(resolution).lower()!='1k':raise ValueError('RH币工作流当前支持1K，请在任务参数选择1K')
         graph=cfg.get('workflow')

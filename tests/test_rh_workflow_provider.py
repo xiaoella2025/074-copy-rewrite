@@ -73,6 +73,19 @@ class FormalProviderTests(unittest.TestCase):
         self.assertEqual(provider.query(server,cfg,'old-id')['status'],'SUCCESS')
         self.assertFalse(any(url.endswith('/create') for url,_ in self.events))
 
+    def test_unverified_candidate_explains_preflight_without_submitting(self):
+        import task_cover
+        cfg=provider.resolve(server)
+        cfg['checked']=False
+        with self.assertRaisesRegex(server.ImageSubmissionRejected,'完整图未核对') as error:
+            provider.generate(server,cfg,'封面画面','9:16','1k')
+        self.assertIn('未提交生成',task_cover.cover_error(error.exception)['body'])
+        cfg['checked']=True;cfg['web_tested']=False
+        with self.assertRaisesRegex(server.ImageSubmissionRejected,'尚未网页实测') as error:
+            provider.generate(server,cfg,'封面画面','9:16','1k')
+        self.assertIn('未提交生成',task_cover.cover_error(error.exception)['body'])
+        self.assertEqual(self.events,[])
+
     def test_four_three_ratio_and_unsupported_resolution_are_bounded(self):
         cfg=provider.resolve(server)
         with self.assertRaises(server.ImageSubmissionRejected):provider.generate(server,cfg,'原文','4:3','4k')
