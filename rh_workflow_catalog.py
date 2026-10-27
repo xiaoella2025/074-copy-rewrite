@@ -49,6 +49,13 @@ def api_tested(saved):
                 and isinstance(proof.get('imageSha256'),str) and re.fullmatch(r'[a-f0-9]{64}',proof['imageSha256']))
 
 
+def api_cost_range(saved):
+    proof=saved.get('api_test',{})
+    values=[proof.get('spentCoins')]+[x.get('consumeCoins') for x in proof.get('costObservations',[]) if isinstance(x,dict)]
+    costs=[value for value in values if type(value) is int and value>0]
+    return [min(costs),max(costs)] if costs else None
+
+
 def inspect_entry(backend,cfg,key,entry,account=None):
     import rh_coins_experiment as experiment
     if cfg.get('member_key_confirmed') is not True:raise ValueError('请先保存并确认国内站会员Key')
@@ -79,6 +86,7 @@ def public_entries(backend):
                        'checked':valid,'web_tested':saved.get('web_tested',False) if valid else False,
                        'api_tested':api_tested(saved) if valid else False,
                        'api_test_cost':saved.get('api_test',{}).get('spentCoins') if valid and api_tested(saved) else None,
+                       'api_test_cost_range':api_cost_range(saved) if valid and api_tested(saved) else None,
                        'summary':saved.get('summary',{}) if valid else {}})
     return result
 

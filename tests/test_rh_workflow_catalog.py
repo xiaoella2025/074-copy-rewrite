@@ -59,13 +59,15 @@ class CatalogTests(unittest.TestCase):
   exp.configure(self.backend,{'preset':'flux-native','web_tested':False});exp.check(self.backend)
   saved=catalog.cached(self.backend,'flux-native')
   proof={'status':'ok','workflowId':saved['workflowId'],'sourceSha256':saved['sourceSha256'],
-         'credential':saved['credential'],'taskId':'real-task-123','imageSha256':'a'*64,'spentCoins':6}
+         'credential':saved['credential'],'taskId':'real-task-123','imageSha256':'a'*64,'spentCoins':6,
+         'costObservations':[{'taskId':'second-task','consumeCoins':21}]}
   write(catalog.cache_path(self.backend,'flux-native'),{**saved,'api_test':proof})
   cfg=provider.resolve(self.backend,'flux-native')
   self.assertFalse(cfg['web_tested']);self.assertTrue(cfg['api_tested']);self.assertTrue(cfg['live_tested'])
   self.assertTrue(provider.public_config(self.backend)['configured'])
   self.assertTrue(exp.state(self.backend)['live_tested'])
   self.assertEqual(catalog.public_entries(self.backend)[2]['api_test_cost'],6)
+  self.assertEqual(catalog.public_entries(self.backend)[2]['api_test_cost_range'],[6,21])
   exp.check(self.backend)
   self.assertTrue(provider.resolve(self.backend,'flux-native')['api_tested'])
   changed=read(catalog.cache_path(self.backend,'flux-native'),{})
