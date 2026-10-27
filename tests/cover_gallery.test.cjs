@@ -14,6 +14,13 @@ test('gallery displays exact image prompt and new generation prompt separately w
  const state=info({cover:{url:'/old.png'},imageInfo:{actualPrompt:'旧图实际文字\n第二行',provider:'runninghub_workflow'},prompt:'准备新生成的提示词'}),s=setup(state);await tick();
  const text=s.host.all().filter(e=>e.tag==='pre').map(e=>e.textContent);assert.deepEqual(text,['旧图实际文字\n第二行','准备新生成的提示词']);assert.equal(s.calls.filter(c=>c.body).length,0);
 });
+
+test('gallery without a platform receipt explains disabled query and still refreshes without generation',async()=>{
+ const state=info({job:{status:'failed',error:'original failure'}}),s=setup(state,()=>{throw Error('must not submit')});await tick();
+ assert.equal(s.button('查图取回').disabled,true);assert.ok(s.button('刷新状态'));
+ assert.ok(s.host.all().some(e=>e.textContent.includes('没有平台任务编号或结果')));
+ await s.button('刷新状态').onclick();assert.equal(s.calls.filter(c=>c.body).length,0);
+});
 test('gallery crop history and reference reuse scene dialogs with cover namespace and correct slot',async()=>{
  const s=setup(info({cover:{url:'/cover2.png'},imageInfo:{actualPrompt:'完整内容'}}),null,{slot:2});await tick();
  for(const name of ['裁剪','图片历史','参考图编辑'])await s.button(name).onclick();
