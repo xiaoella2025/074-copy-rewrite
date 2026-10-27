@@ -315,6 +315,38 @@ def local_cover(backend,folder,slot,cover):
         return candidate,raw
     return None
 
+def _prepare_failed_rerun(backend,folder,tid,slot,info):
+    """A claimed, explicit step-six rerun may buy one replacement for a failed cover."""
+    queue=getattr(backend,'TASK_QUEUE',None)
+    rerun=queue.get(tid) if queue else None
+    job=info['job']
+    if (job.get('status')!='failed' or job.get('result') or not isinstance(rerun,dict)
+            or rerun.get('status')!='running' or str(rerun.get('from_step'))!='6' or not rerun.get('rerun_prepared')):
+        return info
+    queue_id=rerun.get('id')
+    if (not isinstance(queue_id,str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,70}',queue_id)
+            or (job.get('replacement') or {}).get('retryQueueId')==queue_id):return info
+    provider=info['provider'] or backend.resolve_image_config(backend.load_settings()).get('provider')
+    if not provider:raise ValueError('请先选择封面绘图引擎')
+    op='rerun-cover-'+queue_id
+    job_path=folder/f'cover-job-{slot}.json'
+    archive=folder/'.cover-replacements'/f'{slot}-{op}.json'
+    archive.parent.mkdir(exist_ok=True)
+    old_bytes=job_path.read_bytes()
+    if archive.exists():
+        if archive.read_bytes()!=old_bytes:raise ValueError('封面重跑编号已有其他归档，请核对原记录')
+    else:
+        temporary=archive.with_suffix('.'+uuid.uuid4().hex+'.tmp')
+        try:
+            with temporary.open('wb') as handle:
+                handle.write(old_bytes);handle.flush();os.fsync(handle.fileno())
+            os.replace(temporary,archive)
+        finally:temporary.unlink(missing_ok=True)
+    write(job_path,{'status':'replacement_ready','operationId':op,'provider':provider,'targetProvider':provider,
+                    'replacement':{'archive':str(archive.relative_to(folder)),'previousProvider':job.get('provider'),
+                                   'previousStatus':'failed','retryQueueId':queue_id,'confirmedAt':time.time()}})
+    return view(backend,tid,slot)
+
 def initial(backend,tid,slot=1,prompt_factory=None,data_url=None,options=None,explicit_prompt=None,local_only=False,checkpoint=None):
     """Caller already owns the workflow lease; never reacquire it here."""
     folder=folder_for(backend,tid)
@@ -326,6 +358,7 @@ def initial(backend,tid,slot=1,prompt_factory=None,data_url=None,options=None,ex
         candidate,raw=cached
         if candidate==paths(folder,slot)[1] and cover.get('url'):return cover
         return commit(backend,tid,slot,raw,cover)
+    info=_prepare_failed_rerun(backend,folder,tid,slot,info);job=info['job'];cover=info['cover']
     if job.get('status') in ('submitting','unknown','pending','download_pending'):
         if not (job.get('taskId') or job.get('result')):
             cause=(job.get('firstDiagnostic') or {}).get('message') or '旧记录未保存首次异常的具体原因'
@@ -334,10 +367,12 @@ def initial(backend,tid,slot=1,prompt_factory=None,data_url=None,options=None,ex
         if result['job'].get('status')!='ok':raise RuntimeError('原封面任务尚未完成，请稍后续跑/查图')
         return result['cover']
     replacement=replacement_intent(job)
-    if replacement and info['provider']!=job.get('targetProvider'):raise ValueError('已确认的新封面引擎与当前保存设置不一致，请恢复已确认的引擎')
+    if replacement:
+        selected=info['provider'] or backend.resolve_image_config(backend.load_settings()).get('provider')
+        if selected!=job.get('targetProvider'):raise ValueError('已确认的新封面引擎与当前保存设置不一致，请恢复已确认的引擎')
     if job.get('status')=='ok' and (job.get('result') or job.get('taskId')):
         return _action(backend,folder,tid,slot,'query',{'slot':slot},checkpoint=checkpoint)['cover']
-    if job.get('status')=='failed':raise ValueError('原封面生成已失败，请明确重画或上传本地图；自动续跑不会再次购买')
+    if job.get('status')=='failed':raise ValueError('原封面生成已失败；请在“生成剪映草稿”修改封面引擎后保存并重跑，或上传本地图')
     if data_url:return _action(backend,folder,tid,slot,'upload',{'slot':slot,'data_url':data_url})['cover']
     if local_only or info['mode'] in ('local','upload') or cover.get('provider')=='upload':raise ValueError('本地封面缺失，请重新上传；不会改用收费绘图')
     if cover and not replacement:raise ValueError('旧封面缓存丢失且没有可查询的供应商编号，请查供应商记录或上传本地图；不会自动再次购买')

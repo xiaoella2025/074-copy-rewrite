@@ -51,6 +51,31 @@ class CoverReplaceUnknownTests(unittest.TestCase):
     def archives(self):
         return list((self.folder / '.cover-replacements').glob('*.json'))
 
+    def test_explicit_step_six_rerun_retries_failed_cover_with_new_saved_engine_once(self):
+        task_cover.write(self.job_path, {**self.old, 'status': 'failed'})
+        previous = self.job_path.read_bytes()
+        queue_job = {'id': 'explicit-rerun', 'status': 'running', 'from_step': '6', 'rerun_prepared': True}
+        patch.object(server, 'TASK_QUEUE', types.SimpleNamespace(get=lambda tid: queue_job), create=True).start()
+        self.generate.side_effect = None
+        self.generate.return_value = {'b64': base64.b64encode(self.png()).decode()}
+        task_cover.initial(server, self.tid, explicit_prompt='new cover')
+        task_cover.initial(server, self.tid, explicit_prompt='new cover')
+        self.generate.assert_called_once()
+        self.assertEqual(self.generate.call_args.args[0]['provider'], 'modelscope')
+        self.assertEqual(self.archives()[0].read_bytes(), previous)
+
+    def test_automatic_resume_and_same_failed_rerun_never_buy_again(self):
+        task_cover.write(self.job_path, {**self.old, 'status': 'failed'})
+        queue_job = {'id': 'explicit-rerun', 'status': 'running', 'from_step': None, 'rerun_prepared': True}
+        patch.object(server, 'TASK_QUEUE', types.SimpleNamespace(get=lambda tid: queue_job), create=True).start()
+        with self.assertRaises(ValueError):task_cover.initial(server, self.tid, explicit_prompt='new cover')
+        self.generate.assert_not_called()
+        queue_job['from_step'] = '6'
+        self.generate.side_effect = server.ImageSubmissionRejected('fixture rejected')
+        with self.assertRaises(server.ImageSubmissionRejected):task_cover.initial(server, self.tid, explicit_prompt='new cover')
+        with self.assertRaises(ValueError):task_cover.initial(server, self.tid, explicit_prompt='new cover')
+        self.generate.assert_called_once()
+
     def test_unsubmitted_pause_preserves_replacement_operation_target_and_fallback(self):
         self.replace();paused=InterruptedError('pause');paused.image_not_submitted=True
         self.generate.side_effect=paused

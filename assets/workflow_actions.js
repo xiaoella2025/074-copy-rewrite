@@ -84,7 +84,7 @@ const STEP_FIELDS = {
     {label:"草稿模板",selector:"#draft-templates",path:["image","templateId"],type:"chips"},
     {label:"背景音乐",path:["image","bgmPath"],type:"bgm",help:"可批量导入常用音乐、逐首试听，选择一首用于本任务；更换音乐只需重新打包。"},
     {label:"封面模式", selector:"#cover-mode", path:["cover","mode"], type:"chips"},
-    {label:"封面绘图引擎", selector:"#cover-engine", path:["cover","provider"], type:"select",options:[['','跟随内页绘图引擎'],['gpt_image','全能绘图'],['modelscope','魔搭 ModelScope'],['jimeng','即梦'],['runninghub','RunningHub 钱包绘图（不选工作流）'],['custom','自定义绘图'],['runninghub_workflow','RH币工作流（选候选）']]},
+    {label:"封面绘图引擎", selector:"#cover-engine", path:["cover","provider"], type:"select",options:[['','跟随内页绘图引擎'],['gpt_image','全能绘图'],['modelscope','魔搭 ModelScope'],['jimeng','即梦'],['runninghub','RunningHub 钱包绘图（不选工作流）'],['custom','自定义绘图'],['runninghub_workflow','RH币工作流（选候选）']],help:"当前任务封面单独使用这里的引擎；保存并从这一步重跑会重新生成已失败的封面，按所选平台计费。"},
     {label:"封面RH币工作流",path:["cover","workflow"],type:"select",options:[],catalog:'rhworkflows'},
     {label:"封面模版", selector:"#cover-template", path:["cover","template"], type:"chips",custom:"custom",help:"选择自定义后填写构图描述。"},
     {label:"封面比例", selector:"#cover-ratio", path:["cover","ratio"], type:"chips"},
