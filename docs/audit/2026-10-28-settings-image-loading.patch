@@ -1,0 +1,56 @@
+--- a/settings.html
++++ b/settings.html
+@@ -950,7 +950,7 @@
+ 
+ <div id="toast" style="position:fixed;bottom:30px;left:50%;transform:translateX(-50%);padding:10px 20px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:var(--radius-md);box-shadow:var(--shadow-md);font-size:13px;z-index:9999;display:none"></div>
+ 
+-<script src="/assets/rh_workflow_settings.js"></script>
++<script src="/assets/rh_workflow_settings.js?v=20261028"></script>
+ <script>
+ const $ = id => document.getElementById(id);
+ const KEEP = "__KEEP__";
+@@ -2070,7 +2070,9 @@
+ }
+ 
+ async function saveImageRunningHubWorkflow(makeDefault = false) {
+-  return rhWorkflowSettings.save(makeDefault);
++  const controller=rhWorkflowSettings||await initializeRhWorkflowSettings();
++  if(controller)return controller.save(makeDefault);
++  toast('工作流组件尚未加载，请点“刷新配置”重试',false);return false;
+ }
+ 
+ async function testImageConn(p) {
+@@ -2387,10 +2389,29 @@
+ 
+ renderProviderChips();
+ initImageProviderTabs();
+-const rhWorkflowSettings=window.app074RhWorkflowSettings.mount({
+-  onDefault:()=>api('/api/settings','POST',{image_provider:'runninghub_workflow'}),
+-  onSaved:async()=>{const selected=currentImgProvider;await refreshSettings();switchImageProvider(selected);},
+-});
++let rhWorkflowSettings=null;
++async function initializeRhWorkflowSettings(){
++  if(rhWorkflowSettings)return rhWorkflowSettings;
++  try{
++    if(!window.app074RhWorkflowSettings){
++      await new Promise((resolve,reject)=>{
++        const script=document.createElement('script');script.src='/assets/rh_workflow_settings.js?v=20261028-retry';
++        script.onload=resolve;script.onerror=()=>reject(Error('工作流组件加载失败，请点“刷新配置”重试'));
++        document.head.append(script);
++      });
++    }
++    rhWorkflowSettings=window.app074RhWorkflowSettings.mount({
++      onDefault:()=>api('/api/settings','POST',{image_provider:'runninghub_workflow'}),
++      onSaved:async()=>{const selected=currentImgProvider;await refreshSettings();switchImageProvider(selected);},
++    });
++    return rhWorkflowSettings;
++  }catch(error){
++    $('rhw-status').textContent=error.message;
++    $('rhw-refresh').disabled=false;$('rhw-refresh').onclick=initializeRhWorkflowSettings;
++    return null;
++  }
++}
++initializeRhWorkflowSettings();
+ (async () => {
+   // 恢复主题
+   try {
